@@ -6,55 +6,32 @@ paths:
       summary: Request Break Glass Grant
       operationId: requestBreakGlassGrant
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: patientId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/BreakGlassGrant"
         "400":
           description: Invalid request
           content:
@@ -73,6 +50,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -85,6 +68,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: platform-audit
       x-medicore-permission: clinical.break_glass
       x-medicore-audit-action: clinical.break_glass
@@ -99,7 +87,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/BreakGlassGrantRequest"
   /break-glass-grants:
     get:
       tags:
@@ -107,51 +95,43 @@ paths:
       summary: List Break Glass Grants
       operationId: listBreakGlassGrants
       parameters:
-        - name: X-Request-Id
-          in: header
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
           required: false
           schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: cursor
+            $ref: "#/components/schemas/BreakGlassGrantStatus"
+        - name: patientId
           in: query
           required: false
           schema:
             type: string
-            maxLength: 1024
-        - name: limit
+            format: uuid
+        - name: requesterAccountId
           in: query
           required: false
           schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+            type: string
+            format: uuid
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/BreakGlassGrantPage"
         "400":
           description: Invalid request
           content:
@@ -170,6 +150,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -182,6 +168,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: platform-audit
       x-medicore-permission: audit.read
       x-medicore-audit-action: audit.read
@@ -196,55 +187,32 @@ paths:
       summary: Revoke Break Glass Grant
       operationId: revokeBreakGlassGrant
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: grantId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/BreakGlassGrant"
         "400":
           description: Invalid request
           content:
@@ -259,6 +227,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -287,6 +261,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: platform-audit
       x-medicore-permission: clinical.break_glass
       x-medicore-audit-action: clinical.break_glass
@@ -299,7 +278,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /break-glass-grants/{grantId}/actions/review:
     post:
       tags:
@@ -307,55 +286,32 @@ paths:
       summary: Review Break Glass Grant
       operationId: reviewBreakGlassGrant
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: grantId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/BreakGlassGrant"
         "400":
           description: Invalid request
           content:
@@ -370,6 +326,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -398,6 +360,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: platform-audit
       x-medicore-permission: audit.break_glass.review
       x-medicore-audit-action: audit.break_glass.review
@@ -410,7 +377,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReviewBreakGlassGrantRequest"
   /audit-events:
     get:
       tags:
@@ -418,51 +385,67 @@ paths:
       summary: List Audit Events
       operationId: listAuditEvents
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: cursor
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: occurredFrom
           in: query
           required: false
           schema:
             type: string
-            maxLength: 1024
-        - name: limit
+            format: date-time
+        - name: occurredTo
           in: query
           required: false
           schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+            type: string
+            format: date-time
+        - name: patientId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: actorAccountId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+        - name: outcome
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AuditOutcome"
+        - name: correlationId
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 128
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/AuditEventPage"
         "400":
           description: Invalid request
           content:
@@ -481,6 +464,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -493,6 +482,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: platform-audit
       x-medicore-permission: audit.read
       x-medicore-audit-action: audit.read
@@ -507,18 +501,8 @@ paths:
       summary: Get Audit Event
       operationId: getAuditEvent
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: auditEventId
           in: path
           required: true
@@ -531,19 +515,16 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/AuditEvent"
         "400":
           description: Invalid request
           content:
@@ -562,6 +543,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -574,6 +561,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: platform-audit
       x-medicore-permission: audit.read
       x-medicore-audit-action: audit.read

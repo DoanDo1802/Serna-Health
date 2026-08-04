@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "25-api-inventory-r1.md",
+                "file": "schema/billing-reliability-notification-r1.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "25-api-inventory-r1"
+              "title": "billing-reliability-notification-r1"
             }
           }
         ]
@@ -187,15 +187,17 @@
   },
   "active": "ec4c51895b0c5984",
   "lastOpenFiles": [
-    "16-orders-va-results.md",
+    "26-git-cheatsheet-huong-dan-git-workflow.md",
+    "schema/catalog-patient-r1.md",
+    "schema/identity-access-audit-r1.md",
     "25-api-inventory-r1.md",
+    "26-quy-tac-su-dung-git.md",
+    "16-orders-va-results.md",
     "adr/0013-api-contract-versioning-error-idempotency.md",
     "13-ke-hoach-va-nghiem-thu-mvp.md.tmp.24161.e90cde9820f0",
     "schema/billing-reliability-notification-r1.md",
     "schema/reception-clinical-r1.md",
     "schema/scheduling-payment-r1.md",
-    "schema/catalog-patient-r1.md",
-    "schema/identity-access-audit-r1.md",
     "schema/README.md",
     "schema",
     "adr/0012-technical-finalization-va-lawful-signing-boundary.md",
@@ -216,8 +218,6 @@
     "22-backlog-mvp.md",
     "21-schema-vat-ly-mvp.md",
     "20-so-quyet-dinh-kien-truc.md",
-    "19-ket-qua-phase-0.md",
-    "18-billing-account-va-charge-item.md",
     "10-thong-bao.md.tmp.68709.c4a395131f1b",
     "04-vong-doi-va-nghiep-vu-lich-kham.md.tmp.68709.55b94222e09c",
     "Chưa đặt tên.base",

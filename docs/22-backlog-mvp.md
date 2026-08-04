@@ -188,7 +188,7 @@ API operation inventory và OpenAPI trace: [[25-api-inventory-r1|API inventory R
 
 | Story | Decision | ADR | Schema | Acceptance |
 |---|---|---|---|---|
-| `R1-02` | `AUTH-01..06`, `SEC-03..05` | ADR-0004, ADR-0010 | [[schema/identity-access-audit-r1|Identity/access/audit]] | `SC-R1-AUTH-01..03`, `SC-R1-SEC-01` |
+| `R1-02` | `AUTH-01..06`, `SEC-03..05`, `REL-01` | ADR-0003, ADR-0004, ADR-0010 | [[schema/identity-access-audit-r1|Identity/access/audit]], [[schema/billing-reliability-notification-r1|Reliability]] | `SC-R1-AUTH-01..03`, `SC-R1-SEC-01`, `SC-R1-REL-01` |
 | `R1-06` | `PAY-02..06` | ADR-0006, ADR-0011 | [[schema/scheduling-payment-r1|Intent/inbox/payment]] | `SC-R1-BOOK-01..03`, `SC-R1-PAY-01..02` |
 | `R1-07` | `APT-04/06`, `PAY-07` | ADR-0005, ADR-0011 | [[schema/scheduling-payment-r1|Appointment/deposit transfer]] | `SC-R1-RESCHEDULE-01..02` |
 | `R1-10` | `CLIN-01/02/04` | ADR-0007, ADR-0012 | [[schema/reception-clinical-r1|Clinical versions]] | `SC-R1-CLIN-01..02` |

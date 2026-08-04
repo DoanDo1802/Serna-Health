@@ -27,3 +27,29 @@ springdoc:
   swagger-ui:
     enabled: false
     path: /api/v1/swagger-ui
+
+medicore:
+  auth:
+    secret-hash-key: ${MEDICORE_AUTH_SECRET_HASH_KEY}
+    otp:
+      ttl: 10m
+      max-attempts: 5
+      resend-cooldown: 60s
+      max-issues-per-hour: 5
+    lockout:
+      max-failures: 5
+      duration: 15m
+    session:
+      idle-timeout: 30m
+      absolute-timeout: 12h
+      cookie-name: MEDICORE_SESSION
+      secure-cookie: true
+      same-site: Lax
+    token:
+      verification-ttl: 24h
+      password-reset-ttl: 30m
+    idempotency:
+      ttl: 24h
+    break-glass:
+      max-ttl: 4h
+      review-window: 24h

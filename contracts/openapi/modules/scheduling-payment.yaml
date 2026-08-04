@@ -6,52 +6,33 @@ paths:
       summary: Search Appointment Slots
       operationId: searchAppointmentSlots
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: cursor
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 1024
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
       security: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CursorPage"
         "400":
           description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -68,6 +49,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: appointment_slot.read
       x-medicore-audit-action: appointment_slot.read
@@ -91,45 +77,22 @@ paths:
       summary: Create Appointment Slot
       operationId: createAppointmentSlot
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -164,6 +127,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: appointment_slot.create
       x-medicore-audit-action: appointment_slot.create
@@ -186,18 +154,8 @@ paths:
       summary: Get Appointment Slot
       operationId: getAppointmentSlot
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: slotId
           in: path
           required: true
@@ -209,21 +167,24 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Resource"
         "400":
           description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -240,6 +201,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: appointment_slot.read
       x-medicore-audit-action: appointment_slot.read
@@ -255,51 +221,28 @@ paths:
       summary: Update Appointment Slot
       operationId: updateAppointmentSlot
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: slotId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -318,6 +261,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -346,6 +295,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: appointment_slot.update
       x-medicore-audit-action: appointment_slot.update
@@ -368,51 +322,28 @@ paths:
       summary: Cancel Appointment Slot
       operationId: cancelAppointmentSlot
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: slotId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -431,6 +362,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -459,6 +396,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: appointment_slot.cancel
       x-medicore-audit-action: appointment_slot.cancel
@@ -481,45 +423,22 @@ paths:
       summary: Create Slot Hold
       operationId: createSlotHold
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -554,6 +473,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: slot_hold.create
       x-medicore-audit-action: slot_hold.create
@@ -576,18 +500,8 @@ paths:
       summary: Get Slot Hold
       operationId: getSlotHold
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: holdId
           in: path
           required: true
@@ -600,15 +514,12 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -631,6 +542,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -643,6 +560,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: slot_hold.read
       x-medicore-audit-action: slot_hold.read
@@ -658,36 +580,16 @@ paths:
       summary: Cancel Slot Hold
       operationId: cancelSlotHold
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: holdId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
@@ -711,6 +613,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -735,6 +643,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: slot_hold.cancel
       x-medicore-audit-action: slot_hold.cancel
@@ -751,51 +664,28 @@ paths:
       summary: Create Payment Intent
       operationId: createPaymentIntent
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: holdId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -818,6 +708,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -830,6 +726,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: payment_intent.create
       x-medicore-audit-action: payment_intent.create
@@ -852,18 +753,8 @@ paths:
       summary: Get Payment Intent
       operationId: getPaymentIntent
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: paymentIntentId
           in: path
           required: true
@@ -876,15 +767,12 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -907,6 +795,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -919,6 +813,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: payment_intent.read
       x-medicore-audit-action: payment_intent.read
@@ -935,18 +834,8 @@ paths:
       summary: Receive Payment Webhook
       operationId: receivePaymentWebhook
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: provider
           in: path
           required: true
@@ -970,110 +859,11 @@ paths:
       responses:
         "202":
           description: Request accepted without exposing resource existence.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  accepted:
-                    type: boolean
-                    const: true
-                  requestId:
-                    type: string
-                required:
-                  - accepted
-                  - requestId
-        "400":
-          description: Invalid request
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "401":
-          description: Authentication required
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "403":
-          description: Contextual permission denied
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "409":
-          description: Domain state or idempotency conflict
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "429":
-          description: Rate limit exceeded
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-      x-medicore-module: scheduling-payment
-      x-medicore-permission: payment.webhook.receive
-      x-medicore-audit-action: payment.webhook.receive
-      x-medicore-stories:
-        - R1-05
-        - R1-06
-        - R1-07
-      x-medicore-scenarios: *a1
-      x-medicore-idempotent: false
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PaymentWebhookEvent"
-  /mock-payment-intents/{paymentIntentId}/actions/simulate:
-    post:
-      tags:
-        - SchedulingPayment
-      summary: Simulate Mock Payment Outcome
-      operationId: simulateMockPaymentOutcome
-      parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: paymentIntentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-      security:
-        - sessionCookie: []
-      responses:
-        "200":
-          description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
           content:
             application/json:
               schema:
@@ -1096,6 +886,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -1108,6 +904,99 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: scheduling-payment
+      x-medicore-permission: payment.webhook.receive
+      x-medicore-audit-action: payment.webhook.receive
+      x-medicore-stories:
+        - R1-05
+        - R1-06
+        - R1-07
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentWebhookEvent"
+  /mock-payment-intents/{paymentIntentId}/actions/simulate:
+    post:
+      tags:
+        - SchedulingPayment
+      summary: Simulate Mock Payment Outcome
+      operationId: simulateMockPaymentOutcome
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: paymentIntentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: payment.mock.simulate
       x-medicore-audit-action: payment.mock.simulate
@@ -1133,47 +1022,22 @@ paths:
       summary: List Appointments
       operationId: listAppointments
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: cursor
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 1024
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1196,6 +1060,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -1208,6 +1078,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: appointment.read
       x-medicore-audit-action: appointment.read
@@ -1224,18 +1099,8 @@ paths:
       summary: Get Appointment
       operationId: getAppointment
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: appointmentId
           in: path
           required: true
@@ -1248,15 +1113,12 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1275,6 +1137,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -1291,6 +1159,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: appointment.read
       x-medicore-audit-action: appointment.read
@@ -1307,57 +1180,29 @@ paths:
       summary: Reschedule Appointment
       operationId: rescheduleAppointment
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: appointmentId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1376,6 +1221,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -1404,6 +1255,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: appointment.reschedule
       x-medicore-audit-action: appointment.reschedule
@@ -1426,57 +1282,29 @@ paths:
       summary: Cancel Appointment
       operationId: cancelAppointment
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: appointmentId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1495,6 +1323,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -1523,6 +1357,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: appointment.cancel
       x-medicore-audit-action: appointment.cancel
@@ -1545,51 +1384,28 @@ paths:
       summary: Mark Appointment No Show
       operationId: markAppointmentNoShow
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: appointmentId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1608,6 +1424,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -1636,6 +1458,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: scheduling-payment
       x-medicore-permission: appointment.no_show
       x-medicore-audit-action: appointment.no_show

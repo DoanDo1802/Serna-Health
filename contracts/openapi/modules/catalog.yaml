@@ -6,47 +6,22 @@ paths:
       summary: List Departments
       operationId: listDepartments
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: cursor
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 1024
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -69,6 +44,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -81,6 +62,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: department.read
       x-medicore-audit-action: department.read
@@ -95,45 +81,22 @@ paths:
       summary: Create Department
       operationId: createDepartment
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -168,6 +131,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: department.create
       x-medicore-audit-action: department.create
@@ -188,18 +156,8 @@ paths:
       summary: Get Department
       operationId: getDepartment
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: departmentId
           in: path
           required: true
@@ -212,15 +170,12 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -239,6 +194,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -255,6 +216,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: department.read
       x-medicore-audit-action: department.read
@@ -268,51 +234,28 @@ paths:
       summary: Update Department
       operationId: updateDepartment
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: departmentId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -331,6 +274,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -359,6 +308,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: department.update
       x-medicore-audit-action: department.update
@@ -379,51 +333,28 @@ paths:
       summary: Deactivate Department
       operationId: deactivateDepartment
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: departmentId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -442,6 +373,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -470,6 +407,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: department.update
       x-medicore-audit-action: department.update
@@ -490,47 +432,22 @@ paths:
       summary: List Rooms
       operationId: listRooms
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: cursor
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 1024
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -553,6 +470,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -565,6 +488,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: room.read
       x-medicore-audit-action: room.read
@@ -578,45 +506,22 @@ paths:
       summary: Create Room
       operationId: createRoom
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -651,6 +556,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: room.create
       x-medicore-audit-action: room.create
@@ -671,18 +581,8 @@ paths:
       summary: Get Room
       operationId: getRoom
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: roomId
           in: path
           required: true
@@ -695,15 +595,12 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -722,6 +619,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -738,6 +641,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: room.read
       x-medicore-audit-action: room.read
@@ -751,51 +659,28 @@ paths:
       summary: Update Room
       operationId: updateRoom
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: roomId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -814,6 +699,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -842,6 +733,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: room.update
       x-medicore-audit-action: room.update
@@ -862,51 +758,28 @@ paths:
       summary: Deactivate Room
       operationId: deactivateRoom
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: roomId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -925,6 +798,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -953,6 +832,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: room.update
       x-medicore-audit-action: room.update
@@ -973,47 +857,22 @@ paths:
       summary: List Services
       operationId: listServices
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: cursor
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 1024
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1036,6 +895,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -1048,6 +913,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: service.read
       x-medicore-audit-action: service.read
@@ -1061,45 +931,22 @@ paths:
       summary: Create Service
       operationId: createService
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1134,6 +981,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: service.create
       x-medicore-audit-action: service.create
@@ -1154,18 +1006,8 @@ paths:
       summary: Get Service
       operationId: getService
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: serviceId
           in: path
           required: true
@@ -1178,15 +1020,12 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1205,6 +1044,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -1221,6 +1066,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: service.read
       x-medicore-audit-action: service.read
@@ -1234,51 +1084,28 @@ paths:
       summary: Update Service
       operationId: updateService
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: serviceId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1297,6 +1124,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -1325,6 +1158,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: service.update
       x-medicore-audit-action: service.update
@@ -1345,51 +1183,28 @@ paths:
       summary: Deactivate Service
       operationId: deactivateService
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: serviceId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1408,6 +1223,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -1436,6 +1257,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: service.update
       x-medicore-audit-action: service.update
@@ -1456,53 +1282,28 @@ paths:
       summary: List Service Prices
       operationId: listServicePrices
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: serviceId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: cursor
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 1024
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1525,6 +1326,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -1537,6 +1344,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: service_price.read
       x-medicore-audit-action: service_price.read
@@ -1550,51 +1362,28 @@ paths:
       summary: Create Service Price
       operationId: createServicePrice
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: serviceId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1617,6 +1406,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -1629,6 +1424,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: service_price.create
       x-medicore-audit-action: service_price.create
@@ -1649,18 +1449,8 @@ paths:
       summary: Get Service Price
       operationId: getServicePrice
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: priceId
           in: path
           required: true
@@ -1673,15 +1463,12 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1700,6 +1487,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -1716,6 +1509,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: service_price.read
       x-medicore-audit-action: service_price.read
@@ -1730,51 +1528,28 @@ paths:
       summary: End Service Price
       operationId: endServicePrice
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: priceId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1793,6 +1568,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -1821,6 +1602,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: service_price.update
       x-medicore-audit-action: service_price.update
@@ -1841,47 +1627,22 @@ paths:
       summary: List Practitioners
       operationId: listPractitioners
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: cursor
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 1024
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1904,6 +1665,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -1916,6 +1683,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: practitioner.read
       x-medicore-audit-action: practitioner.read
@@ -1929,45 +1701,22 @@ paths:
       summary: Create Practitioner
       operationId: createPractitioner
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2002,6 +1751,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: practitioner.create
       x-medicore-audit-action: practitioner.create
@@ -2022,18 +1776,8 @@ paths:
       summary: Get Practitioner
       operationId: getPractitioner
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: practitionerId
           in: path
           required: true
@@ -2046,15 +1790,12 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2073,6 +1814,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -2089,6 +1836,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: practitioner.read
       x-medicore-audit-action: practitioner.read
@@ -2102,51 +1854,28 @@ paths:
       summary: Update Practitioner
       operationId: updatePractitioner
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: practitionerId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2165,6 +1894,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -2193,6 +1928,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: practitioner.update
       x-medicore-audit-action: practitioner.update
@@ -2213,51 +1953,28 @@ paths:
       summary: Deactivate Practitioner
       operationId: deactivatePractitioner
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: practitionerId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2276,6 +1993,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -2304,6 +2027,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: practitioner.update
       x-medicore-audit-action: practitioner.update
@@ -2324,53 +2052,28 @@ paths:
       summary: List Practitioner Roles
       operationId: listPractitionerRoles
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: practitionerId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: cursor
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 1024
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2393,6 +2096,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -2405,6 +2114,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: practitioner_role.read
       x-medicore-audit-action: practitioner_role.read
@@ -2418,51 +2132,28 @@ paths:
       summary: Assign Practitioner Role
       operationId: assignPractitionerRole
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: practitionerId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2485,6 +2176,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "409":
           description: Domain state or idempotency conflict
           content:
@@ -2497,6 +2194,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: practitioner_role.create
       x-medicore-audit-action: practitioner_role.create
@@ -2517,18 +2219,8 @@ paths:
       summary: Get Practitioner Role
       operationId: getPractitionerRole
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: roleId
           in: path
           required: true
@@ -2541,15 +2233,12 @@ paths:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2568,6 +2257,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -2584,6 +2279,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: practitioner_role.read
       x-medicore-audit-action: practitioner_role.read
@@ -2598,51 +2298,28 @@ paths:
       summary: Revoke Practitioner Role
       operationId: revokePractitionerRole
       parameters:
-        - name: X-Request-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
-        - name: X-Correlation-Id
-          in: header
-          required: false
-          schema:
-            type: string
-            maxLength: 128
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
         - name: roleId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: X-CSRF-Token
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 128
-        - name: If-Match
-          in: header
-          required: true
-          schema:
-            type: string
-            pattern: ^"[0-9]+"$
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Successful response.
           headers:
-            ETag:
-              schema:
-                type: string
             X-Request-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
-              schema:
-                type: string
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2661,6 +2338,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "403":
           description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
           content:
             application/problem+json:
               schema:
@@ -2689,6 +2372,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
       x-medicore-module: catalog
       x-medicore-permission: practitioner_role.update
       x-medicore-audit-action: practitioner_role.update

@@ -5,6 +5,12 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+
+medicore:
+  auth:
+    secret-hash-key: test-only-key-at-least-thirty-two-bytes
+    session:
+      secure-cookie: false
 springdoc:
   api-docs:
     enabled: false

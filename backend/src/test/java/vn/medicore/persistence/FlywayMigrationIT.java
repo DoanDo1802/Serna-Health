@@ -36,7 +36,7 @@ class FlywayMigrationIT {
     private Flyway flyway;
 
     @Test
-    void appliesOnlyFoundationBaselineOnPostgreSql17InUtc() throws SQLException {
+    void appliesR102SchemaOnPostgreSql17InUtc() throws SQLException {
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
 
@@ -44,8 +44,38 @@ class FlywayMigrationIT {
              Statement statement = connection.createStatement()) {
             assertThat(singleValue(statement, "show server_version_num")).startsWith("17");
             assertThat(singleValue(statement, "show timezone")).isEqualTo("UTC");
-            assertThat(publicTables(statement)).containsExactly("flyway_schema_history");
+            assertThat(publicTables(statement)).containsExactlyInAnyOrder(
+                    "flyway_schema_history",
+                    "audit_event",
+                    "idempotency_record",
+                    "outbox_event",
+                    "user_account",
+                    "password_credential",
+                    "authentication_challenge",
+                    "account_token",
+                    "account_session",
+                    "role",
+                    "permission",
+                    "role_permission",
+                    "account_role_assignment",
+                    "break_glass_grant");
+            assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("3");
+            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("6");
+            assertAuditIsAppendOnly(statement);
         }
+    }
+
+    private void assertAuditIsAppendOnly(Statement statement) throws SQLException {
+        statement.executeUpdate("""
+                insert into audit_event(id, actor_type, purpose, authorization_basis, resource_type, action,
+                    outcome, source_system, source_event, request_id, correlation_id, occurred_at)
+                values ('01980000-0000-7002-8000-000000000001', 'SYSTEM', 'test', 'test', 'migration',
+                    'audit.read', 'SUCCEEDED', 'test', 'test', 'request', 'correlation', now())
+                """);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.executeUpdate("truncate audit_event"))
+                .isInstanceOf(SQLException.class)
+                .hasMessageContaining("audit_event is append-only");
+        assertThat(singleValue(statement, "select count(*) from audit_event")).isEqualTo("1");
     }
 
     private String singleValue(Statement statement, String sql) throws SQLException {
