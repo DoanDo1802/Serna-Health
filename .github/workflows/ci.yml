@@ -82,6 +82,13 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+      - uses: actions/setup-java@536de9e5ba95309550b74c08e297b4b0f11e8b7d
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - working-directory: backend
+        run: ./mvnw --batch-mode --no-transfer-progress dependency:go-offline || true
       - run: npm ci
       - run: npm audit --audit-level=high
       - uses: gitleaks/gitleaks-action@bcfb9cce635345aac9996cedc19b2de8e01b894f
