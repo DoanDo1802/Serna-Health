@@ -58,9 +58,16 @@ class FlywayMigrationIT {
                     "permission",
                     "role_permission",
                     "account_role_assignment",
-                    "break_glass_grant");
-            assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("3");
-            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("6");
+                    "break_glass_grant",
+                    // R1-03 Catalog
+                    "department",
+                    "room",
+                    "service",
+                    "service_price",
+                    "practitioner",
+                    "practitioner_role");
+            assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("4");
+            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("11");
             assertAuditIsAppendOnly(statement);
         }
     }

@@ -35,7 +35,20 @@ public class SecurityConfig {
                                 "/api/v1/auth/otp-challenges",
                                 "/api/v1/auth/otp-sessions",
                                 "/api/v1/auth/password-recovery-challenges",
-                                "/api/v1/auth/password-resets")
+                                "/api/v1/auth/password-resets",
+                                // Catalog read — public (patient-facing availability)
+                                "GET /api/v1/departments",
+                                "GET /api/v1/departments/*",
+                                "GET /api/v1/rooms",
+                                "GET /api/v1/rooms/*",
+                                "GET /api/v1/services",
+                                "GET /api/v1/services/*",
+                                "GET /api/v1/services/*/prices",
+                                "GET /api/v1/service-prices/*",
+                                "GET /api/v1/practitioners",
+                                "GET /api/v1/practitioners/*",
+                                "GET /api/v1/practitioner-roles",
+                                "GET /api/v1/practitioner-roles/*")
                         .permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(
