@@ -28,6 +28,7 @@ import vn.medicore.service.impl.IdempotencyServiceImpl.Reservation;
 public class IdempotencyFilter extends OncePerRequestFilter {
 
     private static final Set<String> IDEMPOTENT_OPERATIONS = Set.of(
+            // R1-02 identity
             "POST /api/v1/auth/registrations",
             "POST /api/v1/auth/email-verifications",
             "DELETE /api/v1/auth/sessions",
@@ -35,7 +36,14 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             "POST /api/v1/admin/accounts/{id}/actions/change-status",
             "POST /api/v1/admin/roles",
             "POST /api/v1/admin/accounts/{id}/role-assignments",
-            "POST /api/v1/patients/{id}/break-glass-grants");
+            "POST /api/v1/patients/{id}/break-glass-grants",
+            // R1-03 catalog creates
+            "POST /api/v1/departments",
+            "POST /api/v1/departments/{id}/rooms",
+            "POST /api/v1/services",
+            "POST /api/v1/services/{id}/prices",
+            "POST /api/v1/practitioners",
+            "POST /api/v1/practitioners/{id}/roles");
 
     private final IdempotencyServiceImpl idempotency;
 
