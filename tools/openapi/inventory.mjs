@@ -1,0 +1,163 @@
+export const modules = [
+  {
+    key: 'identity-access',
+    tag: 'IdentityAccess',
+    story: 'R1-02',
+    scenarios: ['SC-R1-AUTH-01', 'SC-R1-AUTH-02', 'SC-R1-AUTH-03', 'SC-R1-SEC-01'],
+    operations: [
+      op('post', '/auth/registrations', 'registerAccount', { public: true, idempotent: true, body: 'AuthRegistrationRequest', success: 202, permission: 'account.register' }),
+      op('post', '/auth/email-verification-challenges', 'requestEmailVerification', { public: true, body: 'OtpChallengeRequest', success: 202, permission: 'account.register' }),
+      op('post', '/auth/email-verifications', 'verifyEmail', { public: true, idempotent: true, body: 'OtpSessionRequest', permission: 'account.register' }),
+      op('post', '/auth/password-sessions', 'loginWithPassword', { public: true, body: 'PasswordSessionRequest', response: 'Session', permission: 'account.authenticate' }),
+      op('post', '/auth/otp-challenges', 'requestLoginOtp', { public: true, body: 'OtpChallengeRequest', success: 202, permission: 'account.authenticate' }),
+      op('post', '/auth/otp-sessions', 'loginWithOtp', { public: true, body: 'OtpSessionRequest', response: 'Session', permission: 'account.authenticate' }),
+      op('get', '/auth/session', 'getCurrentSession', { response: 'Session', permission: 'account.authenticate' }),
+      op('delete', '/auth/session', 'logoutCurrentSession', { csrf: true, success: 204, permission: 'account.authenticate' }),
+      op('delete', '/auth/sessions', 'logoutAllSessions', { csrf: true, idempotent: true, success: 204, permission: 'account.authenticate' }),
+      op('post', '/auth/password-recovery-challenges', 'requestPasswordRecovery', { public: true, body: 'OtpChallengeRequest', success: 202, permission: 'account.recover' }),
+      op('post', '/auth/password-resets', 'resetPassword', { public: true, idempotent: true, permission: 'account.recover' }),
+      op('put', '/auth/password', 'changePassword', { csrf: true, ifMatch: true, permission: 'account.recover' }),
+      list('/admin/accounts', 'listAccounts', 'account.read'),
+      get('/admin/accounts/{accountId}', 'getAccount', 'account.read'),
+      action('/admin/accounts/{accountId}/actions/change-status', 'changeAccountStatus', 'account.status.change', { idempotent: true }),
+      list('/admin/roles', 'listRoles', 'role.read'),
+      create('/admin/roles', 'createRole', 'role.create'),
+      list('/admin/permissions', 'listPermissions', 'permission.read'),
+      op('put', '/admin/roles/{roleId}/permissions', 'replaceRolePermissions', { csrf: true, ifMatch: true, permission: 'role.permission.manage' }),
+      list('/admin/accounts/{accountId}/role-assignments', 'listAccountRoleAssignments', 'account.role.read'),
+      create('/admin/accounts/{accountId}/role-assignments', 'assignAccountRole', 'account.manage_role'),
+      action('/admin/role-assignments/{assignmentId}/actions/revoke', 'revokeAccountRoleAssignment', 'account.manage_role'),
+    ],
+  },
+  {
+    key: 'platform-audit', tag: 'PlatformAudit', story: 'R1-02', scenarios: ['SC-R1-SEC-01', 'SC-R1-REL-01'], operations: [
+      create('/patients/{patientId}/break-glass-grants', 'requestBreakGlassGrant', 'clinical.break_glass'),
+      list('/break-glass-grants', 'listBreakGlassGrants', 'audit.read'),
+      action('/break-glass-grants/{grantId}/actions/revoke', 'revokeBreakGlassGrant', 'clinical.break_glass'),
+      action('/break-glass-grants/{grantId}/actions/review', 'reviewBreakGlassGrant', 'audit.break_glass.review'),
+      list('/audit-events', 'listAuditEvents', 'audit.read'),
+      get('/audit-events/{auditEventId}', 'getAuditEvent', 'audit.read'),
+    ],
+  },
+  {
+    key: 'catalog', tag: 'Catalog', story: 'R1-03', scenarios: ['R1-03-CATALOG-CONSTRAINTS'], operations: [
+      ...catalog('departments', 'Department', 'department'),
+      ...catalog('rooms', 'Room', 'room'),
+      ...catalog('services', 'Service', 'service'),
+      list('/services/{serviceId}/prices', 'listServicePrices', 'service_price.read'),
+      create('/services/{serviceId}/prices', 'createServicePrice', 'service_price.create'),
+      get('/service-prices/{priceId}', 'getServicePrice', 'service_price.read'),
+      action('/service-prices/{priceId}/actions/end', 'endServicePrice', 'service_price.update'),
+      ...catalog('practitioners', 'Practitioner', 'practitioner'),
+      list('/practitioners/{practitionerId}/roles', 'listPractitionerRoles', 'practitioner_role.read'),
+      create('/practitioners/{practitionerId}/roles', 'assignPractitionerRole', 'practitioner_role.create'),
+      get('/practitioner-roles/{roleId}', 'getPractitionerRole', 'practitioner_role.read'),
+      action('/practitioner-roles/{roleId}/actions/revoke', 'revokePractitionerRole', 'practitioner_role.update'),
+    ],
+  },
+  {
+    key: 'patient', tag: 'Patient', story: 'R1-04', scenarios: ['SC-R1-PAT-01'], operations: [
+      create('/patients', 'createPatient', 'patient.create'), list('/patients', 'searchPatients', 'patient.search'),
+      get('/patients/{patientId}', 'getPatient', 'patient.read'), patch('/patients/{patientId}', 'updatePatient', 'patient.update'),
+      list('/patients/{patientId}/identifiers', 'listPatientIdentifiers', 'patient_identifier.read'),
+      create('/patients/{patientId}/identifiers', 'addPatientIdentifier', 'patient_identifier.create'),
+      action('/patient-identifiers/{identifierId}/actions/verify-manually', 'verifyPatientIdentifierManually', 'identity.link.verify'),
+      action('/patient-identifiers/{identifierId}/actions/revoke', 'revokePatientIdentifier', 'identity.link.verify'),
+      list('/patients/{patientId}/account-links', 'listPatientAccountLinks', 'patient_account_link.read'),
+      create('/patients/{patientId}/account-links', 'linkPatientAccount', 'patient_account_link.create'),
+      list('/patient-duplicate-candidates', 'listPatientDuplicateCandidates', 'patient_duplicate.review'),
+      get('/patient-duplicate-candidates/{candidateId}', 'getPatientDuplicateCandidate', 'patient_duplicate.review'),
+      action('/patient-duplicate-candidates/{candidateId}/actions/review', 'reviewPatientDuplicateCandidate', 'patient_duplicate.review'),
+    ],
+  },
+  {
+    key: 'scheduling-payment', tag: 'SchedulingPayment', story: 'R1-05,R1-06,R1-07',
+    scenarios: ['SC-R1-BOOK-01', 'SC-R1-BOOK-02', 'SC-R1-BOOK-03', 'SC-R1-BOOK-04', 'SC-R1-PAY-01', 'SC-R1-PAY-02', 'SC-R1-RESCHEDULE-01', 'SC-R1-RESCHEDULE-02'], operations: [
+      list('/appointment-slots', 'searchAppointmentSlots', 'appointment_slot.read', { public: true }),
+      get('/appointment-slots/{slotId}', 'getAppointmentSlot', 'appointment_slot.read', { public: true }),
+      create('/appointment-slots', 'createAppointmentSlot', 'appointment_slot.create'),
+      patch('/appointment-slots/{slotId}', 'updateAppointmentSlot', 'appointment_slot.update'),
+      action('/appointment-slots/{slotId}/actions/cancel', 'cancelAppointmentSlot', 'appointment_slot.cancel'),
+      create('/slot-holds', 'createSlotHold', 'slot_hold.create', { body: 'SlotHoldRequest' }),
+      get('/slot-holds/{holdId}', 'getSlotHold', 'slot_hold.read'),
+      op('delete', '/slot-holds/{holdId}', 'cancelSlotHold', { csrf: true, ifMatch: true, permission: 'slot_hold.cancel', success: 204 }),
+      create('/slot-holds/{holdId}/payment-intents', 'createPaymentIntent', 'payment_intent.create'),
+      get('/payment-intents/{paymentIntentId}', 'getPaymentIntent', 'payment_intent.read'),
+      op('post', '/webhooks/payments/{provider}', 'receivePaymentWebhook', { webhook: true, body: 'PaymentWebhookEvent', success: 202, permission: 'payment.webhook.receive' }),
+      op('post', '/mock-payment-intents/{paymentIntentId}/actions/simulate', 'simulateMockPaymentOutcome', { permission: 'payment.mock.simulate', idempotent: true, environments: ['local', 'test'] }),
+      list('/appointments', 'listAppointments', 'appointment.read'), get('/appointments/{appointmentId}', 'getAppointment', 'appointment.read'),
+      action('/appointments/{appointmentId}/actions/reschedule', 'rescheduleAppointment', 'appointment.reschedule', { idempotent: true }),
+      action('/appointments/{appointmentId}/actions/cancel', 'cancelAppointment', 'appointment.cancel', { idempotent: true }),
+      action('/appointments/{appointmentId}/actions/mark-no-show', 'markAppointmentNoShow', 'appointment.no_show'),
+    ],
+  },
+  {
+    key: 'reception-queue', tag: 'ReceptionQueue', story: 'R1-08,R1-09,R1-13', scenarios: ['SC-R1-CHECKIN-01', 'SC-R1-CHECKIN-02', 'SC-R1-QUEUE-01'], operations: [
+      create('/appointments/{appointmentId}/check-ins', 'checkInAppointment', 'checkin.execute'), get('/check-ins/{checkInId}', 'getCheckIn', 'checkin.read'),
+      list('/visits', 'listVisits', 'visit.read'), get('/visits/{visitId}', 'getVisit', 'visit.read'),
+      action('/visits/{visitId}/actions/complete', 'completeVisit', 'visit.complete', { idempotent: true }),
+      action('/visits/{visitId}/actions/cancel', 'cancelVisit', 'visit.cancel'), action('/visits/{visitId}/actions/enter-in-error', 'enterVisitInError', 'visit.enter_in_error'),
+      list('/visits/{visitId}/encounters', 'listVisitEncounters', 'encounter.read'), get('/encounters/{encounterId}', 'getEncounter', 'encounter.read'),
+      ...['start', 'complete', 'cancel', 'enter-in-error'].map(v => action(`/encounters/{encounterId}/actions/${v}`, `${camel(v)}Encounter`, `encounter.${v.replaceAll('-', '_')}`)),
+      list('/queue-entries', 'listQueueEntries', 'queue.read'), get('/queue-entries/{queueEntryId}', 'getQueueEntry', 'queue.read'),
+      ...[['call','callQueueEntry'],['start-service','startQueueService'],['defer','deferQueueEntry'],['return-to-waiting','returnQueueEntryToWaiting'],['complete','completeQueueEntry'],['cancel','cancelQueueEntry'],['enter-in-error','enterQueueEntryInError']].map(([v,id]) => action(`/queue-entries/{queueEntryId}/actions/${v}`, id, `queue.${v.replaceAll('-', '_')}`)),
+      create('/queue-entries/{queueEntryId}/adjustments', 'adjustQueueEntry', 'queue.adjust', { ifMatch: true }),
+      get('/departments/{departmentId}/queue-policy', 'getQueuePolicy', 'queue_policy.read'),
+      op('put', '/departments/{departmentId}/queue-policy', 'putQueuePolicy', { csrf: true, idempotent: true, permission: 'queue_policy.manage' }),
+      list('/queue-screen', 'getQueueScreen', 'queue_screen.read'),
+    ],
+  },
+  {
+    key: 'clinical-care', tag: 'ClinicalCare', story: 'R1-10,R1-11', scenarios: ['SC-R1-CLIN-01', 'SC-R1-CLIN-02', 'SC-R1-BILL-01'], operations: [
+      list('/encounters/{encounterId}/clinical-notes', 'listEncounterClinicalNotes', 'clinical.note.read'),
+      create('/encounters/{encounterId}/clinical-notes', 'createClinicalNote', 'encounter.write', { body: 'ClinicalDraftRequest' }),
+      get('/clinical-notes/{noteId}', 'getClinicalNote', 'clinical.note.read'), list('/clinical-notes/{noteId}/versions', 'listClinicalNoteVersions', 'clinical.note.read'),
+      get('/clinical-note-versions/{versionId}', 'getClinicalNoteVersion', 'clinical.note.read'), patch('/clinical-note-versions/{versionId}', 'updateClinicalNoteDraft', 'encounter.write', { body: 'ClinicalDraftRequest' }),
+      action('/clinical-note-versions/{versionId}/actions/finalize', 'finalizeClinicalNoteVersion', 'clinical.note.finalize', { idempotent: true }),
+      action('/clinical-note-versions/{versionId}/actions/amend', 'amendClinicalNoteVersion', 'clinical.version.amend', { idempotent: true }),
+      action('/clinical-note-versions/{versionId}/actions/enter-in-error', 'enterClinicalNoteVersionInError', 'clinical.version.enter_in_error'),
+      list('/encounters/{encounterId}/diagnoses', 'listEncounterDiagnoses', 'diagnosis.read'),
+      create('/encounters/{encounterId}/diagnoses', 'createDiagnosis', 'encounter.write', { body: 'DiagnosisDraftRequest' }),
+      get('/diagnoses/{diagnosisId}', 'getDiagnosis', 'diagnosis.read'), list('/diagnoses/{diagnosisId}/versions', 'listDiagnosisVersions', 'diagnosis.read'),
+      get('/diagnosis-versions/{versionId}', 'getDiagnosisVersion', 'diagnosis.read'), patch('/diagnosis-versions/{versionId}', 'updateDiagnosisDraft', 'encounter.write', { body: 'DiagnosisDraftRequest' }),
+      action('/diagnosis-versions/{versionId}/actions/finalize', 'finalizeDiagnosisVersion', 'diagnosis.finalize', { idempotent: true }),
+      action('/diagnosis-versions/{versionId}/actions/amend', 'amendDiagnosisVersion', 'clinical.version.amend', { idempotent: true }),
+      action('/diagnosis-versions/{versionId}/actions/enter-in-error', 'enterDiagnosisVersionInError', 'clinical.version.enter_in_error'),
+      list('/encounters/{encounterId}/service-deliveries', 'listEncounterServiceDeliveries', 'service_delivery.read'),
+      create('/encounters/{encounterId}/service-deliveries', 'createServiceDelivery', 'service_delivery.create'),
+      get('/service-deliveries/{deliveryId}', 'getServiceDelivery', 'service_delivery.read'),
+      action('/service-deliveries/{deliveryId}/actions/perform', 'performServiceDelivery', 'service_delivery.perform', { idempotent: true }),
+      action('/service-deliveries/{deliveryId}/actions/cancel', 'cancelServiceDelivery', 'service_delivery.cancel'),
+      action('/service-deliveries/{deliveryId}/actions/enter-in-error', 'enterServiceDeliveryInError', 'service_delivery.enter_in_error'),
+    ],
+  },
+  {
+    key: 'billing-payment', tag: 'BillingPayment', story: 'R1-11,R1-12,R1-13', scenarios: ['SC-R1-BILL-01', 'SC-R1-BILL-02'], operations: [
+      get('/visits/{visitId}/billing-account', 'getVisitBillingAccount', 'billing.read'), get('/billing-accounts/{accountId}', 'getBillingAccount', 'billing.read'),
+      list('/billing-accounts/{accountId}/ledger', 'listBillingLedgerEntries', 'billing.read'), list('/billing-accounts/{accountId}/charges', 'listBillingAccountCharges', 'billing.read'),
+      get('/charge-items/{chargeItemId}', 'getChargeItem', 'billing.read'),
+      create('/payments', 'recordCounterPayment', 'payment.capture', { body: 'PaymentRequest' }), list('/payments', 'listPayments', 'payment.read'), get('/payments/{paymentId}', 'getPayment', 'payment.read'),
+      create('/billing-accounts/{accountId}/payment-allocations', 'allocatePayment', 'payment.allocate', { ifMatch: true }),
+      list('/billing-accounts/{accountId}/payment-allocations', 'listPaymentAllocations', 'billing.read'),
+      action('/billing-accounts/{accountId}/actions/close', 'closeBillingAccount', 'billing.close', { idempotent: true }),
+      action('/billing-accounts/{accountId}/actions/reopen', 'reopenBillingAccount', 'billing.reopen'),
+    ],
+  },
+  {
+    key: 'notification', tag: 'Notification', story: 'R1-14', scenarios: ['R1-14-NOTIFICATION-RELIABILITY'], operations: [
+      list('/notifications', 'listMyNotifications', 'notification.read'), get('/notifications/{notificationId}', 'getMyNotification', 'notification.read'),
+      action('/notifications/{notificationId}/actions/cancel', 'cancelNotification', 'notification.cancel'),
+    ],
+  },
+]
+
+function op(method, path, operationId, options = {}) { return { method, path, operationId, ...options } }
+function get(path, id, permission, options = {}) { return op('get', path, id, { permission, ...options }) }
+function list(path, id, permission, options = {}) { return op('get', path, id, { permission, list: true, ...options }) }
+function create(path, id, permission, options = {}) { return op('post', path, id, { permission, csrf: true, idempotent: true, ...options }) }
+function patch(path, id, permission, options = {}) { return op('patch', path, id, { permission, csrf: true, ifMatch: true, ...options }) }
+function action(path, id, permission, options = {}) { return op('post', path, id, { permission, csrf: true, ifMatch: true, ...options }) }
+function catalog(plural, singular, permission) {
+  return [list(`/${plural}`, `list${singular}s`, `${permission}.read`), create(`/${plural}`, `create${singular}`, `${permission}.create`), get(`/${plural}/{${permission}Id}`, `get${singular}`, `${permission}.read`), patch(`/${plural}/{${permission}Id}`, `update${singular}`, `${permission}.update`), action(`/${plural}/{${permission}Id}/actions/deactivate`, `deactivate${singular}`, `${permission}.update`)]
+}
+function camel(value) { return value.split('-').map((x, i) => i ? x[0].toUpperCase() + x.slice(1) : x).join('') }

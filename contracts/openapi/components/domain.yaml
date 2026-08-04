@@ -1,0 +1,83 @@
+schemas:
+  AuthRegistrationRequest:
+    type: object
+    additionalProperties: false
+    required: [email, password]
+    properties:
+      email: { type: string, format: email, maxLength: 320 }
+      password: { type: string, format: password, minLength: 12, maxLength: 128, writeOnly: true }
+  OtpChallengeRequest:
+    type: object
+    additionalProperties: false
+    required: [email]
+    properties:
+      email: { type: string, format: email, maxLength: 320 }
+  OtpSessionRequest:
+    type: object
+    additionalProperties: false
+    required: [email, code]
+    properties:
+      email: { type: string, format: email, maxLength: 320 }
+      code: { type: string, minLength: 6, maxLength: 12, writeOnly: true }
+  PasswordSessionRequest:
+    type: object
+    additionalProperties: false
+    required: [email, password]
+    properties:
+      email: { type: string, format: email, maxLength: 320 }
+      password: { type: string, format: password, minLength: 1, maxLength: 128, writeOnly: true }
+  Session:
+    allOf:
+      - $ref: './common.yaml#/schemas/Resource'
+      - type: object
+        properties:
+          accountId: { type: string, format: uuid }
+          absoluteExpiresAt: { type: string, format: date-time }
+          permissions: { type: array, items: { type: string }, uniqueItems: true }
+  SlotHoldRequest:
+    type: object
+    additionalProperties: false
+    required: [slotId, patientId]
+    properties:
+      slotId: { type: string, format: uuid }
+      patientId: { type: string, format: uuid }
+  PaymentWebhookEvent:
+    type: object
+    additionalProperties: true
+    required: [eventId, eventType, providerTransactionId, providerOccurredAt, amount, currency]
+    properties:
+      eventId: { type: string, maxLength: 128 }
+      eventType: { type: string, maxLength: 128 }
+      providerTransactionId: { type: string, maxLength: 128 }
+      providerOccurredAt: { type: string, format: date-time }
+      amount: { type: string, pattern: '^\\d{1,17}\\.\\d{2}$' }
+      currency: { type: string, const: VND }
+  ClinicalDraftRequest:
+    type: object
+    additionalProperties: false
+    required: [contentSchemaVersion, content]
+    properties:
+      contentSchemaVersion: { type: string, maxLength: 32 }
+      content: { type: object, additionalProperties: true }
+  DiagnosisDraftRequest:
+    type: object
+    additionalProperties: false
+    required: [diagnosisType, clinicalStatus]
+    anyOf:
+      - required: [code]
+      - required: [freeText]
+    properties:
+      codeSystem: { type: string, maxLength: 128 }
+      code: { type: string, maxLength: 128 }
+      display: { type: string, maxLength: 500 }
+      freeText: { type: string }
+      diagnosisType: { type: string, maxLength: 64 }
+      clinicalStatus: { type: string, maxLength: 64 }
+  PaymentRequest:
+    type: object
+    additionalProperties: false
+    required: [provider, transactionId, amount]
+    properties:
+      provider: { type: string, enum: [CASH, MOCK] }
+      transactionId: { type: string, maxLength: 128 }
+      amount: { $ref: './common.yaml#/schemas/Money' }

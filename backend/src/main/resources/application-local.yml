@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: ${MEDICORE_DB_URL:jdbc:postgresql://localhost:5432/medicore}
+    username: ${MEDICORE_DB_USERNAME:medicore}
+    password: ${MEDICORE_DB_PASSWORD:medicore-local-only}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: true
+    path: /api/v1/swagger-ui
+    url: /api/v1/medicore.openapi.yaml

@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: medicore-backend
+  flyway:
+    clean-disabled: true
+    validate-on-migrate: true
+  jackson:
+    time-zone: UTC
+  jpa:
+    generate-ddl: false
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+springdoc:
+  api-docs:
+    enabled: false
+    path: /api/v1/openapi
+  swagger-ui:
+    enabled: false
+    path: /api/v1/swagger-ui

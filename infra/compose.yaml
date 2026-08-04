@@ -1,0 +1,23 @@
+name: medicore-local
+services:
+  postgres:
+    image: postgres:17.10@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+    environment:
+      POSTGRES_DB: ${MEDICORE_DB_NAME:-medicore}
+      POSTGRES_USER: ${MEDICORE_DB_USERNAME:-medicore}
+      POSTGRES_PASSWORD: ${MEDICORE_DB_PASSWORD:-medicore-local-only}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "${MEDICORE_DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - medicore_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  medicore_postgres_data:

@@ -1,0 +1,11 @@
+securitySchemes:
+  sessionCookie:
+    type: apiKey
+    in: cookie
+    name: MEDICORE_SESSION
+    description: Opaque server-side session cookie. Unsafe browser requests also require X-CSRF-Token.
+  paymentWebhookSignature:
+    type: apiKey
+    in: header
+    name: X-Provider-Signature
+    description: Provider-specific signature over exact raw request body and signed metadata.

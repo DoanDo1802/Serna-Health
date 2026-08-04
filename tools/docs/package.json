@@ -1,0 +1,20 @@
+{
+  "name": "@medicore/docs-tools",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.18.1",
+    "npm": "11.16.0"
+  },
+  "scripts": {
+    "check": "node check-docs.mjs",
+    "render": "node render-mermaid.mjs"
+  },
+  "dependencies": {
+    "@mermaid-js/mermaid-cli": "11.16.0",
+    "github-slugger": "2.0.0",
+    "glob": "13.0.6",
+    "yaml": "2.9.0"
+  }
+}

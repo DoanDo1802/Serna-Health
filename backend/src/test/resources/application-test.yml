@@ -1,0 +1,12 @@
+spring:
+  flyway:
+    clean-disabled: true
+    validate-on-migrate: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

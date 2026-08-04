@@ -1,0 +1,94 @@
+package vn.medicore.api;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import vn.medicore.MediCoreApplication;
+
+@Testcontainers
+@SpringBootTest(classes = MediCoreApplication.class)
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class OpenApiIT {
+
+    private static final int EXPECTED_OPERATION_COUNT = 151;
+
+    @Container
+    @ServiceConnection
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17.10");
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    private final YAMLMapper yamlMapper = new YAMLMapper();
+
+    @Test
+    void servesCanonicalReleaseOneOpenApiContract() throws Exception {
+        byte[] responseBytes = mockMvc.perform(get("/api/v1/medicore.openapi.yaml"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+        String response = new String(responseBytes, StandardCharsets.UTF_8);
+
+        JsonNode document = yamlMapper.readTree(response);
+        assertThat(document.path("openapi").asText()).isEqualTo("3.1.0");
+        assertThat(document.at("/info/title").asText()).isEqualTo("MediCore API");
+        assertThat(document.at("/info/version").asText()).isEqualTo("v1");
+        assertThat(document.at("/servers/0/url").asText()).isEqualTo("/api/v1");
+
+        Set<String> operationIds = operationIds(document.path("paths"));
+        assertThat(operationIds).hasSize(EXPECTED_OPERATION_COUNT)
+                .contains(
+                        "registerAccount",
+                        "createPatient",
+                        "createSlotHold",
+                        "receivePaymentWebhook",
+                        "checkInAppointment",
+                        "finalizeClinicalNoteVersion",
+                        "closeBillingAccount",
+                        "listMyNotifications");
+
+        JsonNode paths = document.path("paths");
+        assertThat(paths.path("/appointments").has("post")).isFalse();
+        assertThat(paths.path("/charge-items").has("post")).isFalse();
+        assertThat(operationIds).noneMatch(id -> id.toLowerCase().startsWith("sign")
+                || id.toLowerCase().startsWith("publish")
+                || id.toLowerCase().startsWith("refund")
+                || id.toLowerCase().contains("attestation")
+                || id.toLowerCase().contains("prescription")
+                || id.toLowerCase().contains("diagnostic"));
+    }
+
+    private Set<String> operationIds(JsonNode paths) {
+        Set<String> result = new HashSet<>();
+        Iterator<Map.Entry<String, JsonNode>> pathIterator = paths.fields();
+        while (pathIterator.hasNext()) {
+            JsonNode pathItem = pathIterator.next().getValue();
+            Iterator<Map.Entry<String, JsonNode>> operationIterator = pathItem.fields();
+            while (operationIterator.hasNext()) {
+                JsonNode operation = operationIterator.next().getValue();
+                if (operation.hasNonNull("operationId")) {
+                    result.add(operation.path("operationId").asText());
+                }
+            }
+        }
+        return result;
+    }
+}
