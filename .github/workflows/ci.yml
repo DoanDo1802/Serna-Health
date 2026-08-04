@@ -87,7 +87,7 @@ jobs:
       - uses: gitleaks/gitleaks-action@bcfb9cce635345aac9996cedc19b2de8e01b894f
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8
+      - uses: aquasecurity/trivy-action@2736533278103862a861f4a35ebac3e97854d956
         with:
           scan-type: fs
           scan-ref: .
