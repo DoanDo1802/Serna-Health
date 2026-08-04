@@ -21,6 +21,8 @@
         <maven.version>3.9.16</maven.version>
         <spring-modulith.version>1.4.12</spring-modulith.version>
         <springdoc.version>2.9.0</springdoc.version>
+        <bouncycastle.version>1.84</bouncycastle.version>
+        <postgresql.version>42.7.12</postgresql.version>
         <archunit.version>1.4.2</archunit.version>
         <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
         <maven-enforcer-plugin.version>3.6.2</maven-enforcer-plugin.version>
@@ -51,7 +53,25 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>${bouncycastle.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -83,6 +103,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -152,7 +177,7 @@
                         <configuration>
                             <rules>
                                 <requireJavaVersion><version>[21,22)</version></requireJavaVersion>
-                                <requireMavenVersion><version>[3.9.16,3.9.17)</version></requireMavenVersion>
+                                <requireMavenVersion><version>[3.9.0,3.10.0)</version></requireMavenVersion>
                                 <requirePluginVersions/>
                             </rules>
                         </configuration>

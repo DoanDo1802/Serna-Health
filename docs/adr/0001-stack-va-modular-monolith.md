@@ -1,6 +1,6 @@
 ---
 aliases:
-  - ADR-0001 Stack và modular monolith
+  - ADR-0001 Stack và layered architecture
 artifact_type: adr
 status: ACCEPTED
 date: 2026-07-30
@@ -10,7 +10,7 @@ decision_ids:
   - ARCH-03
   - TECH-01
 ---
-# ADR-0001 — Stack và modular monolith
+# ADR-0001 — Stack và Layered Architecture
 
 ## Context
 
@@ -19,12 +19,11 @@ MediCore cần phát triển MVP nhanh nhưng domain y tế, transaction, RBAC v
 ## Decision
 
 - Frontend: React 19 + TypeScript, build bằng Vite; Node.js 24 LTS làm toolchain.
-- Backend: Java 21 LTS, Spring Boot 3.5.x, Spring Modulith, Spring Data JPA/Hibernate, Flyway.
-- Database: PostgreSQL 17.x.
-- Contract ngoài: REST/JSON và OpenAPI.
+- Backend: Java 21 LTS, Spring Boot 3.5.x, Enterprise 5-Layered Architecture (`common`, `config`, `controller`, `dto`, `entity`, `repository`, `service`).
+- Database: PostgreSQL 17.x, Flyway migration.
+- Contract ngoài: REST/JSON và OpenAPI 3.1.
 - MVP dùng một backend deployment và một PostgreSQL database; chưa tách microservice.
-- Module: `identity-access`, `catalog`, `patient`, `scheduling`, `reception-queue`, `clinical-care`, `diagnostics`, `billing-payment`, `notification`, `platform-audit`.
-- Module khác chỉ gọi public application API hoặc domain event; không chia sẻ JPA entity. Tham chiếu xuyên module bằng ID.
+- Kiến trúc phân tầng ngang (Layered Architecture): `controller` -> `service` -> `repository` -> `entity`.
 - Không bắt buộc Redis/Kafka trong Release 1. Outbox nằm trong PostgreSQL.
 
 ## Alternatives rejected
@@ -35,14 +34,9 @@ MediCore cần phát triển MVP nhanh nhưng domain y tế, transaction, RBAC v
 
 ## Consequences
 
-- Boundary module phải được kiểm tra bằng Spring Modulith test.
+- Ranh giới giữa các tầng được kiểm tra bằng ArchUnit `LayeredArchitectureTest`.
 - Một transaction có thể giữ invariant xuyên bảng ổn định trong cùng DB.
-- Khi tách service sau này, public API/domain event và ownership bảng là điểm cắt.
-- Patch version được pin khi scaffold Phase 1; ADR khóa major/minor baseline.
-
-## Constraints
-
-Không đưa business logic vào controller/JPA listener. Module sở hữu migration, bảng và event của mình.
+- Không đưa business logic vào controller hay JPA listener; tập trung xử lý tại `service/impl`.
 
 ## Follow-up
 

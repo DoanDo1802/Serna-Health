@@ -4,6 +4,12 @@ spring:
     username: ${MEDICORE_DB_USERNAME:medicore}
     password: ${MEDICORE_DB_PASSWORD:medicore-local-only}
 
+medicore:
+  auth:
+    secret-hash-key: ${MEDICORE_AUTH_SECRET_HASH_KEY:local-only-key-at-least-thirty-two-bytes}
+    session:
+      secure-cookie: false
+
 springdoc:
   api-docs:
     enabled: false

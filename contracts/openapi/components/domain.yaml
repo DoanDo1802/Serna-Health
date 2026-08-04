@@ -1,4 +1,20 @@
 schemas:
+  AccountStatus:
+    type: string
+    enum: [PENDING_VERIFICATION, ACTIVE, TEMPORARILY_LOCKED, DISABLED, PERMANENTLY_LOCKED]
+  SessionStatus:
+    type: string
+    enum: [ACTIVE, EXPIRED, REVOKED]
+  AccountRoleAssignmentStatus:
+    type: string
+    enum: [ACTIVE, REVOKED, EXPIRED]
+  BreakGlassGrantStatus:
+    type: string
+    enum: [REQUESTED, ACTIVE, EXPIRED, REVOKED, REVIEWED]
+  AuditOutcome:
+    type: string
+    enum: [SUCCEEDED, DENIED, FAILED]
+
   AuthRegistrationRequest:
     type: object
     additionalProperties: false
@@ -19,6 +35,19 @@ schemas:
     properties:
       email: { type: string, format: email, maxLength: 320 }
       code: { type: string, minLength: 6, maxLength: 12, writeOnly: true }
+  EmailVerificationRequest:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        required: [email, code]
+        properties:
+          email: { type: string, format: email, maxLength: 320 }
+          code: { type: string, minLength: 6, maxLength: 12, writeOnly: true }
+      - type: object
+        additionalProperties: false
+        required: [token]
+        properties:
+          token: { type: string, minLength: 32, maxLength: 512, writeOnly: true }
   PasswordSessionRequest:
     type: object
     additionalProperties: false
@@ -26,14 +55,250 @@ schemas:
     properties:
       email: { type: string, format: email, maxLength: 320 }
       password: { type: string, format: password, minLength: 1, maxLength: 128, writeOnly: true }
+  PasswordResetRequest:
+    type: object
+    additionalProperties: false
+    required: [token, newPassword]
+    properties:
+      token: { type: string, minLength: 32, maxLength: 512, writeOnly: true }
+      newPassword: { type: string, format: password, minLength: 12, maxLength: 128, writeOnly: true }
+  ChangePasswordRequest:
+    type: object
+    additionalProperties: false
+    required: [currentPassword, newPassword]
+    properties:
+      currentPassword: { type: string, format: password, minLength: 1, maxLength: 128, writeOnly: true }
+      newPassword: { type: string, format: password, minLength: 12, maxLength: 128, writeOnly: true }
+  ChangeAccountStatusRequest:
+    type: object
+    additionalProperties: false
+    required: [status, reason]
+    properties:
+      status: { $ref: '#/schemas/AccountStatus' }
+      reason: { type: string, minLength: 1, maxLength: 500 }
+  CreateRoleRequest:
+    type: object
+    additionalProperties: false
+    required: [code, name]
+    properties:
+      code: { type: string, pattern: '^[A-Z][A-Z0-9_]*$', maxLength: 64 }
+      name: { type: string, minLength: 1, maxLength: 200 }
+  ReplaceRolePermissionsRequest:
+    type: object
+    additionalProperties: false
+    required: [permissionIds]
+    properties:
+      permissionIds:
+        type: array
+        uniqueItems: true
+        items: { type: string, format: uuid }
+  AssignAccountRoleRequest:
+    type: object
+    additionalProperties: false
+    required: [roleId, effectiveFrom, reason]
+    properties:
+      roleId: { type: string, format: uuid }
+      departmentId: { type: [string, 'null'], format: uuid }
+      effectiveFrom: { type: string, format: date-time }
+      effectiveTo: { type: [string, 'null'], format: date-time }
+      reason: { type: string, minLength: 1, maxLength: 500 }
+  BreakGlassGrantRequest:
+    type: object
+    additionalProperties: false
+    required: [purpose, reason, ttlMinutes, alertReference, ticketReference]
+    properties:
+      purpose: { type: string, minLength: 1, maxLength: 500 }
+      reason: { type: string, minLength: 1, maxLength: 500 }
+      ttlMinutes: { type: integer, minimum: 1, maximum: 240 }
+      alertReference: { type: string, minLength: 1, maxLength: 128 }
+      ticketReference: { type: string, minLength: 1, maxLength: 128 }
+  ReviewBreakGlassGrantRequest:
+    type: object
+    additionalProperties: false
+    required: [outcome, reason]
+    properties:
+      outcome: { type: string, pattern: '^[A-Z][A-Z0-9_]*$', maxLength: 64 }
+      reason: { type: string, minLength: 1, maxLength: 500 }
+
+  Account:
+    type: object
+    additionalProperties: false
+    required: [id, version, displayEmail, status, failedLoginCount, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      displayEmail: { type: string, format: email, maxLength: 320 }
+      emailVerifiedAt: { type: [string, 'null'], format: date-time }
+      status: { $ref: '#/schemas/AccountStatus' }
+      failedLoginCount: { type: integer, minimum: 0, maximum: 5 }
+      lockedUntil: { type: [string, 'null'], format: date-time }
+      lastAuthenticatedAt: { type: [string, 'null'], format: date-time }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
   Session:
-    allOf:
-      - $ref: './common.yaml#/schemas/Resource'
-      - type: object
-        properties:
-          accountId: { type: string, format: uuid }
-          absoluteExpiresAt: { type: string, format: date-time }
-          permissions: { type: array, items: { type: string }, uniqueItems: true }
+    type: object
+    additionalProperties: false
+    required: [accountId, status, authenticatedAt, lastSeenAt, idleExpiresAt, absoluteExpiresAt, permissions]
+    properties:
+      accountId: { type: string, format: uuid }
+      status: { $ref: '#/schemas/SessionStatus' }
+      authenticatedAt: { type: string, format: date-time }
+      lastSeenAt: { type: string, format: date-time }
+      idleExpiresAt: { type: string, format: date-time }
+      absoluteExpiresAt: { type: string, format: date-time }
+      permissions:
+        type: array
+        uniqueItems: true
+        items: { type: string, pattern: '^[a-z][a-z0-9_.]*$', maxLength: 128 }
+  Role:
+    type: object
+    additionalProperties: false
+    required: [id, version, code, name, active, permissionIds, createdAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      code: { type: string, pattern: '^[A-Z][A-Z0-9_]*$', maxLength: 64 }
+      name: { type: string, minLength: 1, maxLength: 200 }
+      active: { type: boolean }
+      permissionIds: { type: array, uniqueItems: true, items: { type: string, format: uuid } }
+      createdAt: { type: string, format: date-time }
+  Permission:
+    type: object
+    additionalProperties: false
+    required: [id, action, description, active, createdAt]
+    properties:
+      id: { type: string, format: uuid }
+      action: { type: string, pattern: '^[a-z][a-z0-9_.]*$', maxLength: 128 }
+      description: { type: string, maxLength: 500 }
+      active: { type: boolean }
+      createdAt: { type: string, format: date-time }
+  AccountRoleAssignment:
+    type: object
+    additionalProperties: false
+    required: [id, accountId, roleId, effectiveFrom, status, assignedByAccountId, reason, version]
+    properties:
+      id: { type: string, format: uuid }
+      accountId: { type: string, format: uuid }
+      roleId: { type: string, format: uuid }
+      departmentId: { type: [string, 'null'], format: uuid }
+      effectiveFrom: { type: string, format: date-time }
+      effectiveTo: { type: [string, 'null'], format: date-time }
+      status: { $ref: '#/schemas/AccountRoleAssignmentStatus' }
+      assignedByAccountId: { type: string, format: uuid }
+      reason: { type: string, maxLength: 500 }
+      version: { type: integer, format: int64, minimum: 0 }
+  BreakGlassGrant:
+    type: object
+    additionalProperties: false
+    required: [id, requesterAccountId, patientId, purpose, reason, requestedAt, alertReference, ticketReference, requestId, sessionId, correlationId, status, version]
+    properties:
+      id: { type: string, format: uuid }
+      requesterAccountId: { type: string, format: uuid }
+      grantorAccountId: { type: [string, 'null'], format: uuid }
+      reviewerAccountId: { type: [string, 'null'], format: uuid }
+      patientId: { type: string, format: uuid }
+      purpose: { type: string, maxLength: 500 }
+      reason: { type: string, maxLength: 500 }
+      requestedAt: { type: string, format: date-time }
+      grantedAt: { type: [string, 'null'], format: date-time }
+      effectiveFrom: { type: [string, 'null'], format: date-time }
+      expiresAt: { type: [string, 'null'], format: date-time }
+      reviewDueAt: { type: [string, 'null'], format: date-time }
+      reviewedAt: { type: [string, 'null'], format: date-time }
+      alertReference: { type: string, maxLength: 128 }
+      ticketReference: { type: string, maxLength: 128 }
+      requestId: { type: string, maxLength: 128 }
+      sessionId: { type: string, maxLength: 128 }
+      correlationId: { type: string, maxLength: 128 }
+      status: { $ref: '#/schemas/BreakGlassGrantStatus' }
+      reviewOutcome: { type: [string, 'null'], maxLength: 64 }
+      reviewReason: { type: [string, 'null'], maxLength: 500 }
+      version: { type: integer, format: int64, minimum: 0 }
+  AuditEvent:
+    type: object
+    additionalProperties: false
+    required: [id, actorType, purpose, authorizationBasis, resourceType, action, outcome, sourceSystem, sourceEvent, requestId, correlationId, exportEvent, downloadEvent, occurredAt]
+    properties:
+      id: { type: string, format: uuid }
+      actorType: { type: string, maxLength: 64 }
+      actorAccountId: { type: [string, 'null'], format: uuid }
+      effectiveRoleSnapshot: { type: [object, 'null'], additionalProperties: true }
+      patientId: { type: [string, 'null'], format: uuid }
+      purpose: { type: string, maxLength: 256 }
+      authorizationBasis: { type: string, maxLength: 256 }
+      resourceType: { type: string, maxLength: 128 }
+      resourceId: { type: [string, 'null'], format: uuid }
+      resourceVersion: { type: [integer, 'null'], format: int64 }
+      resourceDigest: { type: [string, 'null'], maxLength: 128 }
+      action: { type: string, maxLength: 128 }
+      outcome: { $ref: '#/schemas/AuditOutcome' }
+      reason: { type: [string, 'null'], maxLength: 500 }
+      sourceSystem: { type: string, maxLength: 128 }
+      sourceEvent: { type: string, maxLength: 128 }
+      sessionId: { type: [string, 'null'], maxLength: 128 }
+      requestId: { type: string, maxLength: 128 }
+      correlationId: { type: string, maxLength: 128 }
+      beforeRedacted: { type: [object, 'null'], additionalProperties: true }
+      afterRedacted: { type: [object, 'null'], additionalProperties: true }
+      exportEvent: { type: boolean }
+      downloadEvent: { type: boolean }
+      recipientAccountId: { type: [string, 'null'], format: uuid }
+      deliveryChannel: { type: [string, 'null'], maxLength: 64 }
+      reviewerAccountId: { type: [string, 'null'], format: uuid }
+      approvalReference: { type: [string, 'null'], maxLength: 128 }
+      occurredAt: { type: string, format: date-time }
+
+  AccountPage:
+    $ref: '#/schemas/AccountPageValue'
+  AccountPageValue:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/Account' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+  RolePage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/Role' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+  PermissionPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/Permission' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+  AccountRoleAssignmentPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/AccountRoleAssignment' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+  BreakGlassGrantPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/BreakGlassGrant' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+  AuditEventPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/AuditEvent' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
   SlotHoldRequest:
     type: object
     additionalProperties: false
@@ -50,7 +315,7 @@ schemas:
       eventType: { type: string, maxLength: 128 }
       providerTransactionId: { type: string, maxLength: 128 }
       providerOccurredAt: { type: string, format: date-time }
-      amount: { type: string, pattern: '^\\d{1,17}\\.\\d{2}$' }
+      amount: { type: string, pattern: '^\d{1,17}\.\d{2}$' }
       currency: { type: string, const: VND }
   ClinicalDraftRequest:
     type: object

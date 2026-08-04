@@ -144,6 +144,8 @@ Columns: `role_id uuid not null`, `permission_id uuid not null`, `granted_at tim
 
 Columns: `id uuid not null`, `account_id uuid not null`, `role_id uuid not null`, `department_id uuid null`, `effective_from timestamptz not null`, `effective_to timestamptz null`, `status varchar(64) not null`, `assigned_by_account_id uuid not null`, `reason varchar(500) not null`, `version bigint not null default 0`. PK/FKs RESTRICT; `effective_to > effective_from`; status `ACTIVE/REVOKED/EXPIRED`; no duplicate equivalent active interval enforced by exclusion/transaction. Index account/time/status, role/time, department/time.
 
+Trong migration R1-02, `department_id` là logical UUID reference vì bảng `department` thuộc R1-03 và được migrate sau identity. Forward migration R1-03 phải thêm FK `ON DELETE RESTRICT`; application vẫn kiểm context và default-deny khi department chưa resolve được.
+
 ## `break_glass_grant`
 
 **Owner / tranche / purpose:** `identity-access` / R1 / patient-scoped emergency access.
@@ -151,6 +153,8 @@ Columns: `id uuid not null`, `account_id uuid not null`, `role_id uuid not null`
 Columns are typed: `id uuid`, requester/grantor/reviewer account UUIDs, requester effective-role snapshot `jsonb`, `patient_id uuid`, purpose/reason `varchar(500)`, requested/granted/effective/expires/review timestamps `timestamptz`, alert/ticket/request/session/correlation IDs `varchar(128)`, status/review outcome `varchar(64)`, review reason `varchar(500)`, version bigint. All core request fields not null; grantor/reviewer nullable until transition.
 
 Constraints: expiry ≤ effective + 4h; review deadline stored `review_due_at` and equals granted + policy business-day calculation; state timestamp requirements; status `REQUESTED/ACTIVE/EXPIRED/REVOKED/REVIEWED`; no financial/admin scope column exists. Index patient/status/time, requester/time, review due/status.
+
+Trong migration R1-02, `patient_id` là logical UUID reference vì bảng `patient` thuộc R1-04 và được migrate sau identity. Forward migration R1-04 phải thêm FK `ON DELETE RESTRICT` sau khi bảng owner tồn tại; không tạo shell patient table trong module identity.
 
 ## `audit_event`
 
@@ -164,6 +168,6 @@ Constraints: PK; actor account required only for human account actor; outcome en
 
 | Story | Decisions | ADR | Scenarios |
 |---|---|---|---|
-| `R1-02` | `AUTH-01..06`, `SEC-03..05`, `IAM-01` | ADR-0004, ADR-0010 | `SC-R1-AUTH-01..03`, `SC-R1-SEC-01` |
+| `R1-02` | `AUTH-01..06`, `SEC-03..05`, `REL-01`, `IAM-01` | ADR-0003, ADR-0004, ADR-0010 | `SC-R1-AUTH-01..03`, `SC-R1-SEC-01`, `SC-R1-REL-01` |
 
 Related: [[../22-backlog-mvp|Backlog]], [[../07-phan-quyen|Authorization]], [[README|Schema conventions]].
