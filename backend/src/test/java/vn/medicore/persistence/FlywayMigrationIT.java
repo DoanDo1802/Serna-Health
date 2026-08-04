@@ -65,9 +65,14 @@ class FlywayMigrationIT {
                     "service",
                     "service_price",
                     "practitioner",
-                    "practitioner_role");
-            assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("4");
-            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("11");
+                    "practitioner_role",
+                    // R1-04 Patient
+                    "patient",
+                    "patient_identifier",
+                    "patient_account_link",
+                    "patient_duplicate_candidate");
+            assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("5");
+            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("15");
             assertAuditIsAppendOnly(statement);
         }
     }

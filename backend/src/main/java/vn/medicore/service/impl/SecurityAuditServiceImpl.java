@@ -39,7 +39,7 @@ public class SecurityAuditServiceImpl implements SecurityAuditRecorder {
             String correlationId) {
         store.insertAudit(new AuditEventView(
                 ids.next(),
-                actorAccountId == null ? "SYSTEM" : "USER",
+                actorAccountId == null ? "SYSTEM" : "ACCOUNT",
                 actorAccountId,
                 roleSnapshot,
                 null,
