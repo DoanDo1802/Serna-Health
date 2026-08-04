@@ -66,7 +66,8 @@ flowchart TD
     EXC -. handle .-> CTL
 ```
 
-### Nguyên tắc Kiến trúc:
+### Nguyên tắc Kiến trúc
+
 1. **Luồng phụ thuộc một chiều (Strict Downward Calls)**:
    `controller` (API) $\rightarrow$ `service` (Nghiep vu) $\rightarrow$ `repository` (Database) $\rightarrow$ `entity` (Du lieu).
 2. **Quản lý ranh giới bằng ArchUnit (`LayeredArchitectureTest`)**: Tầng `controller` không được gọi trực tiếp `repository` hay truy vấn database trực tiếp. Tầng `service` không được phụ thuộc ngược lại `controller`.
@@ -214,6 +215,7 @@ do_an_v2/
    - `controller` chỉ gọi `service`, không được inject hay gọi `repository` trực tiếp.
    - `service` xử lý toàn bộ logic nghiệp vụ, gọi `repository` để tương tác với database.
    - Chạy test kiểm tra ranh giới sau mỗi thay đổi:
+
      ```bash
      JAVA_HOME=/usr/local/Cellar/openjdk@21/21.0.12/libexec/openjdk.jdk/Contents/Home ./mvnw test -Dtest=LayeredArchitectureTest
      ```

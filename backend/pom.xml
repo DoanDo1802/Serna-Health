@@ -176,7 +176,7 @@
                         <configuration>
                             <rules>
                                 <requireJavaVersion><version>[21,22)</version></requireJavaVersion>
-                                <requireMavenVersion><version>[3.9.16,3.9.17)</version></requireMavenVersion>
+                                <requireMavenVersion><version>[3.9.0,3.10.0)</version></requireMavenVersion>
                                 <requirePluginVersions/>
                             </rules>
                         </configuration>

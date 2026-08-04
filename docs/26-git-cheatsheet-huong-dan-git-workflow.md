@@ -25,6 +25,7 @@ Tài liệu này tổng hợp toàn bộ các câu lệnh Git chuẩn được s
 ## 2. Danh mục Câu lệnh Git Thường dùng
 
 ### A. Kiểm tra Trạng thái & Lịch sử
+
 ```bash
 # 1. Kiểm tra trạng thái các file thay đổi (staged, unstaged, untracked)
 git status
@@ -43,6 +44,7 @@ git diff --staged
 ```
 
 ### B. Tạo & Thao tác trên Nhánh (Branch Operations)
+
 ```bash
 # 1. Cập nhật nhánh main mới nhất trước khi làm tính năng mới
 git checkout main
@@ -62,6 +64,7 @@ git branch -D feat/r1-02-authentication
 ```
 
 ### C. Staging (`git add`) & Commit (`git commit`)
+
 ```bash
 # 1. Add từng file cụ thể (Khuyên dùng để tránh add file rác)
 git add backend/src/main/java/vn/medicore/controller/IdentityAccessController.java
@@ -69,7 +72,7 @@ git add backend/src/main/java/vn/medicore/controller/IdentityAccessController.ja
 # 2. Add toàn bộ một thư mục
 git add backend/src/main/java/vn/medicore/common/
 
-# 3. Bo add (Unstage) một file lỡ add nhầm
+# 3. Bỏ add (Unstage) một file lỡ add nhầm
 git restore --staged backend/target/
 
 # 4. Commit code với thông điệp chuẩn Conventional Commits
@@ -80,6 +83,7 @@ git commit --amend -m "feat(auth): implement session authentication and filter"
 ```
 
 ### D. Đồng bộ với Remote (Push & Pull)
+
 ```bash
 # 1. Đẩy nhánh local mới tạo lên Remote lần đầu tiên
 git push -u origin feat/r1-02-authentication
@@ -100,11 +104,13 @@ git rebase origin/main
 ## 3. Quy chuẩn Message Commit (Conventional Commits)
 
 Định dạng chuẩn:
+
 ```text
 <type>(<scope>): <mô tả ngắn gọn bằng tiếng Anh/Việt>
 ```
 
-### Các Type hợp lệ:
+### Các Type hợp lệ
+
 - `feat`: Tính năng mới cho người dùng hoặc hệ thống.
 - `fix`: Sửa lỗi (Bug fix).
 - `refactor`: Tái cấu trúc code (không làm thay đổi API response hay logic nghiệp vụ).
@@ -112,7 +118,8 @@ git rebase origin/main
 - `test`: Thêm hoặc sửa Unit test, ArchUnit test, Integration test.
 - `chore`: Cập nhật cấu hình build Maven, Docker, dependencies, scripts.
 
-### Các mẫu Commit Message chuẩn trong MediCore:
+### Các mẫu Commit Message chuẩn trong MediCore
+
 ```bash
 git commit -m "feat(auth): implement OTP login flow"
 git commit -m "fix(security): resolve CSRF header missing check"
@@ -126,12 +133,14 @@ git commit -m "test(arch): add ArchUnit LayeredArchitectureTest boundary rules"
 ## 4. Xử lý Tình huống Thường gặp (Troubleshooting)
 
 ### Tình huống 1: Hủy bỏ thay đổi chưa commit trên một file
+
 ```bash
 # Khôi phục file về trạng thái commit gần nhất
 git restore backend/src/main/java/vn/medicore/controller/IdentityAccessController.java
 ```
 
 ### Tình huống 2: Lưu tạm công việc đang dở để chuyển sang sửa bug khẩn cấp
+
 ```bash
 # Lưu stash công việc dở dang
 git stash
@@ -144,7 +153,8 @@ git checkout feat/r1-02-authentication
 git stash pop
 ```
 
-### Tình huống 3: Bị cảnh báo "adding embedded git repository"
+### Tình huống 3: Bị cảnh báo adding embedded git repository
+
 ```bash
 # Loại bỏ đường dẫn thư mục tạm khỏi git index mà không xóa file thật
 git rm --cached -r .claude/worktrees/

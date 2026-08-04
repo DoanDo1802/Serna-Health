@@ -282,11 +282,11 @@ public class IdentityAccessController {
         return value == null || value.isBlank() ? UUID.randomUUID().toString() : value;
     }
 
-    record RegistrationRequest(@NotBlank @Email String email, @NotBlank String password) {}
-    record TargetEmailRequest(@NotBlank @Email String email) {}
-    record EmailVerificationRequest(@NotBlank @Email String email, String code, String token) {}
-    record PasswordLoginRequest(@NotBlank @Email String email, @NotBlank String password) {}
-    record OtpLoginRequest(@NotBlank @Email String email, @NotBlank String code) {}
+    record RegistrationRequest(@NotBlank String email, @NotBlank String password) {}
+    record TargetEmailRequest(@NotBlank String email) {}
+    record EmailVerificationRequest(@NotBlank String email, String code, String token) {}
+    record PasswordLoginRequest(@NotBlank String email, @NotBlank String password) {}
+    record OtpLoginRequest(@NotBlank String email, @NotBlank String code) {}
     record PasswordResetRequest(@NotBlank String token, @NotBlank String newPassword) {}
     record PasswordChangeRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {}
     record ChangeAccountStatusRequest(@NotBlank String targetStatus, @NotBlank @Size(max = 500) String reason) {}
