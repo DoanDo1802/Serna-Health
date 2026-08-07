@@ -43,7 +43,11 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             "POST /api/v1/services",
             "POST /api/v1/services/{id}/prices",
             "POST /api/v1/practitioners",
-            "POST /api/v1/practitioners/{id}/roles");
+            "POST /api/v1/practitioners/{id}/roles",
+            // R1-04 patient creates
+            "POST /api/v1/patients",
+            "POST /api/v1/patients/{id}/identifiers",
+            "POST /api/v1/patients/{id}/account-links");
 
     private final IdempotencyServiceImpl idempotency;
 
