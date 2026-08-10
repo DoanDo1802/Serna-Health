@@ -361,6 +361,21 @@ public class IdentityJdbcRepositoryImpl implements IdentityRepository {
     }
 
     @Override
+    public List<EffectiveGrant> effectiveGrants(UUID accountId, Instant at) {
+        return jdbc.query("""
+                select p.action, a.id as assignment_id, a.department_id, a.effective_from, a.effective_to
+                from account_role_assignment a
+                join role r on r.id = a.role_id and r.active
+                join role_permission rp on rp.role_id = r.id
+                join permission p on p.id = rp.permission_id and p.active
+                where a.account_id = ? and a.status = 'ACTIVE' and a.effective_from <= ?
+                  and (a.effective_to is null or a.effective_to > ?)
+                """, (rs, row) -> new EffectiveGrant(rs.getString("action"), uuid(rs, "assignment_id"),
+                uuidNullable(rs, "department_id"), instant(rs, "effective_from"), instantNullable(rs, "effective_to")),
+                sqlArgs(new Object[]{accountId, at, at}));
+    }
+
+    @Override
     public List<UUID> activeRoleIds(UUID accountId, Instant at) {
         return jdbc.queryForList("""
                 select role_id from account_role_assignment where account_id = ? and status = 'ACTIVE'

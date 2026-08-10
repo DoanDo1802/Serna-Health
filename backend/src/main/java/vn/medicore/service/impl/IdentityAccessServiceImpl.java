@@ -47,6 +47,7 @@ import vn.medicore.service.IdentityAccessService;
 public class IdentityAccessServiceImpl implements IdentityAccessService {
 
     private static final String GENERIC_AUTHENTICATION_FAILURE = "Authentication failed";
+    private static final String DUMMY_PASSWORD_HASH = "$argon2id$v=19$m=16384,t=2,p=1$c2VjdXJlLWR1bW15LXNhbHQ$JdBZXAClzz/57N0ueJYKPcvN6qeePFH5GSRF4S3hr3Y";
     private final IdentityRepository store;
     private final PasswordPolicy passwordPolicy;
     private final PasswordEncoder passwordEncoder;
@@ -86,6 +87,7 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
             store.insertAccount(new AccountRow(accountId, email.normalized(), email.display(), null,
                     AccountStatus.PENDING_VERIFICATION.name(), 0, null, null, 0, now, now));
             store.insertCredential(ids.next(), accountId, passwordEncoder.encode(password), now);
+            issueVerificationToken(email, accountId, requestId, now);
             issueChallenge(email, accountId, "VERIFY_EMAIL", requestId, sourceIp, now);
         } else {
             passwordEncoder.encode(password);
@@ -99,6 +101,7 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         Instant now = clock.instant();
         Optional<AccountRow> account = store.findAccountByEmailForUpdate(email.normalized());
         if (account.isPresent() && AccountStatus.PENDING_VERIFICATION.name().equals(account.get().status())) {
+            issueVerificationToken(email, account.get().id(), requestId, now);
             issueChallenge(email, account.get().id(), "VERIFY_EMAIL", requestId, sourceIp, now);
         }
         return new CommandAccepted(true, requestId);
@@ -137,17 +140,11 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         EmailAddress email = EmailAddress.of(emailValue);
         Instant now = clock.instant();
         Optional<AccountRow> found = store.findAccountByEmailForUpdate(email.normalized());
-        if (found.isEmpty()) {
-            passwordEncoder.matches(password, passwordEncoder.encode("constant-time-placeholder-password"));
-            throw new InvalidAuthenticationException(GENERIC_AUTHENTICATION_FAILURE);
-        }
-        AccountRow account = unlockIfElapsed(found.get(), now);
-        if (!AccountStatus.ACTIVE.name().equals(account.status())) {
-            throw new InvalidAuthenticationException(GENERIC_AUTHENTICATION_FAILURE);
-        }
-        String encoded = store.activeCredentialHash(account.id()).orElse("");
-        if (!passwordEncoder.matches(password, encoded)) {
-            recordFailure(account, now);
+        AccountRow account = found.map(value -> unlockIfElapsed(value, now)).orElse(null);
+        String encoded = account == null ? DUMMY_PASSWORD_HASH : store.activeCredentialHash(account.id()).orElse(DUMMY_PASSWORD_HASH);
+        boolean passwordMatches = passwordEncoder.matches(password, encoded);
+        if (account == null || !AccountStatus.ACTIVE.name().equals(account.status()) || !passwordMatches) {
+            if (account != null && AccountStatus.ACTIVE.name().equals(account.status())) recordFailure(account, now);
             throw new InvalidAuthenticationException(GENERIC_AUTHENTICATION_FAILURE);
         }
         recordSuccess(account, now);
@@ -209,7 +206,12 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
             throw new InvalidCsrfException();
         }
         if (!store.touchSession(session.id(), now)) return Optional.empty();
-        return Optional.of(new AuthenticatedAccount(session.id(), session.accountId(), store.effectivePermissions(session.accountId(), now)));
+        List<AuthenticatedAccount.EffectiveGrant> grants = store.effectiveGrants(session.accountId(), now).stream()
+                .map(grant -> new AuthenticatedAccount.EffectiveGrant(grant.action(), grant.assignmentId(), grant.departmentId(),
+                        grant.effectiveFrom(), grant.effectiveTo()))
+                .toList();
+        return Optional.of(new AuthenticatedAccount(session.id(), session.accountId(),
+                store.effectivePermissions(session.accountId(), now), grants));
     }
 
     @Override
@@ -294,6 +296,9 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         }
         Instant now = clock.instant();
         AccountRow account = store.findAccountByIdForUpdate(accountId).orElseThrow(ResourceNotFoundException::new);
+        if (AccountStatus.PERMANENTLY_LOCKED.name().equals(account.status())) {
+            throw new IllegalStateException("Permanently locked accounts are terminal");
+        }
         if (account.version() != version) throw new StaleVersionException();
         AccountRow changed = new AccountRow(account.id(), account.normalizedEmail(), account.displayEmail(),
                 account.emailVerifiedAt(), target.name(), account.failedLoginCount(), null, account.lastAuthenticatedAt(),
@@ -389,6 +394,14 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
             if ("LOGIN".equals(purpose)) delivery.sendLoginCode(email.display(), code);
             else delivery.sendEmailVerificationCode(email.display(), code);
         });
+    }
+
+    private void issueVerificationToken(EmailAddress email, UUID accountId, String requestId, Instant now) {
+        String token = secretHasher.randomToken(32);
+        store.revokePendingTokens(accountId, "VERIFY_EMAIL", now);
+        store.insertToken(ids.next(), accountId, "VERIFY_EMAIL", secretHasher.hash("VERIFY_EMAIL", token), now,
+                now.plus(properties.token().verificationTtl()), requestId);
+        afterCommit(() -> delivery.sendEmailVerificationToken(email.display(), token));
     }
 
     private ChallengeStateRow consumeChallenge(String normalizedEmail, String purpose, String code, Instant now) {

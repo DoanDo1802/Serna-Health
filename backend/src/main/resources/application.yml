@@ -29,6 +29,9 @@ springdoc:
     path: /api/v1/swagger-ui
 
 medicore:
+  crypto:
+    encryption-key: ${MEDICORE_CRYPTO_ENCRYPTION_KEY}
+    comparison-key: ${MEDICORE_CRYPTO_COMPARISON_KEY}
   auth:
     secret-hash-key: ${MEDICORE_AUTH_SECRET_HASH_KEY}
     otp:

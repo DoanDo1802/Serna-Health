@@ -7,7 +7,9 @@ import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponseWrapper;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -28,26 +30,15 @@ import vn.medicore.service.impl.IdempotencyServiceImpl.Reservation;
 public class IdempotencyFilter extends OncePerRequestFilter {
 
     private static final Set<String> IDEMPOTENT_OPERATIONS = Set.of(
-            // R1-02 identity
-            "POST /api/v1/auth/registrations",
-            "POST /api/v1/auth/email-verifications",
-            "DELETE /api/v1/auth/sessions",
-            "POST /api/v1/auth/password-resets",
-            "POST /api/v1/admin/accounts/{id}/actions/change-status",
-            "POST /api/v1/admin/roles",
-            "POST /api/v1/admin/accounts/{id}/role-assignments",
-            "POST /api/v1/patients/{id}/break-glass-grants",
-            // R1-03 catalog creates
-            "POST /api/v1/departments",
-            "POST /api/v1/departments/{id}/rooms",
-            "POST /api/v1/services",
-            "POST /api/v1/services/{id}/prices",
-            "POST /api/v1/practitioners",
-            "POST /api/v1/practitioners/{id}/roles",
-            // R1-04 patient creates
-            "POST /api/v1/patients",
-            "POST /api/v1/patients/{id}/identifiers",
-            "POST /api/v1/patients/{id}/account-links");
+            "POST /api/v1/auth/registrations", "POST /api/v1/auth/email-verifications",
+            "DELETE /api/v1/auth/sessions", "POST /api/v1/auth/password-resets",
+            "POST /api/v1/admin/accounts/{id}/actions/change-status", "POST /api/v1/admin/roles",
+            "POST /api/v1/admin/accounts/{id}/role-assignments", "POST /api/v1/patients/{id}/break-glass-grants",
+            "POST /api/v1/departments", "POST /api/v1/departments/{id}/rooms", "POST /api/v1/services",
+            "POST /api/v1/services/{id}/prices", "POST /api/v1/practitioners", "POST /api/v1/practitioners/{id}/roles",
+            "POST /api/v1/patients", "POST /api/v1/patients/{id}/identifiers", "POST /api/v1/patients/{id}/account-links",
+            "POST /api/v1/appointment-slots", "POST /api/v1/appointment-slots/{id}/actions/cancel",
+            "POST /api/v1/slot-holds", "DELETE /api/v1/slot-holds/{id}");
 
     private final IdempotencyServiceImpl idempotency;
 
@@ -57,7 +48,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getHeader("Idempotency-Key") == null || operation(request) == null;
+        return operation(request) == null;
     }
 
     @Override
@@ -66,10 +57,13 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         byte[] body = request.getInputStream().readAllBytes();
         String operation = operation(request);
         String key = request.getHeader("Idempotency-Key");
-        String principalScope = principalScope(request);
+        if (key == null || !key.matches("^[A-Za-z0-9._-]{8,128}$")) {
+            writeMissingKey(response);
+            return;
+        }
         Reservation reservation;
         try {
-            reservation = idempotency.reserve(principalScope, operation, key, body);
+            reservation = idempotency.reserve(principalScope(request), operation, key, fingerprint(request, body));
         } catch (IdempotencyConflictException exception) {
             writeConflict(response);
             return;
@@ -78,17 +72,34 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             replay(response, reservation);
             return;
         }
+        CapturingResponse captured = new CapturingResponse(response);
         try {
-            chain.doFilter(new CachedBodyRequest(request, body), response);
-            if (response.getStatus() < 400) {
-                idempotency.complete(reservation.id(), response.getStatus(), null);
+            chain.doFilter(new CachedBodyRequest(request, body), captured);
+            captured.commit();
+            if (captured.getStatus() < 400) {
+                idempotency.complete(reservation.id(), captured.getStatus(), captured.body(), captured.contentType(),
+                        captured.etag(), captured.location());
             } else {
-                idempotency.fail(reservation.id(), response.getStatus(), "HTTP_" + response.getStatus());
+                idempotency.fail(reservation.id(), captured.getStatus(), "HTTP_" + captured.getStatus());
             }
         } catch (RuntimeException | IOException | ServletException exception) {
             idempotency.fail(reservation.id(), 500, "INTERNAL_ERROR");
             throw exception;
         }
+    }
+
+    private static byte[] fingerprint(HttpServletRequest request, byte[] body) {
+        String query = request.getQueryString() == null ? "" : request.getQueryString();
+        byte[] prefix = ("v1\n" + request.getMethod() + "\n" + request.getRequestURI() + "\n" + query + "\n")
+                .getBytes(StandardCharsets.UTF_8);
+        return concat(prefix, body);
+    }
+
+    private static byte[] concat(byte[] left, byte[] right) {
+        byte[] result = new byte[left.length + right.length];
+        System.arraycopy(left, 0, result, 0, left.length);
+        System.arraycopy(right, 0, result, left.length, right.length);
+        return result;
     }
 
     private static String operation(HttpServletRequest request) {
@@ -121,52 +132,66 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             return;
         }
         response.setStatus(reservation.responseStatus() == null ? 200 : reservation.responseStatus());
-        if (response.getStatus() == 202) {
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.getWriter().write("{\"accepted\":true,\"requestId\":\"idempotent-replay\"}");
-        }
+        if (reservation.responseContentType() != null) response.setContentType(reservation.responseContentType());
+        if (reservation.responseEtag() != null) response.setHeader("ETag", reservation.responseEtag());
+        if (reservation.responseLocation() != null) response.setHeader("Location", reservation.responseLocation());
+        if (reservation.responseBody() != null) response.getOutputStream().write(reservation.responseBody());
+    }
+
+    private static void writeMissingKey(HttpServletResponse response) throws IOException {
+        response.setStatus(400);
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        response.getWriter().write("{\"type\":\"https://medicore.vn/problems/idempotency-key-required\",\"title\":\"Idempotency key required\",\"status\":400,\"code\":\"IDEMPOTENCY_KEY_REQUIRED\"}");
     }
 
     private static void writeConflict(HttpServletResponse response) throws IOException {
         response.setStatus(409);
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.getWriter().write("""
-                {"type":"https://medicore.vn/problems/idempotency-key-reused","title":"Idempotency conflict","status":409,"code":"IDEMPOTENCY_KEY_REUSED","requestId":"idempotency-filter"}
-                """);
+        response.getWriter().write("{\"type\":\"https://medicore.vn/problems/idempotency-key-reused\",\"title\":\"Idempotency conflict\",\"status\":409,\"code\":\"IDEMPOTENCY_KEY_REUSED\"}");
     }
 
-    private static final class CachedBodyRequest extends HttpServletRequestWrapper {
+    private static final class CapturingResponse extends HttpServletResponseWrapper {
+        private final ByteArrayOutputStream output = new ByteArrayOutputStream();
+        private ServletOutputStreamAdapter stream;
 
-        private final byte[] body;
+        private CapturingResponse(HttpServletResponse response) { super(response); }
 
-        private CachedBodyRequest(HttpServletRequest request, byte[] body) {
-            super(request);
-            this.body = body.clone();
+        @Override
+        public jakarta.servlet.ServletOutputStream getOutputStream() {
+            if (stream == null) stream = new ServletOutputStreamAdapter(output);
+            return stream;
         }
 
         @Override
-        public ServletInputStream getInputStream() {
+        public java.io.PrintWriter getWriter() {
+            return new java.io.PrintWriter(new java.io.OutputStreamWriter(output, StandardCharsets.UTF_8), true);
+        }
+
+        byte[] body() { return output.toByteArray(); }
+        String contentType() { return getContentType(); }
+        String etag() { return getHeader("ETag"); }
+        String location() { return getHeader("Location"); }
+        void commit() throws IOException { getResponse().getOutputStream().write(body()); }
+    }
+
+    private static final class ServletOutputStreamAdapter extends jakarta.servlet.ServletOutputStream {
+        private final ByteArrayOutputStream output;
+        private ServletOutputStreamAdapter(ByteArrayOutputStream output) { this.output = output; }
+        @Override public boolean isReady() { return true; }
+        @Override public void setWriteListener(jakarta.servlet.WriteListener listener) { throw new UnsupportedOperationException(); }
+        @Override public void write(int value) { output.write(value); }
+    }
+
+    private static final class CachedBodyRequest extends HttpServletRequestWrapper {
+        private final byte[] body;
+        private CachedBodyRequest(HttpServletRequest request, byte[] body) { super(request); this.body = body.clone(); }
+        @Override public ServletInputStream getInputStream() {
             ByteArrayInputStream input = new ByteArrayInputStream(body);
             return new ServletInputStream() {
-                @Override
-                public boolean isFinished() {
-                    return input.available() == 0;
-                }
-
-                @Override
-                public boolean isReady() {
-                    return true;
-                }
-
-                @Override
-                public void setReadListener(ReadListener readListener) {
-                    throw new UnsupportedOperationException();
-                }
-
-                @Override
-                public int read() {
-                    return input.read();
-                }
+                @Override public boolean isFinished() { return input.available() == 0; }
+                @Override public boolean isReady() { return true; }
+                @Override public void setReadListener(ReadListener listener) { throw new UnsupportedOperationException(); }
+                @Override public int read() { return input.read(); }
             };
         }
     }

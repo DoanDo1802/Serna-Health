@@ -22,6 +22,11 @@ public class SmtpAuthenticationDeliveryImpl implements AuthenticationDeliverySer
     }
 
     @Override
+    public void sendEmailVerificationToken(String displayEmail, String token) {
+        send(displayEmail, "Verify your MediCore email", "Your one-time verification token is: " + token);
+    }
+
+    @Override
     public void sendLoginCode(String displayEmail, String code) {
         send(displayEmail, "Your MediCore login code", "Your login code is: " + code);
     }

@@ -70,9 +70,11 @@ class FlywayMigrationIT {
                     "patient",
                     "patient_identifier",
                     "patient_account_link",
-                    "patient_duplicate_candidate");
+                    "patient_duplicate_candidate",
+                    "appointment_slot",
+                    "slot_hold");
             assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("5");
-            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("15");
+            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("50");
             assertAuditIsAppendOnly(statement);
         }
     }

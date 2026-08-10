@@ -70,6 +70,20 @@ jobs:
           cache: maven
       - working-directory: backend
         run: ./mvnw --batch-mode --no-transfer-progress verify
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: backend-test-reports
+          path: |
+            backend/target/surefire-reports
+            backend/target/failsafe-reports
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: backend-static-analysis
+          path: backend/target/spotbugsXml.xml
+          if-no-files-found: warn
 
   security-static:
     runs-on: ubuntu-latest

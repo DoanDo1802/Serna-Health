@@ -123,27 +123,30 @@ public class PlatformAuditJdbcRepositoryImpl implements PlatformAuditRepository 
     public Optional<IdempotencyRow> idempotencyForUpdate(String principalScope, String operation, String key) {
         return queryOne("""
                 select id, principal_scope, operation, idempotency_key, request_hash, status, response_status,
-                    response_id, expires_at from idempotency_record
+                    response_body, response_content_type, response_etag, response_location, expires_at from idempotency_record
                 where principal_scope = ? and operation = ? and idempotency_key = ? for update
                 """, this::idempotency, principalScope, operation, key);
     }
 
     @Override
-    public void insertIdempotency(IdempotencyRow row) {
+    public boolean insertIdempotency(IdempotencyRow row) {
         Instant now = Instant.now();
-        update("""
+        return update("""
                 insert into idempotency_record(id, principal_scope, operation, idempotency_key, request_hash,
-                    status, created_at, updated_at, expires_at, version)
-                values (?, ?, ?, ?, ?, 'IN_PROGRESS', ?, ?, ?, 0)
-                """, row.id(), row.principalScope(), row.operation(), row.key(), row.requestHash(), now, now, row.expiresAt());
+                    fingerprint_version, status, created_at, updated_at, expires_at, version)
+                values (?, ?, ?, ?, ?, 'v1', 'IN_PROGRESS', ?, ?, ?, 0)
+                on conflict (principal_scope, operation, idempotency_key) do nothing
+                """, row.id(), row.principalScope(), row.operation(), row.key(), row.requestHash(), now, now, row.expiresAt()) == 1;
     }
 
     @Override
-    public void completeIdempotency(UUID id, int status, UUID responseId, Instant now) {
+    public void completeIdempotency(
+            UUID id, int status, byte[] responseBody, String contentType, String etag, String location, Instant now) {
         update("""
-                update idempotency_record set status = 'SUCCEEDED', response_type = 'RESOURCE', response_id = ?,
-                    response_status = ?, updated_at = ?, version = version + 1 where id = ? and status = 'IN_PROGRESS'
-                """, responseId, status, now, id);
+                update idempotency_record set status = 'SUCCEEDED', response_status = ?, response_body = ?,
+                    response_content_type = ?, response_etag = ?, response_location = ?, updated_at = ?,
+                    version = version + 1 where id = ? and status = 'IN_PROGRESS'
+                """, status, responseBody, contentType, etag, location, now, id);
     }
 
     @Override
@@ -179,7 +182,9 @@ public class PlatformAuditJdbcRepositoryImpl implements PlatformAuditRepository 
     private IdempotencyRow idempotency(ResultSet rs, int row) throws SQLException {
         return new IdempotencyRow(uuid(rs, "id"), rs.getString("principal_scope"), rs.getString("operation"),
                 rs.getString("idempotency_key"), rs.getString("request_hash"), rs.getString("status"),
-                rs.getObject("response_status", Integer.class), uuidNullable(rs, "response_id"), instant(rs, "expires_at"));
+                rs.getObject("response_status", Integer.class), rs.getBytes("response_body"),
+                rs.getString("response_content_type"), rs.getString("response_etag"),
+                rs.getString("response_location"), instant(rs, "expires_at"));
     }
 
     private String json(Map<String, Object> value) {

@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.exception.ResourceNotFoundException;
 import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.dto.CatalogModels.DepartmentView;
+import vn.medicore.dto.SecurityAuditRecorder;
 import vn.medicore.dto.CatalogModels.Page;
 import vn.medicore.dto.CatalogModels.PractitionerRoleView;
 import vn.medicore.dto.CatalogModels.PractitionerView;
@@ -32,11 +33,13 @@ import vn.medicore.service.CatalogService;
 public class CatalogServiceImpl implements CatalogService {
 
     private final CatalogRepository store;
+    private final SecurityAuditRecorder audit;
     private final Clock clock;
     private final UuidV7Generator ids;
 
-    public CatalogServiceImpl(CatalogRepository store, Clock clock, UuidV7Generator ids) {
+    public CatalogServiceImpl(CatalogRepository store, SecurityAuditRecorder audit, Clock clock, UuidV7Generator ids) {
         this.store = store;
+        this.audit = audit;
         this.clock = clock;
         this.ids = ids;
     }
@@ -201,19 +204,23 @@ public class CatalogServiceImpl implements CatalogService {
         }
         Instant now = clock.instant();
         UUID id = ids.next();
-        // End any currently open price range
-        store.endServicePrice(serviceId, effectiveFrom);
+        // Close only predecessor range belonging to this service; DB exclusion protects races.
+        store.closeOpenPriceForService(serviceId, effectiveFrom);
         store.insertServicePrice(new ServicePriceRow(id, serviceId, amount, "VND", effectiveFrom, null, now));
         return store.priceById(id).orElseThrow();
     }
 
     @Override
-    public void endServicePrice(UUID id, Instant effectiveTo, UUID actorId) {
+    public ServicePriceView endServicePrice(UUID id, Instant effectiveTo, long version, UUID actorId) {
         ServicePriceView existing = store.priceById(id).orElseThrow(ResourceNotFoundException::new);
         if (!effectiveTo.isAfter(existing.effectiveFrom())) {
             throw new IllegalArgumentException("effective_to must be after effective_from");
         }
-        store.endServicePrice(id, effectiveTo);
+        store.endServicePrice(id, effectiveTo, version);
+        ServicePriceView ended = store.priceById(id).orElseThrow();
+        audit.record(actorId, null, "service_price.update", "SUCCEEDED", "ended", "ServicePrice", id, version + 1,
+                null, ids.next().toString(), ids.next().toString());
+        return ended;
     }
 
     // ===========================================================

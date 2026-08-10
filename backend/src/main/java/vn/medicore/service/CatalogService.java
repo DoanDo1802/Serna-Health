@@ -53,7 +53,7 @@ public interface CatalogService {
 
     ServicePriceView createServicePrice(UUID serviceId, BigDecimal amount, Instant effectiveFrom, UUID actorId);
 
-    void endServicePrice(UUID id, Instant effectiveTo, UUID actorId);
+    ServicePriceView endServicePrice(UUID id, Instant effectiveTo, long version, UUID actorId);
 
     // ---- Practitioner ----
     Page<PractitionerView> listPractitioners(Boolean active, String cursor, int limit);

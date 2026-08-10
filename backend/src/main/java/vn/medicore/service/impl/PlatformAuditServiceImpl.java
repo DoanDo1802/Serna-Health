@@ -173,7 +173,7 @@ public class PlatformAuditServiceImpl implements PlatformAuditService {
             Map<String, Object> roleSnapshot) {
         store.insertAudit(new AuditEventView(
                 ids.next(),
-                actorAccountId == null ? "SYSTEM" : "USER",
+                actorAccountId == null ? "SYSTEM" : "ACCOUNT",
                 actorAccountId,
                 roleSnapshot,
                 patientId,

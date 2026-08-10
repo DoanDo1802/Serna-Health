@@ -90,22 +90,30 @@ npm run verify
 cd backend && ./mvnw verify
 ```
 
-## Module backend
+## Kiến trúc backend
 
-Spring Modulith nhận đúng 10 module canonical:
+Backend R1-01 dùng Enterprise Layered Architecture ngang:
 
-- `identity-access`
-- `catalog`
-- `patient`
-- `scheduling`
-- `reception-queue`
-- `clinical-care`
-- `diagnostics`
-- `billing-payment`
-- `notification`
-- `platform-audit`
+- `common`: exception và utility dùng chung
+- `config`: framework configuration
+- `controller`: REST API và HTTP filter
+- `dto`: request/response model và principal
+- `entity`: entity, value object, enum
+- `repository`: data-access interface/JDBC implementation
+- `service`: business service interface/implementation
 
-Module khác chỉ được gọi public application API/domain event khi feature bắt đầu. Không chia sẻ JPA entity.
+Dependency đi một chiều: `controller` → `service` → `repository` → `entity`. `LayeredArchitectureTest` là regression gate; controller không truy cập repository/entity trực tiếp, service không phụ thuộc controller, repository không phụ thuộc tầng trên.
+
+Vertical Spring Modulith modules chỉ được thêm sau ADR/refactor package topology riêng; không có module marker giả trong R1-01.
+
+## Điều kiện local
+
+Backend cần Java 21 và Docker để chạy Testcontainers PostgreSQL 17:
+
+```bash
+export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
+cd backend && ./mvnw --batch-mode --no-transfer-progress verify
+```
 
 ## GitHub follow-up
 

@@ -60,7 +60,9 @@ public interface CatalogRepository {
 
     Optional<ServicePriceView> currentPrice(UUID serviceId, Instant at);
 
-    void endServicePrice(UUID id, Instant effectiveTo);
+    void closeOpenPriceForService(UUID serviceId, Instant effectiveTo);
+
+    void endServicePrice(UUID id, Instant effectiveTo, long expectedVersion);
 
     // ---- Practitioner ----
 

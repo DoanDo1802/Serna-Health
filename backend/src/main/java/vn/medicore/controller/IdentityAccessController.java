@@ -108,13 +108,13 @@ public class IdentityAccessController {
         return sessionResponse(issue);
     }
 
-    @GetMapping("/auth/sessions/me")
+    @GetMapping("/auth/session")
     ResponseEntity<SessionView> currentSession(@CookieValue(name = "${medicore.auth.session.cookie-name:MEDICORE_SESSION}", required = false) String sessionToken) {
         return identityAccess.currentSession(sessionToken).map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.status(401).build());
     }
 
-    @DeleteMapping("/auth/sessions/me")
+    @DeleteMapping("/auth/session")
     ResponseEntity<Void> logoutCurrent(@CookieValue(name = "${medicore.auth.session.cookie-name:MEDICORE_SESSION}", required = false) String sessionToken) {
         identityAccess.logoutCurrent(sessionToken, "USER_LOGOUT");
         return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, expiredCookie().toString()).build();
@@ -143,7 +143,7 @@ public class IdentityAccessController {
         return identityAccess.resetPassword(body.token(), body.newPassword(), requestId(requestId));
     }
 
-    @PostMapping("/auth/passwords")
+    @PutMapping("/auth/password")
     AccountView changePassword(
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @RequestHeader("If-Match") String ifMatch,
@@ -152,7 +152,7 @@ public class IdentityAccessController {
     }
 
     @GetMapping("/admin/accounts")
-    @PreAuthorize("hasAuthority('identity.account.read')")
+    @PreAuthorize("hasAuthority('account.read')")
     Page<AccountView> listAccounts(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String cursor,
@@ -161,14 +161,14 @@ public class IdentityAccessController {
     }
 
     @GetMapping("/admin/accounts/{id}")
-    @PreAuthorize("hasAuthority('identity.account.read')")
+    @PreAuthorize("hasAuthority('account.read')")
     ResponseEntity<AccountView> getAccount(@PathVariable UUID id) {
         AccountView view = identityAccess.getAccount(id);
         return versioned(view, view.version());
     }
 
     @PostMapping("/admin/accounts/{id}/actions/change-status")
-    @PreAuthorize("hasAuthority('identity.account.manage')")
+    @PreAuthorize("hasAuthority('account.status.change')")
     ResponseEntity<AccountView> changeAccountStatus(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -179,7 +179,7 @@ public class IdentityAccessController {
     }
 
     @GetMapping("/admin/roles")
-    @PreAuthorize("hasAuthority('identity.role.read')")
+    @PreAuthorize("hasAuthority('role.read')")
     Page<RoleView> listRoles(
             @RequestParam(required = false) Boolean active,
             @RequestParam(required = false) String cursor,
@@ -188,13 +188,13 @@ public class IdentityAccessController {
     }
 
     @PostMapping("/admin/roles")
-    @PreAuthorize("hasAuthority('identity.role.manage')")
+    @PreAuthorize("hasAuthority('role.permission.manage')")
     RoleView createRole(@AuthenticationPrincipal AuthenticatedAccount principal, @Valid @RequestBody RoleCreateRequest body) {
         return identityAccess.createRole(body.code(), body.name(), principal.accountId());
     }
 
     @GetMapping("/admin/permissions")
-    @PreAuthorize("hasAuthority('identity.permission.read')")
+    @PreAuthorize("hasAuthority('permission.read')")
     Page<PermissionView> listPermissions(
             @RequestParam(required = false) Boolean active,
             @RequestParam(required = false) String cursor,
@@ -203,7 +203,7 @@ public class IdentityAccessController {
     }
 
     @PutMapping("/admin/roles/{id}/permissions")
-    @PreAuthorize("hasAuthority('identity.role.manage')")
+    @PreAuthorize("hasAuthority('role.permission.manage')")
     ResponseEntity<RoleView> replaceRolePermissions(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -214,7 +214,7 @@ public class IdentityAccessController {
     }
 
     @GetMapping("/admin/accounts/{id}/role-assignments")
-    @PreAuthorize("hasAuthority('identity.assignment.read')")
+    @PreAuthorize("hasAuthority('account.role.read')")
     Page<AssignmentView> listAssignments(
             @PathVariable UUID id,
             @RequestParam(required = false) String status,
@@ -225,7 +225,7 @@ public class IdentityAccessController {
     }
 
     @PostMapping("/admin/accounts/{id}/role-assignments")
-    @PreAuthorize("hasAuthority('identity.assignment.manage')")
+    @PreAuthorize("hasAuthority('account.manage_role')")
     AssignmentView assignRole(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -235,7 +235,7 @@ public class IdentityAccessController {
     }
 
     @PostMapping("/admin/role-assignments/{id}/actions/revoke")
-    @PreAuthorize("hasAuthority('identity.assignment.manage')")
+    @PreAuthorize("hasAuthority('account.manage_role')")
     ResponseEntity<AssignmentView> revokeAssignment(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,

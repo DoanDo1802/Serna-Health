@@ -3,7 +3,6 @@ package vn.medicore.config;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -38,21 +37,6 @@ public class SecurityConfig {
                                 "/api/v1/auth/otp-sessions",
                                 "/api/v1/auth/password-recovery-challenges",
                                 "/api/v1/auth/password-resets")
-                        .permitAll()
-                        // Catalog read — GET only, public (patient-facing slot/availability search)
-                        .requestMatchers(HttpMethod.GET,
-                                "/api/v1/departments",
-                                "/api/v1/departments/{id}",
-                                "/api/v1/rooms",
-                                "/api/v1/rooms/{id}",
-                                "/api/v1/services",
-                                "/api/v1/services/{id}",
-                                "/api/v1/services/{id}/prices",
-                                "/api/v1/service-prices/{id}",
-                                "/api/v1/practitioners",
-                                "/api/v1/practitioners/{id}",
-                                "/api/v1/practitioner-roles",
-                                "/api/v1/practitioner-roles/{id}")
                         .permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(

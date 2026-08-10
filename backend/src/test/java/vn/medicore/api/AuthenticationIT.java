@@ -43,6 +43,7 @@ class AuthenticationIT {
     void registrationNormalizesEmailAndDoesNotExposeChallengeSecret() throws Exception {
         mockMvc.perform(post("/api/v1/auth/registrations")
                         .header("X-Request-Id", "registration-1")
+                        .header("Idempotency-Key", "registration-key-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":" User@Example.COM ","password":"a-valid-password-123"}

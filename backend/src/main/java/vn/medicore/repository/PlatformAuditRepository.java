@@ -37,9 +37,16 @@ public interface PlatformAuditRepository {
 
     Optional<IdempotencyRow> idempotencyForUpdate(String principalScope, String operation, String key);
 
-    void insertIdempotency(IdempotencyRow row);
+    boolean insertIdempotency(IdempotencyRow row);
 
-    void completeIdempotency(UUID id, int status, UUID responseId, Instant now);
+    void completeIdempotency(
+            UUID id,
+            int status,
+            byte[] responseBody,
+            String contentType,
+            String etag,
+            String location,
+            Instant now);
 
     void failIdempotency(UUID id, int status, String errorCode, Instant now);
 
@@ -51,7 +58,10 @@ public interface PlatformAuditRepository {
             String requestHash,
             String status,
             Integer responseStatus,
-            UUID responseId,
+            byte[] responseBody,
+            String responseContentType,
+            String responseEtag,
+            String responseLocation,
             Instant expiresAt) {
     }
 }

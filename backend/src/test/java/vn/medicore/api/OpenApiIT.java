@@ -2,11 +2,14 @@ package vn.medicore.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -29,7 +32,7 @@ import vn.medicore.MediCoreApplication;
 @ActiveProfiles("test")
 class OpenApiIT {
 
-    private static final int EXPECTED_OPERATION_COUNT = 151;
+    private static final int EXPECTED_OPERATION_COUNT = 154;
 
     @Container
     @ServiceConnection
@@ -41,11 +44,29 @@ class OpenApiIT {
     private final YAMLMapper yamlMapper = new YAMLMapper();
 
     @Test
+    void exposesOnlyFoundationPublicEndpoints() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+        mockMvc.perform(get("/api/v1/medicore.openapi.yaml"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/foundation-probe"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/swagger-ui/index.html"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void servesCanonicalReleaseOneOpenApiContract() throws Exception {
         byte[] responseBytes = mockMvc.perform(get("/api/v1/medicore.openapi.yaml"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsByteArray();
         String response = new String(responseBytes, StandardCharsets.UTF_8);
+        String canonicalContract = Files.readString(
+                Path.of("..", "contracts", "openapi", "medicore.openapi.yaml"), StandardCharsets.UTF_8);
+        assertThat(response).isEqualTo(canonicalContract);
 
         JsonNode document = yamlMapper.readTree(response);
         assertThat(document.path("openapi").asText()).isEqualTo("3.1.0");

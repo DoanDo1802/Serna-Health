@@ -12,6 +12,8 @@ import vn.medicore.service.PatientService;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import javax.sql.DataSource;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -35,9 +37,13 @@ public class PatientIT {
     @Autowired
     private UuidV7Generator ids;
 
+    @Autowired
+    private DataSource dataSource;
+
     @Test
     void SC_R1_PAT_01_suspected_duplicate_is_detected_and_reviewed() {
         UUID actorId = ids.next();
+        new JdbcTemplate(dataSource).update("insert into user_account(id, normalized_email, display_email, status, failed_login_count, version, created_at, updated_at) values (?, ?, ?, 'ACTIVE', 0, 0, now(), now())", actorId, "reviewer@example.com", "reviewer@example.com");
         String fullName = "Nguyen Van A";
         LocalDate dob = LocalDate.of(1990, 1, 1);
         String phone = "0901234567";

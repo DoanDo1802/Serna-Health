@@ -46,7 +46,7 @@ public class PatientController {
     // ===========================================================
 
     @GetMapping("/patients")
-    @PreAuthorize("hasAuthority('patient.read')")
+    @PreAuthorize("hasAuthority('patient.search')")
     List<PatientView> searchPatients(
             @RequestParam(required = false) String query,
             @RequestParam(defaultValue = "0") @Min(0) int offset,
@@ -55,14 +55,26 @@ public class PatientController {
     }
 
     @GetMapping("/patients/{id}")
-    @PreAuthorize("hasAuthority('patient.read')")
-    ResponseEntity<PatientView> getPatient(@PathVariable UUID id) {
+    ResponseEntity<PatientView> getPatient(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedAccount principal) {
+        requirePatientAccess(principal, id);
         PatientView view = patientService.getPatient(id);
         return versioned(view, view.version());
     }
 
+    @PostMapping("/patients/self")
+    ResponseEntity<PatientView> createOwnPatient(
+            @AuthenticationPrincipal AuthenticatedAccount principal,
+            @Valid @RequestBody PatientCreateRequest body) {
+        PatientView view = patientService.createOwnPatient(
+                body.fullName(), body.dateOfBirth(), body.phone(), body.email(), body.declaredGender(), body.address(),
+                body.emergencyContact(), principal.accountId());
+        return versioned(view, view.version());
+    }
+
     @PostMapping("/patients")
-    @PreAuthorize("hasAuthority('patient.manage')")
+    @PreAuthorize("hasAuthority('patient.create')")
     ResponseEntity<PatientView> createPatient(
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @Valid @RequestBody PatientCreateRequest body) {
@@ -72,8 +84,8 @@ public class PatientController {
         return versioned(view, view.version());
     }
 
-    @PutMapping("/patients/{id}")
-    @PreAuthorize("hasAuthority('patient.manage')")
+    @org.springframework.web.bind.annotation.PatchMapping("/patients/{id}")
+    @PreAuthorize("hasAuthority('patient.update')")
     ResponseEntity<PatientView> updatePatient(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -90,13 +102,15 @@ public class PatientController {
     // ===========================================================
 
     @GetMapping("/patients/{patientId}/identifiers")
-    @PreAuthorize("hasAuthority('patient.read')")
-    List<PatientIdentifierView> listPatientIdentifiers(@PathVariable UUID patientId) {
+    List<PatientIdentifierView> listPatientIdentifiers(
+            @PathVariable UUID patientId,
+            @AuthenticationPrincipal AuthenticatedAccount principal) {
+        requirePatientAccess(principal, patientId);
         return patientService.listPatientIdentifiers(patientId);
     }
 
     @PostMapping("/patients/{patientId}/identifiers")
-    @PreAuthorize("hasAuthority('patient.manage')")
+    @PreAuthorize("hasAuthority('patient_identifier.create')")
     PatientIdentifierView addPatientIdentifier(
             @PathVariable UUID patientId,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -108,7 +122,7 @@ public class PatientController {
     }
 
     @PostMapping("/patient-identifiers/{id}/actions/verify-manually")
-    @PreAuthorize("hasAuthority('patient.identity.verify')")
+    @PreAuthorize("hasAuthority('identity.link.verify')")
     ResponseEntity<PatientIdentifierView> verifyPatientIdentifierManually(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -119,7 +133,7 @@ public class PatientController {
     }
 
     @PostMapping("/patient-identifiers/{id}/actions/revoke")
-    @PreAuthorize("hasAuthority('patient.manage')")
+    @PreAuthorize("hasAuthority('identity.link.verify')")
     ResponseEntity<PatientIdentifierView> revokePatientIdentifier(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -128,18 +142,31 @@ public class PatientController {
         return versioned(view, view.version());
     }
 
+    @PostMapping("/patient-identifiers/{id}/actions/enter-in-error")
+    @PreAuthorize("hasAuthority('identity.link.verify')")
+    ResponseEntity<PatientIdentifierView> enterPatientIdentifierInError(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedAccount principal,
+            @RequestHeader("If-Match") String ifMatch,
+            @Valid @RequestBody ReasonRequest body) {
+        PatientIdentifierView view = patientService.enterPatientIdentifierInError(id, body.reason(), version(ifMatch), principal.accountId());
+        return versioned(view, view.version());
+    }
+
     // ===========================================================
     // PatientAccountLink
     // ===========================================================
 
     @GetMapping("/patients/{patientId}/account-links")
-    @PreAuthorize("hasAuthority('patient.read')")
-    List<PatientAccountLinkView> listPatientAccountLinks(@PathVariable UUID patientId) {
+    List<PatientAccountLinkView> listPatientAccountLinks(
+            @PathVariable UUID patientId,
+            @AuthenticationPrincipal AuthenticatedAccount principal) {
+        requirePatientAccess(principal, patientId);
         return patientService.listPatientAccountLinks(patientId);
     }
 
     @PostMapping("/patients/{patientId}/account-links")
-    @PreAuthorize("hasAuthority('patient.manage')")
+    @PreAuthorize("hasAuthority('patient_account_link.create')")
     PatientAccountLinkView linkPatientAccount(
             @PathVariable UUID patientId,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -180,9 +207,32 @@ public class PatientController {
         return versioned(view, view.version());
     }
 
+    @PostMapping("/patient-duplicate-candidates/{id}/actions/enter-in-error")
+    @PreAuthorize("hasAuthority('patient_duplicate.review')")
+    ResponseEntity<PatientDuplicateCandidateView> enterDuplicateCandidateInError(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedAccount principal,
+            @RequestHeader("If-Match") String ifMatch,
+            @Valid @RequestBody ReasonRequest body) {
+        PatientDuplicateCandidateView view = patientService.enterDuplicateCandidateInError(
+                id, body.reason(), version(ifMatch), principal.accountId());
+        return versioned(view, view.version());
+    }
+
     // ===========================================================
     // Helpers
     // ===========================================================
+
+    private void requirePatientAccess(AuthenticatedAccount principal, UUID patientId) {
+        Instant now = Instant.now();
+        boolean linkAllowsRead = patientService.listAccountPatientLinks(principal.accountId()).stream()
+                .anyMatch(link -> link.patientId().equals(patientId) && "ACTIVE".equals(link.status())
+                        && !now.isBefore(link.validFrom()) && (link.validTo() == null || now.isBefore(link.validTo()))
+                        && ("OWN".equals(link.relationship()) || Boolean.TRUE.equals(link.permissionScope().get("patient.read"))));
+        if (!linkAllowsRead && !principal.permissions().contains("patient.read")) {
+            throw new org.springframework.security.access.AccessDeniedException("Patient access is not granted");
+        }
+    }
 
     private static <T> ResponseEntity<T> versioned(T body, long version) {
         return ResponseEntity.ok().eTag(Long.toString(version)).body(body);
@@ -239,7 +289,10 @@ public class PatientController {
     }
 
     record DuplicateReviewRequest(
-            @NotBlank @Pattern(regexp = "CONFIRMED|REJECTED|ENTERED_IN_ERROR") String status,
+            @NotBlank @Pattern(regexp = "CONFIRMED|REJECTED") String status,
             @NotBlank @Size(max = 500) String reviewReason) {
+    }
+
+    record ReasonRequest(@NotBlank @Size(max = 500) String reason) {
     }
 }

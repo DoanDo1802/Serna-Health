@@ -160,13 +160,14 @@ public class PatientJdbcRepositoryImpl implements PatientRepository {
 
     @Override
     public void updatePatientIdentifier(PatientIdentifierRow row, long expectedVersion) {
-        int rows = jdbc.update("UPDATE patient_identifier SET status = :status, verified_at = :verifiedAt, revoked_at = :revokedAt, version = :newVersion " +
+        int rows = jdbc.update("UPDATE patient_identifier SET status = :status, verified_at = :verifiedAt, revoked_at = :revokedAt, evidence_reference = :evidence, version = :newVersion " +
                         "WHERE id = :id AND version = :expectedVersion",
                 new MapSqlParameterSource()
                         .addValue("id", row.id())
                         .addValue("status", row.status())
                         .addValue("verifiedAt", ts(row.verifiedAt()))
                         .addValue("revokedAt", ts(row.revokedAt()))
+                        .addValue("evidence", row.evidenceReference())
                         .addValue("newVersion", row.version())
                         .addValue("expectedVersion", expectedVersion));
         if (rows == 0) throw new StaleVersionException();

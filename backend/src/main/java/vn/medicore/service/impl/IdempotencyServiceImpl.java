@@ -34,24 +34,27 @@ public class IdempotencyServiceImpl {
         this.ids = ids;
     }
 
-    public Reservation reserve(String principalScope, String operation, String key, byte[] body) {
-        String requestHash = hash(body);
+    public Reservation reserve(String principalScope, String operation, String key, byte[] fingerprint) {
+        String requestHash = hash(fingerprint);
         Optional<IdempotencyRow> found = store.idempotencyForUpdate(principalScope, operation, key);
-        if (found.isPresent()) {
-            IdempotencyRow existing = found.get();
-            if (!existing.requestHash().equals(requestHash)) {
-                throw new IdempotencyConflictException();
-            }
-            return new Reservation(existing.id(), true, existing.status(), existing.responseStatus(), existing.responseId());
-        }
+        if (found.isPresent()) return replayOrConflict(found.get(), requestHash);
         UUID id = ids.next();
-        store.insertIdempotency(new IdempotencyRow(
-                id, principalScope, operation, key, requestHash, "IN_PROGRESS", null, null, clock.instant().plus(properties.idempotency().ttl())));
-        return new Reservation(id, false, "IN_PROGRESS", null, null);
+        boolean inserted = store.insertIdempotency(new IdempotencyRow(
+                id, principalScope, operation, key, requestHash, "IN_PROGRESS", null, null, null, null, null,
+                clock.instant().plus(properties.idempotency().ttl())));
+        if (inserted) return new Reservation(id, false, "IN_PROGRESS", null, null, null, null, null);
+        return replayOrConflict(store.idempotencyForUpdate(principalScope, operation, key)
+                .orElseThrow(() -> new IllegalStateException("Idempotency reservation disappeared")), requestHash);
     }
 
-    public void complete(UUID id, int status, UUID responseId) {
-        store.completeIdempotency(id, status, responseId, clock.instant());
+    private Reservation replayOrConflict(IdempotencyRow existing, String requestHash) {
+        if (!existing.requestHash().equals(requestHash)) throw new IdempotencyConflictException();
+        return new Reservation(existing.id(), true, existing.status(), existing.responseStatus(), existing.responseBody(),
+                existing.responseContentType(), existing.responseEtag(), existing.responseLocation());
+    }
+
+    public void complete(UUID id, int status, byte[] body, String contentType, String etag, String location) {
+        store.completeIdempotency(id, status, body, contentType, etag, location, clock.instant());
     }
 
     public void fail(UUID id, int status, String errorCode) {
@@ -71,7 +74,10 @@ public class IdempotencyServiceImpl {
             boolean replay,
             String status,
             Integer responseStatus,
-            UUID responseId) {
+            byte[] responseBody,
+            String responseContentType,
+            String responseEtag,
+            String responseLocation) {
     }
 
     public static final class IdempotencyConflictException extends RuntimeException {

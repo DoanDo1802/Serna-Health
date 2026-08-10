@@ -1,0 +1,2 @@
+-- MediCore foundation baseline.
+-- Intentionally contains no domain DDL. Domain migrations require approved physical contracts.

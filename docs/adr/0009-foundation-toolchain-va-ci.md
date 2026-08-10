@@ -22,7 +22,7 @@ ADR-0001 khóa baseline major/minor nhưng để patch version, build tool, repo
 - Backend dùng Maven Wrapper, Java 21, group/base package `vn.medicore` và một Spring Boot artifact `medicore-backend`.
 - Frontend và công cụ tài liệu dùng npm workspaces, Node.js 24 LTS và exact dependency versions trong một lockfile.
 - Local database dùng Docker Compose PostgreSQL 17; integration test dùng Testcontainers PostgreSQL 17.
-- GitHub Actions chạy document, frontend, backend, Modulith, migration và security/static gates.
+- GitHub Actions chạy document, frontend, backend, ArchUnit layered boundary, migration và security/static gates.
 - OpenAPI dùng code-first foundation tại `/api/v1`; chưa sinh client khi chưa có operation nghiệp vụ.
 - Flyway bắt đầu bằng migration baseline không có domain DDL. Domain migration chỉ thêm khi schema contract tương ứng đủ chi tiết.
 - Dependency, container image và CI action được pin; update đi qua pull request và toàn bộ gate.
@@ -38,7 +38,7 @@ ADR-0001 khóa baseline major/minor nhưng để patch version, build tool, repo
 ## Consequences
 
 - Local và CI cần Java 21, Node 24, npm, Docker và Maven Wrapper.
-- Spring Modulith package boundary là regression gate từ commit foundation.
+- ArchUnit layered boundary là regression gate từ commit foundation. Spring Modulith chỉ được đưa vào gate khi package topology được thay đổi bằng ADR/refactor riêng.
 - Baseline không tạo entity, business endpoint hoặc domain table.
 - GitHub remote, visibility, branch protection và license được chốt riêng trước khi publish.
 

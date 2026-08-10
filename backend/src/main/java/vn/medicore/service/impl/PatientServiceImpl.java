@@ -69,10 +69,12 @@ public class PatientServiceImpl implements PatientService {
         UUID id = ids.next();
         
         String cleanPhone = phone != null && !phone.isBlank() ? phone.strip() : null;
-        String cleanEmail = email != null && !email.isBlank() ? email.strip().toLowerCase() : null;
-        
+        String cleanEmail = email != null && !email.isBlank() ? email.strip().toLowerCase(java.util.Locale.ROOT) : null;
+
+        requireContact(cleanPhone, cleanEmail);
         PatientRow row = new PatientRow(id, fullName.strip(), dateOfBirth, cleanPhone, cleanEmail, declaredGender, address, toJson(emergencyContact), 0, now, now);
         store.insertPatient(row);
+        audit.record(actorId, null, "patient.create", "SUCCEEDED", null, "Patient", id, 0L, null, ids.next().toString(), ids.next().toString());
         
         // MVP Duplicate Check Logic: find by phone or exactly matching name
         List<PatientView> potentialDuplicates = store.listPatients(cleanPhone != null ? cleanPhone : fullName.strip(), 5, 0);
@@ -88,6 +90,19 @@ public class PatientServiceImpl implements PatientService {
         }
         
         return store.patientById(id).orElseThrow();
+    }
+
+    @Override
+    public PatientView createOwnPatient(String fullName, LocalDate dateOfBirth, String phone, String email, String declaredGender,
+            String address, Map<String, Object> emergencyContact, UUID accountId) {
+        PatientView patient = createPatient(fullName, dateOfBirth, phone, email, declaredGender, address, emergencyContact, accountId);
+        Instant now = clock.instant();
+        store.insertPatientAccountLink(new PatientAccountLinkRow(
+                ids.next(), accountId, patient.id(), "OWN", "IDENTITY_VERIFIED", "{\"version\":1}", now, null,
+                "ACTIVE", null, null, 0, now, now));
+        audit.record(accountId, null, "patient.account_link.create", "SUCCEEDED", "OWN", "PatientAccountLink", patient.id(),
+                0L, null, ids.next().toString(), ids.next().toString());
+        return patient;
     }
 
     @Override
@@ -122,12 +137,19 @@ public class PatientServiceImpl implements PatientService {
         Instant now = clock.instant();
         UUID id = ids.next();
         
-        String protectedValue = crypto.encrypt(value);
-        String comparisonToken = crypto.hashForComparison(value);
+        CryptoService.NormalizedIdentifier normalized = crypto.normalize(identifierType, issuer, jurisdiction, value);
+        String context = identifierContext(normalized);
+        String protectedValue = crypto.encrypt(normalized.value(), context);
+        String comparisonToken = crypto.comparisonToken(
+                normalized.identifierType(), normalized.issuer(), normalized.jurisdiction(), normalized.value());
         String status = "SELF_DECLARED".equals(verificationSource) ? "SELF_DECLARED" : "STAFF_RECORDED";
-        
-        store.insertPatientIdentifier(new PatientIdentifierRow(id, patientId, identifierType, issuer, jurisdiction, protectedValue, comparisonToken, displaySuffix, status, verificationSource, actorId, now, null, now, null, null, 0));
-        
+
+        store.insertPatientIdentifier(new PatientIdentifierRow(
+                id, patientId, normalized.identifierType(), normalized.issuer(), normalized.jurisdiction(), protectedValue,
+                comparisonToken, normalized.displaySuffix(), status, verificationSource, actorId, now, null, now, null, null, 0));
+
+        audit.record(actorId, null, "patient.identifier.create", "SUCCEEDED", null,
+                "PatientIdentifier", id, 0L, null, ids.next().toString(), ids.next().toString());
         return store.patientIdentifierById(id).orElseThrow();
     }
 
@@ -139,9 +161,15 @@ public class PatientServiceImpl implements PatientService {
         }
         
         Instant now = clock.instant();
-        store.updatePatientIdentifier(new PatientIdentifierRow(id, existing.patientId(), existing.identifierType(), existing.issuer(), existing.jurisdiction(), null, null, null, "MANUALLY_VERIFIED", null, null, null, now, null, null, existing.evidenceReference(), version + 1), version);
+        if (existing.version() != version) throw new vn.medicore.common.exception.StaleVersionException();
+        if (!"SELF_DECLARED".equals(existing.status()) && !"STAFF_RECORDED".equals(existing.status())) {
+            throw new IllegalStateException("Identifier cannot be manually verified from current state");
+        }
+        store.updatePatientIdentifier(new PatientIdentifierRow(
+                id, existing.patientId(), existing.identifierType(), existing.issuer(), existing.jurisdiction(), null, null, null,
+                "MANUALLY_VERIFIED", null, null, null, now, null, null, evidenceReference, version + 1), version);
         
-        audit.record(actorId, null, "patient.identifier.verify", "SUCCEEDED", evidenceReference, "PatientIdentifier", id, version + 1, null, ids.next().toString(), ids.next().toString());
+        audit.record(actorId, null, "patient.identifier.verify", "SUCCEEDED", "evidence_reference_provided", "PatientIdentifier", id, version + 1, null, ids.next().toString(), ids.next().toString());
         
         return store.patientIdentifierById(id).orElseThrow();
     }
@@ -151,10 +179,31 @@ public class PatientServiceImpl implements PatientService {
         PatientIdentifierView existing = store.patientIdentifierByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
         
-        store.updatePatientIdentifier(new PatientIdentifierRow(id, existing.patientId(), existing.identifierType(), existing.issuer(), existing.jurisdiction(), null, null, null, "REVOKED", null, null, null, existing.verifiedAt(), null, now, existing.evidenceReference(), version + 1), version);
+        if (existing.version() != version) throw new vn.medicore.common.exception.StaleVersionException();
+        if ("REVOKED".equals(existing.status()) || "ENTERED_IN_ERROR".equals(existing.status())) {
+            throw new IllegalStateException("Identifier is already terminal");
+        }
+        store.updatePatientIdentifier(new PatientIdentifierRow(
+                id, existing.patientId(), existing.identifierType(), existing.issuer(), existing.jurisdiction(), null, null, null,
+                "REVOKED", null, null, null, null, null, now, existing.evidenceReference(), version + 1), version);
         
         audit.record(actorId, null, "patient.identifier.revoke", "SUCCEEDED", null, "PatientIdentifier", id, version + 1, null, ids.next().toString(), ids.next().toString());
         
+        return store.patientIdentifierById(id).orElseThrow();
+    }
+
+    @Override
+    public PatientIdentifierView enterPatientIdentifierInError(UUID id, String reason, long version, UUID actorId) {
+        PatientIdentifierView existing = store.patientIdentifierByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        if (existing.version() != version) throw new vn.medicore.common.exception.StaleVersionException();
+        if ("REVOKED".equals(existing.status()) || "ENTERED_IN_ERROR".equals(existing.status())) {
+            throw new IllegalStateException("Identifier is already terminal");
+        }
+        store.updatePatientIdentifier(new PatientIdentifierRow(id, existing.patientId(), existing.identifierType(), existing.issuer(),
+                existing.jurisdiction(), null, null, null, "ENTERED_IN_ERROR", null, null, null, null, null, null,
+                existing.evidenceReference(), version + 1), version);
+        audit.record(actorId, null, "patient.identifier.enter_in_error", "SUCCEEDED", "reason_provided", "PatientIdentifier",
+                id, version + 1, null, ids.next().toString(), ids.next().toString());
         return store.patientIdentifierById(id).orElseThrow();
     }
 
@@ -185,7 +234,8 @@ public class PatientServiceImpl implements PatientService {
         }
         
         store.insertPatientAccountLink(new PatientAccountLinkRow(id, accountId, patientId, relationship, verificationTier, toJson(permissionScope), validFrom, validTo, "ACTIVE", null, null, 0, now, now));
-        
+        audit.record(actorId, null, "patient.account_link.create", "SUCCEEDED", relationship,
+                "PatientAccountLink", id, 0L, null, ids.next().toString(), ids.next().toString());
         return store.patientAccountLinkById(id).orElseThrow();
     }
 
@@ -208,10 +258,14 @@ public class PatientServiceImpl implements PatientService {
     @Override
     public PatientDuplicateCandidateView reviewDuplicateCandidate(UUID id, String status, String reviewReason, long version, UUID actorId) {
         PatientDuplicateCandidateView existing = store.duplicateCandidateByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
-        if (!"CONFIRMED".equals(status) && !"REJECTED".equals(status) && !"ENTERED_IN_ERROR".equals(status)) {
-            throw new IllegalArgumentException("Invalid review status");
+        if (!"CONFIRMED".equals(status) && !"REJECTED".equals(status)) {
+            throw new IllegalArgumentException("Review status must be CONFIRMED or REJECTED");
         }
-        
+        if (!"PENDING".equals(existing.status())) {
+            throw new IllegalStateException("Only pending duplicate candidates may be reviewed");
+        }
+        if (existing.version() != version) throw new vn.medicore.common.exception.StaleVersionException();
+
         Instant now = clock.instant();
         store.updateDuplicateCandidate(new PatientDuplicateCandidateRow(id, existing.sourcePatientId(), existing.candidatePatientId(), null, null, null, null, status, actorId, now, reviewReason, version + 1, null, now), version);
         
@@ -220,6 +274,19 @@ public class PatientServiceImpl implements PatientService {
         return store.duplicateCandidateById(id).orElseThrow();
     }
     
+    @Override
+    public PatientDuplicateCandidateView enterDuplicateCandidateInError(UUID id, String reason, long version, UUID actorId) {
+        PatientDuplicateCandidateView existing = store.duplicateCandidateByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        if (existing.version() != version) throw new vn.medicore.common.exception.StaleVersionException();
+        if (!"PENDING".equals(existing.status())) throw new IllegalStateException("Only pending candidate may enter error");
+        Instant now = clock.instant();
+        store.updateDuplicateCandidate(new PatientDuplicateCandidateRow(id, existing.sourcePatientId(), existing.candidatePatientId(),
+                null, null, null, null, "ENTERED_IN_ERROR", null, null, null, version + 1, null, now), version);
+        audit.record(actorId, null, "patient.duplicate.enter_in_error", "SUCCEEDED", "reason_provided",
+                "PatientDuplicateCandidate", id, version + 1, null, ids.next().toString(), ids.next().toString());
+        return store.duplicateCandidateById(id).orElseThrow();
+    }
+
     // ===========================================================
     // Helpers
     // ===========================================================
@@ -239,6 +306,14 @@ public class PatientServiceImpl implements PatientService {
         Map<String, Object> reasons = Map.of("samePhone", samePhone, "sameNameDob", sameNameDob);
         
         store.insertDuplicateCandidate(new PatientDuplicateCandidateRow(id, p1, p2, low, high, toJson(reasons), score, "PENDING", null, null, null, 0, now, now));
+    }
+
+    private static void requireContact(String phone, String email) {
+        if (phone == null && email == null) throw new IllegalArgumentException("Patient requires phone or email contact");
+    }
+
+    private static String identifierContext(CryptoService.NormalizedIdentifier identifier) {
+        return String.join("|", identifier.identifierType(), identifier.issuer(), identifier.jurisdiction());
     }
 
     private String toJson(Map<String, Object> map) {

@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -49,6 +49,7 @@ public class CatalogController {
     // ===========================================================
 
     @GetMapping("/departments")
+    @PreAuthorize("hasAuthority('department.read')")
     Page<DepartmentView> listDepartments(
             @RequestParam(required = false) Boolean active,
             @RequestParam(required = false) String cursor,
@@ -63,7 +64,7 @@ public class CatalogController {
     }
 
     @PostMapping("/departments")
-    @PreAuthorize("hasAuthority('catalog.department.manage')")
+    @PreAuthorize("hasAuthority('department.create')")
     ResponseEntity<DepartmentView> createDepartment(
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @Valid @RequestBody DepartmentCreateRequest body) {
@@ -72,8 +73,8 @@ public class CatalogController {
         return versioned(view, view.version());
     }
 
-    @PutMapping("/departments/{id}")
-    @PreAuthorize("hasAuthority('catalog.department.manage')")
+    @PatchMapping("/departments/{id}")
+    @PreAuthorize("hasAuthority('department.update')")
     ResponseEntity<DepartmentView> updateDepartment(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -85,7 +86,7 @@ public class CatalogController {
     }
 
     @PostMapping("/departments/{id}/actions/deactivate")
-    @PreAuthorize("hasAuthority('catalog.department.manage')")
+    @PreAuthorize("hasAuthority('department.update')")
     ResponseEntity<DepartmentView> deactivateDepartment(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -99,6 +100,7 @@ public class CatalogController {
     // ===========================================================
 
     @GetMapping("/rooms")
+    @PreAuthorize("hasAuthority('room.read')")
     Page<RoomView> listRooms(
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) Boolean active,
@@ -114,7 +116,7 @@ public class CatalogController {
     }
 
     @PostMapping("/departments/{departmentId}/rooms")
-    @PreAuthorize("hasAuthority('catalog.room.manage')")
+    @PreAuthorize("hasAuthority('room.create')")
     ResponseEntity<RoomView> createRoom(
             @PathVariable UUID departmentId,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -123,8 +125,8 @@ public class CatalogController {
         return versioned(view, view.version());
     }
 
-    @PutMapping("/rooms/{id}")
-    @PreAuthorize("hasAuthority('catalog.room.manage')")
+    @PatchMapping("/rooms/{id}")
+    @PreAuthorize("hasAuthority('room.update')")
     ResponseEntity<RoomView> updateRoom(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -135,7 +137,7 @@ public class CatalogController {
     }
 
     @PostMapping("/rooms/{id}/actions/deactivate")
-    @PreAuthorize("hasAuthority('catalog.room.manage')")
+    @PreAuthorize("hasAuthority('room.update')")
     ResponseEntity<RoomView> deactivateRoom(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -149,6 +151,7 @@ public class CatalogController {
     // ===========================================================
 
     @GetMapping("/services")
+    @PreAuthorize("hasAuthority('service.read')")
     Page<ServiceView> listServices(
             @RequestParam(required = false) String serviceType,
             @RequestParam(required = false) Boolean active,
@@ -164,7 +167,7 @@ public class CatalogController {
     }
 
     @PostMapping("/services")
-    @PreAuthorize("hasAuthority('catalog.service.manage')")
+    @PreAuthorize("hasAuthority('service.create')")
     ResponseEntity<ServiceView> createService(
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @Valid @RequestBody ServiceCreateRequest body) {
@@ -172,8 +175,8 @@ public class CatalogController {
         return versioned(view, view.version());
     }
 
-    @PutMapping("/services/{id}")
-    @PreAuthorize("hasAuthority('catalog.service.manage')")
+    @PatchMapping("/services/{id}")
+    @PreAuthorize("hasAuthority('service.update')")
     ResponseEntity<ServiceView> updateService(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -184,7 +187,7 @@ public class CatalogController {
     }
 
     @PostMapping("/services/{id}/actions/deactivate")
-    @PreAuthorize("hasAuthority('catalog.service.manage')")
+    @PreAuthorize("hasAuthority('service.update')")
     ResponseEntity<ServiceView> deactivateService(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -198,6 +201,7 @@ public class CatalogController {
     // ===========================================================
 
     @GetMapping("/services/{serviceId}/prices")
+    @PreAuthorize("hasAuthority('service_price.read')")
     Page<ServicePriceView> listServicePrices(
             @PathVariable UUID serviceId,
             @RequestParam(required = false) String cursor,
@@ -211,7 +215,7 @@ public class CatalogController {
     }
 
     @PostMapping("/services/{serviceId}/prices")
-    @PreAuthorize("hasAuthority('catalog.service.manage')")
+    @PreAuthorize("hasAuthority('service_price.create')")
     ServicePriceView createServicePrice(
             @PathVariable UUID serviceId,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -220,13 +224,14 @@ public class CatalogController {
     }
 
     @PostMapping("/service-prices/{id}/actions/end")
-    @PreAuthorize("hasAuthority('catalog.service.manage')")
-    ResponseEntity<Void> endServicePrice(
+    @PreAuthorize("hasAuthority('service_price.update')")
+    ResponseEntity<ServicePriceView> endServicePrice(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
+            @RequestHeader("If-Match") String ifMatch,
             @Valid @RequestBody ServicePriceEndRequest body) {
-        catalog.endServicePrice(id, body.effectiveTo(), principal.accountId());
-        return ResponseEntity.noContent().build();
+        ServicePriceView view = catalog.endServicePrice(id, body.effectiveTo(), version(ifMatch), principal.accountId());
+        return versioned(view, version(ifMatch) + 1);
     }
 
     // ===========================================================
@@ -234,6 +239,7 @@ public class CatalogController {
     // ===========================================================
 
     @GetMapping("/practitioners")
+    @PreAuthorize("hasAuthority('practitioner.read')")
     Page<PractitionerView> listPractitioners(
             @RequestParam(required = false) Boolean active,
             @RequestParam(required = false) String cursor,
@@ -248,7 +254,7 @@ public class CatalogController {
     }
 
     @PostMapping("/practitioners")
-    @PreAuthorize("hasAuthority('catalog.practitioner.manage')")
+    @PreAuthorize("hasAuthority('practitioner.create')")
     ResponseEntity<PractitionerView> createPractitioner(
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @Valid @RequestBody PractitionerCreateRequest body) {
@@ -256,8 +262,8 @@ public class CatalogController {
         return versioned(view, view.version());
     }
 
-    @PutMapping("/practitioners/{id}")
-    @PreAuthorize("hasAuthority('catalog.practitioner.manage')")
+    @PatchMapping("/practitioners/{id}")
+    @PreAuthorize("hasAuthority('practitioner.update')")
     ResponseEntity<PractitionerView> updatePractitioner(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -268,7 +274,7 @@ public class CatalogController {
     }
 
     @PostMapping("/practitioners/{id}/actions/deactivate")
-    @PreAuthorize("hasAuthority('catalog.practitioner.manage')")
+    @PreAuthorize("hasAuthority('practitioner.update')")
     ResponseEntity<PractitionerView> deactivatePractitioner(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -282,6 +288,7 @@ public class CatalogController {
     // ===========================================================
 
     @GetMapping("/practitioner-roles")
+    @PreAuthorize("hasAuthority('practitioner_role.read')")
     Page<PractitionerRoleView> listPractitionerRoles(
             @RequestParam(required = false) UUID practitionerId,
             @RequestParam(required = false) UUID departmentId,
@@ -298,7 +305,7 @@ public class CatalogController {
     }
 
     @PostMapping("/practitioners/{practitionerId}/roles")
-    @PreAuthorize("hasAuthority('catalog.practitioner.manage')")
+    @PreAuthorize("hasAuthority('practitioner_role.create')")
     ResponseEntity<PractitionerRoleView> assignPractitionerRole(
             @PathVariable UUID practitionerId,
             @AuthenticationPrincipal AuthenticatedAccount principal,
@@ -310,7 +317,7 @@ public class CatalogController {
     }
 
     @PostMapping("/practitioner-roles/{id}/actions/revoke")
-    @PreAuthorize("hasAuthority('catalog.practitioner.manage')")
+    @PreAuthorize("hasAuthority('practitioner_role.update')")
     ResponseEntity<PractitionerRoleView> revokePractitionerRole(
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,

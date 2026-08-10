@@ -58,17 +58,19 @@ export const modules = [
   },
   {
     key: 'patient', tag: 'Patient', story: 'R1-04', scenarios: ['SC-R1-PAT-01'], operations: [
-      create('/patients', 'createPatient', 'patient.create'), list('/patients', 'searchPatients', 'patient.search'),
+      create('/patients', 'createPatient', 'patient.create'), create('/patients/self', 'createOwnPatient', 'account.authenticate'), list('/patients', 'searchPatients', 'patient.search'),
       get('/patients/{patientId}', 'getPatient', 'patient.read'), patch('/patients/{patientId}', 'updatePatient', 'patient.update'),
       list('/patients/{patientId}/identifiers', 'listPatientIdentifiers', 'patient_identifier.read'),
       create('/patients/{patientId}/identifiers', 'addPatientIdentifier', 'patient_identifier.create'),
       action('/patient-identifiers/{identifierId}/actions/verify-manually', 'verifyPatientIdentifierManually', 'identity.link.verify'),
       action('/patient-identifiers/{identifierId}/actions/revoke', 'revokePatientIdentifier', 'identity.link.verify'),
+      action('/patient-identifiers/{identifierId}/actions/enter-in-error', 'enterPatientIdentifierInError', 'identity.link.verify'),
       list('/patients/{patientId}/account-links', 'listPatientAccountLinks', 'patient_account_link.read'),
       create('/patients/{patientId}/account-links', 'linkPatientAccount', 'patient_account_link.create'),
       list('/patient-duplicate-candidates', 'listPatientDuplicateCandidates', 'patient_duplicate.review'),
       get('/patient-duplicate-candidates/{candidateId}', 'getPatientDuplicateCandidate', 'patient_duplicate.review'),
       action('/patient-duplicate-candidates/{candidateId}/actions/review', 'reviewPatientDuplicateCandidate', 'patient_duplicate.review'),
+      action('/patient-duplicate-candidates/{candidateId}/actions/enter-in-error', 'enterPatientDuplicateCandidateInError', 'patient_duplicate.review'),
     ],
   },
   {

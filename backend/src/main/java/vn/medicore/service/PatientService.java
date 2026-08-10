@@ -16,6 +16,7 @@ public interface PatientService {
     List<PatientView> searchPatients(String query, int limit, int offset);
     PatientView getPatient(UUID id);
     PatientView createPatient(String fullName, LocalDate dateOfBirth, String phone, String email, String declaredGender, String address, Map<String, Object> emergencyContact, UUID actorId);
+    PatientView createOwnPatient(String fullName, LocalDate dateOfBirth, String phone, String email, String declaredGender, String address, Map<String, Object> emergencyContact, UUID accountId);
     PatientView updatePatient(UUID id, String fullName, LocalDate dateOfBirth, String phone, String email, String declaredGender, String address, Map<String, Object> emergencyContact, long version, UUID actorId);
 
     // ---- PatientIdentifier ----
@@ -23,6 +24,7 @@ public interface PatientService {
     PatientIdentifierView addPatientIdentifier(UUID patientId, String identifierType, String issuer, String jurisdiction, String value, String displaySuffix, String verificationSource, UUID actorId);
     PatientIdentifierView verifyPatientIdentifierManually(UUID id, String evidenceReference, long version, UUID actorId);
     PatientIdentifierView revokePatientIdentifier(UUID id, long version, UUID actorId);
+    PatientIdentifierView enterPatientIdentifierInError(UUID id, String reason, long version, UUID actorId);
 
     // ---- PatientAccountLink ----
     List<PatientAccountLinkView> listPatientAccountLinks(UUID patientId);
@@ -33,4 +35,5 @@ public interface PatientService {
     List<PatientDuplicateCandidateView> listDuplicateCandidates(String status, int limit, int offset);
     PatientDuplicateCandidateView getDuplicateCandidate(UUID id);
     PatientDuplicateCandidateView reviewDuplicateCandidate(UUID id, String status, String reviewReason, long version, UUID actorId);
+    PatientDuplicateCandidateView enterDuplicateCandidateInError(UUID id, String reason, long version, UUID actorId);
 }

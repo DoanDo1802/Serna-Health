@@ -18,6 +18,11 @@ public class LoggingAuthenticationDeliveryImpl implements AuthenticationDelivery
     }
 
     @Override
+    public void sendEmailVerificationToken(String displayEmail, String token) {
+        LOGGER.info("Email verification token queued for local recipient hash={}", Integer.toHexString(displayEmail.hashCode()));
+    }
+
+    @Override
     public void sendLoginCode(String displayEmail, String code) {
         LOGGER.info("Login challenge queued for local recipient hash={}", Integer.toHexString(displayEmail.hashCode()));
     }

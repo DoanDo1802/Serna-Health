@@ -2,19 +2,19 @@ package vn.medicore.service;
 
 public interface CryptoService {
 
-    /**
-     * Encrypts a plaintext string and returns a Base64-encoded ciphertext.
-     */
-    String encrypt(String plaintext);
+    String encrypt(String plaintext, String context);
 
-    /**
-     * Decrypts a Base64-encoded ciphertext back to plaintext.
-     */
-    String decrypt(String ciphertext);
+    String decrypt(String ciphertext, String context);
 
-    /**
-     * Generates a deterministic hash (e.g. SHA-256) of a value for comparison,
-     * returned as a hex string.
-     */
-    String hashForComparison(String value);
+    String comparisonToken(String identifierType, String issuer, String jurisdiction, String value);
+
+    NormalizedIdentifier normalize(String identifierType, String issuer, String jurisdiction, String value);
+
+    record NormalizedIdentifier(
+            String identifierType,
+            String issuer,
+            String jurisdiction,
+            String value,
+            String displaySuffix) {
+    }
 }

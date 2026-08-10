@@ -7,6 +7,9 @@ spring:
       ddl-auto: validate
 
 medicore:
+  crypto:
+    encryption-key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    comparison-key: abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
   auth:
     secret-hash-key: test-only-key-at-least-thirty-two-bytes
     session:

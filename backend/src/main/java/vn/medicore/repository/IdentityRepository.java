@@ -95,7 +95,12 @@ public interface IdentityRepository {
 
     Set<String> effectivePermissions(UUID accountId, Instant at);
 
+    List<EffectiveGrant> effectiveGrants(UUID accountId, Instant at);
+
     List<UUID> activeRoleIds(UUID accountId, Instant at);
+
+    record EffectiveGrant(String action, UUID assignmentId, UUID departmentId, Instant effectiveFrom, Instant effectiveTo) {
+    }
 
     record AccountRow(
             UUID id,

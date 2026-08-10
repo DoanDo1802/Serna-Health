@@ -149,6 +149,81 @@ paths:
         - R1-04
       x-medicore-scenarios: *a1
       x-medicore-idempotent: false
+  /patients/self:
+    post:
+      tags:
+        - Patient
+      summary: Create Own Patient
+      operationId: createOwnPatient
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: patient
+      x-medicore-permission: account.authenticate
+      x-medicore-audit-action: account.authenticate
+      x-medicore-stories:
+        - R1-04
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Resource"
   /patients/{patientId}:
     get:
       tags:
@@ -691,6 +766,105 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/Resource"
+  /patient-identifiers/{identifierId}/actions/enter-in-error:
+    post:
+      tags:
+        - Patient
+      summary: Enter Patient Identifier In Error
+      operationId: enterPatientIdentifierInError
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: identifierId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "412":
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "428":
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: patient
+      x-medicore-permission: identity.link.verify
+      x-medicore-audit-action: identity.link.verify
+      x-medicore-stories:
+        - R1-04
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Resource"
   /patients/{patientId}/account-links:
     get:
       tags:
@@ -1018,6 +1192,105 @@ paths:
         - Patient
       summary: Review Patient Duplicate Candidate
       operationId: reviewPatientDuplicateCandidate
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "412":
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "428":
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: patient
+      x-medicore-permission: patient_duplicate.review
+      x-medicore-audit-action: patient_duplicate.review
+      x-medicore-stories:
+        - R1-04
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Resource"
+  /patient-duplicate-candidates/{candidateId}/actions/enter-in-error:
+    post:
+      tags:
+        - Patient
+      summary: Enter Patient Duplicate Candidate In Error
+      operationId: enterPatientDuplicateCandidateInError
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"

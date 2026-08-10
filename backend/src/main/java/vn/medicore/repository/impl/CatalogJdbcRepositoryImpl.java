@@ -271,9 +271,18 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     }
 
     @Override
-    public void endServicePrice(UUID id, Instant effectiveTo) {
-        update("update service_price set effective_to = ? where id = ? and effective_to is null",
-                ts(effectiveTo), id);
+    public void closeOpenPriceForService(UUID serviceId, Instant effectiveTo) {
+        update("update service_price set effective_to = ?, updated_at = now(), version = version + 1 "
+                        + "where service_id = ? and effective_to is null and effective_from < ?",
+                ts(effectiveTo), serviceId, ts(effectiveTo));
+    }
+
+    @Override
+    public void endServicePrice(UUID id, Instant effectiveTo, long expectedVersion) {
+        int updated = update("update service_price set effective_to = ?, updated_at = now(), version = version + 1 "
+                        + "where id = ? and effective_to is null and version = ?",
+                ts(effectiveTo), id, expectedVersion);
+        if (updated != 1) throw new StaleVersionException();
     }
 
     // ===========================================================
