@@ -26,7 +26,7 @@
     "verify": "npm run docs:check && npm run docs:render && npm run api:check && npm run frontend:lint && npm run frontend:typecheck && npm run frontend:test && npm run frontend:build"
   },
   "devDependencies": {
-    "@redocly/cli": "2.43.3",
+    "@redocly/cli": "2.46.0",
     "markdownlint-cli2": "0.23.2"
   },
   "allowScripts": {
