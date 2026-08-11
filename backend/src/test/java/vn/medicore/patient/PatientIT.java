@@ -1,31 +1,31 @@
 package vn.medicore.patient;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import vn.medicore.common.utils.UuidV7Generator;
+import vn.medicore.dto.PatientAuditContext;
 import vn.medicore.dto.PatientModels.PatientDuplicateCandidateView;
 import vn.medicore.dto.PatientModels.PatientView;
 import vn.medicore.service.PatientService;
 
-import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
-import javax.sql.DataSource;
-import org.springframework.jdbc.core.JdbcTemplate;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-
 @Testcontainers
 @SpringBootTest
 @ActiveProfiles("test")
-public class PatientIT {
+class PatientIT {
 
     @Container
     @ServiceConnection
@@ -43,42 +43,32 @@ public class PatientIT {
     @Test
     void SC_R1_PAT_01_suspected_duplicate_is_detected_and_reviewed() {
         UUID actorId = ids.next();
-        new JdbcTemplate(dataSource).update("insert into user_account(id, normalized_email, display_email, status, failed_login_count, version, created_at, updated_at) values (?, ?, ?, 'ACTIVE', 0, 0, now(), now())", actorId, "reviewer@example.com", "reviewer@example.com");
+        new JdbcTemplate(dataSource).update("""
+                insert into user_account(id, normalized_email, display_email, status, failed_login_count, version, created_at, updated_at)
+                values (?, ?, ?, 'ACTIVE', 0, 0, now(), now())
+                """, actorId, "reviewer@example.com", "reviewer@example.com");
+        PatientAuditContext context = new PatientAuditContext(actorId, UUID.randomUUID().toString(),
+                Map.of("permissions", List.of("patient.create", "patient_duplicate.review")), "patient-it-request", "patient-it-correlation");
         String fullName = "Nguyen Van A";
         LocalDate dob = LocalDate.of(1990, 1, 1);
         String phone = "0901234567";
 
-        // 1. Create first patient
-        PatientView patient1 = patientService.createPatient(
-                fullName, dob, phone, "a@example.com", "MALE", "Hanoi", null, actorId);
-        
-        assertThat(patient1.id()).isNotNull();
+        PatientView patient1 = patientService.createPatient(fullName, dob, phone, "a@example.com", "MALE", "Hanoi", null, context);
+        PatientView patient2 = patientService.createPatient(fullName, dob, phone, "a2@example.com", "MALE", "Hanoi 2", null, context);
 
-        // 2. Create second patient with same name and dob (simulating a duplicate)
-        PatientView patient2 = patientService.createPatient(
-                fullName, dob, phone, "a2@example.com", "MALE", "Hanoi 2", null, actorId);
-        
-        assertThat(patient2.id()).isNotNull();
-        assertThat(patient1.id()).isNotEqualTo(patient2.id());
+        assertThat(patient2.id()).isNotEqualTo(patient1.id());
+        List<PatientDuplicateCandidateView> pending = patientService.listDuplicateCandidates("PENDING", null, 10).items();
+        PatientDuplicateCandidateView candidate = pending.stream()
+                .filter(value -> value.sourcePatientId().equals(patient1.id()) && value.candidatePatientId().equals(patient2.id())
+                        || value.sourcePatientId().equals(patient2.id()) && value.candidatePatientId().equals(patient1.id()))
+                .findFirst().orElseThrow();
 
-        // 3. Verify a pending duplicate candidate was created
-        List<PatientDuplicateCandidateView> pendingCandidates = patientService.listDuplicateCandidates("PENDING", 10, 0);
-        
-        PatientDuplicateCandidateView candidate = pendingCandidates.stream()
-                .filter(c -> (c.sourcePatientId().equals(patient1.id()) && c.candidatePatientId().equals(patient2.id())) ||
-                             (c.sourcePatientId().equals(patient2.id()) && c.candidatePatientId().equals(patient1.id())))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Duplicate candidate not found"));
-
-        assertThat(candidate.status()).isEqualTo("PENDING");
         assertThat(candidate.score()).isGreaterThan(new java.math.BigDecimal("0.90"));
-
-        // 4. Authorized reviewer REJECTS the candidate (meaning they are different people)
         PatientDuplicateCandidateView reviewed = patientService.reviewDuplicateCandidate(
-                candidate.id(), "REJECTED", "Confirmed different person via ID card", candidate.version(), actorId);
+                candidate.id(), "REJECTED", "Confirmed different person", candidate.version(), context);
 
         assertThat(reviewed.status()).isEqualTo("REJECTED");
         assertThat(reviewed.reviewerAccountId()).isEqualTo(actorId);
-        assertThat(reviewed.reviewReason()).isEqualTo("Confirmed different person via ID card");
+        assertThat(reviewed.reviewReason()).isEqualTo("Confirmed different person");
     }
 }

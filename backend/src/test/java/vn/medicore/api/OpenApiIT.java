@@ -32,7 +32,7 @@ import vn.medicore.MediCoreApplication;
 @ActiveProfiles("test")
 class OpenApiIT {
 
-    private static final int EXPECTED_OPERATION_COUNT = 154;
+    private static final int EXPECTED_OPERATION_COUNT = 154; // R1-04 types existing Patient operations; no route count change.
 
     @Container
     @ServiceConnection
@@ -89,8 +89,20 @@ class OpenApiIT {
                         "createRoom",
                         "listPractitionerRoles",
                         "endServicePrice",
-                        "revokePractitionerRole");
-        assertThat(paths.path("/rooms").has("post")).isTrue();
+                        "revokePractitionerRole",
+                        "listPatientIdentifiers",
+                        "reviewPatientDuplicateCandidate");
+        assertThat(paths.path("/patients/{patientId}/identifiers").path("get")
+                .at("/responses/200/content/application~1json/schema/$ref").asText())
+                .endsWith("/PatientIdentifierPage");
+        assertThat(paths.path("/patient-duplicate-candidates/{candidateId}/actions/review").path("post")
+                .at("/requestBody/content/application~1json/schema/$ref").asText())
+                .endsWith("/ReviewPatientDuplicateCandidateRequest");
+        assertThat(document.at("/components/schemas/AddPatientIdentifierRequest/properties/value/writeOnly").asBoolean()).isTrue();
+        assertThat(document.at("/components/schemas/PatientIdentifier/properties/protectedValue").isMissingNode()).isTrue();
+        assertThat(document.at("/components/schemas/PatientIdentifier/properties/comparisonToken").isMissingNode()).isTrue();
+        assertThat(document.at("/components/schemas/PatientDuplicateCandidate/properties/matchReasons/$ref").asText())
+                .endsWith("/PatientDuplicateMatchReasons");
         assertThat(paths.path("/practitioners/{practitionerId}/roles").has("get")).isTrue();
         assertThat(paths.path("/departments/{departmentId}/rooms").isMissingNode()).isTrue();
 

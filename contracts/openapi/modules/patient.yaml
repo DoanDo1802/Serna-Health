@@ -25,7 +25,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Patient"
         "400":
           description: Invalid request
           content:
@@ -74,7 +74,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CreatePatientRequest"
     get:
       tags:
         - Patient
@@ -85,6 +85,12 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 320
       security:
         - sessionCookie: []
       responses:
@@ -100,7 +106,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/PatientPage"
         "400":
           description: Invalid request
           content:
@@ -175,7 +181,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Patient"
         "400":
           description: Invalid request
           content:
@@ -223,7 +229,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CreatePatientRequest"
   /patients/{patientId}:
     get:
       tags:
@@ -254,7 +260,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Patient"
         "400":
           description: Invalid request
           content:
@@ -334,7 +340,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Patient"
         "400":
           description: Invalid request
           content:
@@ -400,7 +406,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/UpdatePatientRequest"
   /patients/{patientId}/identifiers:
     get:
       tags:
@@ -433,7 +439,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/PatientIdentifierPage"
         "400":
           description: Invalid request
           content:
@@ -513,7 +519,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PatientIdentifier"
         "400":
           description: Invalid request
           content:
@@ -567,7 +573,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/AddPatientIdentifierRequest"
   /patient-identifiers/{identifierId}/actions/verify-manually:
     post:
       tags:
@@ -600,7 +606,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PatientIdentifier"
         "400":
           description: Invalid request
           content:
@@ -666,7 +672,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/VerifyPatientIdentifierRequest"
   /patient-identifiers/{identifierId}/actions/revoke:
     post:
       tags:
@@ -699,7 +705,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PatientIdentifier"
         "400":
           description: Invalid request
           content:
@@ -765,7 +771,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/RevokePatientIdentifierRequest"
   /patient-identifiers/{identifierId}/actions/enter-in-error:
     post:
       tags:
@@ -798,7 +804,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PatientIdentifier"
         "400":
           description: Invalid request
           content:
@@ -864,7 +870,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/PatientIdentifierErrorRequest"
   /patients/{patientId}/account-links:
     get:
       tags:
@@ -897,7 +903,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/PatientAccountLinkPage"
         "400":
           description: Invalid request
           content:
@@ -977,7 +983,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PatientAccountLink"
         "400":
           description: Invalid request
           content:
@@ -1031,7 +1037,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CreatePatientAccountLinkRequest"
   /patient-duplicate-candidates:
     get:
       tags:
@@ -1043,6 +1049,11 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/PatientDuplicateCandidateStatus"
       security:
         - sessionCookie: []
       responses:
@@ -1058,7 +1069,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/PatientDuplicateCandidatePage"
         "400":
           description: Invalid request
           content:
@@ -1137,7 +1148,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PatientDuplicateCandidate"
         "400":
           description: Invalid request
           content:
@@ -1218,7 +1229,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PatientDuplicateCandidate"
         "400":
           description: Invalid request
           content:
@@ -1284,7 +1295,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReviewPatientDuplicateCandidateRequest"
   /patient-duplicate-candidates/{candidateId}/actions/enter-in-error:
     post:
       tags:
@@ -1317,7 +1328,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PatientDuplicateCandidate"
         "400":
           description: Invalid request
           content:
@@ -1383,4 +1394,4 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/PatientDuplicateCandidateErrorRequest"

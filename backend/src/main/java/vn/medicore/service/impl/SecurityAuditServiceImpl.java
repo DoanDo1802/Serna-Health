@@ -37,12 +37,30 @@ public class SecurityAuditServiceImpl implements SecurityAuditRecorder {
             String sessionId,
             String requestId,
             String correlationId) {
+        record(actorAccountId, roleSnapshot, null, action, outcome, reason, resourceType, resourceId,
+                resourceVersion, sessionId, requestId, correlationId);
+    }
+
+    @Override
+    public void record(
+            UUID actorAccountId,
+            Map<String, Object> roleSnapshot,
+            UUID patientId,
+            String action,
+            String outcome,
+            String reason,
+            String resourceType,
+            UUID resourceId,
+            Long resourceVersion,
+            String sessionId,
+            String requestId,
+            String correlationId) {
         store.insertAudit(new AuditEventView(
                 ids.next(),
                 actorAccountId == null ? "SYSTEM" : "ACCOUNT",
                 actorAccountId,
                 roleSnapshot,
-                null,
+                patientId,
                 "system_security_audit",
                 "role_based_access_control",
                 resourceType,

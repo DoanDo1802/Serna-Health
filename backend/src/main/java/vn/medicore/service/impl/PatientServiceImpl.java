@@ -1,20 +1,30 @@
 package vn.medicore.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.exception.ResourceNotFoundException;
+import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.common.utils.UuidV7Generator;
+import vn.medicore.dto.PatientAuditContext;
+import vn.medicore.dto.PatientModels.Page;
 import vn.medicore.dto.PatientModels.PatientAccountLinkView;
 import vn.medicore.dto.PatientModels.PatientDuplicateCandidateView;
 import vn.medicore.dto.PatientModels.PatientIdentifierView;
 import vn.medicore.dto.PatientModels.PatientView;
+import vn.medicore.dto.SecurityAuditRecorder;
 import vn.medicore.repository.PatientRepository;
 import vn.medicore.repository.PatientRepository.PatientAccountLinkRow;
 import vn.medicore.repository.PatientRepository.PatientDuplicateCandidateRow;
@@ -22,14 +32,14 @@ import vn.medicore.repository.PatientRepository.PatientIdentifierRow;
 import vn.medicore.repository.PatientRepository.PatientRow;
 import vn.medicore.service.CryptoService;
 import vn.medicore.service.PatientService;
-import vn.medicore.dto.SecurityAuditRecorder;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 @Transactional
 public class PatientServiceImpl implements PatientService {
+
+    private static final Set<String> RELATIONSHIPS = Set.of("OWN", "SELF", "PARENT", "CHILD", "SPOUSE", "GUARDIAN", "REPRESENTATIVE");
+    private static final Set<String> TIERS = Set.of("PENDING", "IDENTITY_VERIFIED", "REPRESENTATION_VERIFIED");
+    private static final Set<String> EMERGENCY_CONTACT_FIELDS = Set.of("version", "fullName", "phone", "relationship");
 
     private final PatientRepository store;
     private final CryptoService crypto;
@@ -38,7 +48,13 @@ public class PatientServiceImpl implements PatientService {
     private final UuidV7Generator ids;
     private final ObjectMapper mapper;
 
-    public PatientServiceImpl(PatientRepository store, CryptoService crypto, SecurityAuditRecorder audit, Clock clock, UuidV7Generator ids, ObjectMapper mapper) {
+    public PatientServiceImpl(
+            PatientRepository store,
+            CryptoService crypto,
+            SecurityAuditRecorder audit,
+            Clock clock,
+            UuidV7Generator ids,
+            ObjectMapper mapper) {
         this.store = store;
         this.crypto = crypto;
         this.audit = audit;
@@ -47,14 +63,11 @@ public class PatientServiceImpl implements PatientService {
         this.mapper = mapper;
     }
 
-    // ===========================================================
-    // Patient
-    // ===========================================================
-
     @Override
     @Transactional(readOnly = true)
-    public List<PatientView> searchPatients(String query, int limit, int offset) {
-        return store.listPatients(query, limit, offset);
+    public Page<PatientView> searchPatients(String query, String cursor, int limit) {
+        int offset = offset(cursor);
+        return page(store.listPatients(query, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -64,157 +77,145 @@ public class PatientServiceImpl implements PatientService {
     }
 
     @Override
-    public PatientView createPatient(String fullName, LocalDate dateOfBirth, String phone, String email, String declaredGender, String address, Map<String, Object> emergencyContact, UUID actorId) {
-        Instant now = clock.instant();
-        UUID id = ids.next();
-        
-        String cleanPhone = phone != null && !phone.isBlank() ? phone.strip() : null;
-        String cleanEmail = email != null && !email.isBlank() ? email.strip().toLowerCase(java.util.Locale.ROOT) : null;
-
-        requireContact(cleanPhone, cleanEmail);
-        PatientRow row = new PatientRow(id, fullName.strip(), dateOfBirth, cleanPhone, cleanEmail, declaredGender, address, toJson(emergencyContact), 0, now, now);
+    public PatientView createPatient(
+            String fullName,
+            LocalDate dateOfBirth,
+            String phone,
+            String email,
+            String declaredGender,
+            String address,
+            Map<String, Object> emergencyContact,
+            PatientAuditContext context) {
+        PatientRow row = newPatientRow(fullName, dateOfBirth, phone, email, declaredGender, address, emergencyContact);
         store.insertPatient(row);
-        audit.record(actorId, null, "patient.create", "SUCCEEDED", null, "Patient", id, 0L, null, ids.next().toString(), ids.next().toString());
-        
-        // MVP Duplicate Check Logic: find by phone or exactly matching name
-        List<PatientView> potentialDuplicates = store.listPatients(cleanPhone != null ? cleanPhone : fullName.strip(), 5, 0);
-        for (PatientView pd : potentialDuplicates) {
-            if (pd.id().equals(id)) continue;
-            
-            boolean samePhone = cleanPhone != null && cleanPhone.equals(pd.phone());
-            boolean sameNameAndDob = fullName.strip().equalsIgnoreCase(pd.fullName()) && dateOfBirth.equals(pd.dateOfBirth());
-            
-            if (samePhone || sameNameAndDob) {
-                createDuplicateCandidate(id, pd.id(), samePhone, sameNameAndDob, now);
-            }
-        }
-        
-        return store.patientById(id).orElseThrow();
+        PatientView view = store.patientById(row.id()).orElseThrow();
+        record(context, view.id(), "patient.create", "Patient", view.id(), view.version(), "created");
+        createDuplicateCandidates(view, clock.instant());
+        return view;
     }
 
     @Override
-    public PatientView createOwnPatient(String fullName, LocalDate dateOfBirth, String phone, String email, String declaredGender,
-            String address, Map<String, Object> emergencyContact, UUID accountId) {
-        PatientView patient = createPatient(fullName, dateOfBirth, phone, email, declaredGender, address, emergencyContact, accountId);
+    public PatientView createOwnPatient(
+            String fullName,
+            LocalDate dateOfBirth,
+            String phone,
+            String email,
+            String declaredGender,
+            String address,
+            Map<String, Object> emergencyContact,
+            PatientAuditContext context) {
+        PatientView patient = createPatient(fullName, dateOfBirth, phone, email, declaredGender, address, emergencyContact, context);
         Instant now = clock.instant();
-        store.insertPatientAccountLink(new PatientAccountLinkRow(
-                ids.next(), accountId, patient.id(), "OWN", "IDENTITY_VERIFIED", "{\"version\":1}", now, null,
-                "ACTIVE", null, null, 0, now, now));
-        audit.record(accountId, null, "patient.account_link.create", "SUCCEEDED", "OWN", "PatientAccountLink", patient.id(),
-                0L, null, ids.next().toString(), ids.next().toString());
+        store.insertPatientAccountLink(new PatientAccountLinkRow(ids.next(), context.actorAccountId(), patient.id(), "OWN",
+                "PENDING", "{\"version\":1}", now, null, "ACTIVE", null, null, 0, now, now));
+        PatientAccountLinkView link = store.listAccountPatientLinks(context.actorAccountId()).stream()
+                .filter(value -> value.patientId().equals(patient.id()) && "OWN".equals(value.relationship()))
+                .findFirst().orElseThrow();
+        record(context, patient.id(), "patient_account_link.create", "PatientAccountLink", link.id(), link.version(), "own_link_created");
         return patient;
     }
 
     @Override
-    public PatientView updatePatient(UUID id, String fullName, LocalDate dateOfBirth, String phone, String email, String declaredGender, String address, Map<String, Object> emergencyContact, long version, UUID actorId) {
+    public PatientView updatePatient(
+            UUID id,
+            String fullName,
+            LocalDate dateOfBirth,
+            String phone,
+            String email,
+            String declaredGender,
+            String address,
+            Map<String, Object> emergencyContact,
+            long version,
+            PatientAuditContext context) {
         PatientView existing = store.patientByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        validateDemographics(fullName, dateOfBirth, emergencyContact);
         Instant now = clock.instant();
-        
-        String cleanPhone = phone != null && !phone.isBlank() ? phone.strip() : null;
-        String cleanEmail = email != null && !email.isBlank() ? email.strip().toLowerCase() : null;
-        
-        store.updatePatient(new PatientRow(id, fullName.strip(), dateOfBirth, cleanPhone, cleanEmail, declaredGender, address, toJson(emergencyContact), version + 1, existing.createdAt(), now), version);
-        
-        audit.record(actorId, null, "patient.update", "SUCCEEDED", null, "Patient", id, version + 1, null, ids.next().toString(), ids.next().toString());
-        
-        return store.patientById(id).orElseThrow();
+        store.updatePatient(new PatientRow(id, fullName.strip(), dateOfBirth, cleanPhone(phone), cleanEmail(email),
+                declaredGender, cleanNullable(address), toJson(emergencyContact), version + 1, existing.createdAt(), now), version);
+        PatientView view = store.patientById(id).orElseThrow();
+        record(context, view.id(), "patient.update", "Patient", view.id(), view.version(), "updated");
+        createDuplicateCandidates(view, now);
+        return view;
     }
-
-    // ===========================================================
-    // PatientIdentifier
-    // ===========================================================
 
     @Override
     @Transactional(readOnly = true)
-    public List<PatientIdentifierView> listPatientIdentifiers(UUID patientId) {
-        return store.listPatientIdentifiers(patientId);
+    public Page<PatientIdentifierView> listPatientIdentifiers(UUID patientId, String cursor, int limit) {
+        int offset = offset(cursor);
+        return page(store.listPatientIdentifiers(patientId, limit + 1, offset), limit, offset);
     }
 
     @Override
-    public PatientIdentifierView addPatientIdentifier(UUID patientId, String identifierType, String issuer, String jurisdiction, String value, String displaySuffix, String verificationSource, UUID actorId) {
+    public PatientIdentifierView addPatientIdentifier(
+            UUID patientId,
+            String identifierType,
+            String issuer,
+            String jurisdiction,
+            String value,
+            String verificationSource,
+            PatientAuditContext context) {
         store.patientById(patientId).orElseThrow(ResourceNotFoundException::new);
-        
         Instant now = clock.instant();
-        UUID id = ids.next();
-        
         CryptoService.NormalizedIdentifier normalized = crypto.normalize(identifierType, issuer, jurisdiction, value);
-        String context = identifierContext(normalized);
-        String protectedValue = crypto.encrypt(normalized.value(), context);
-        String comparisonToken = crypto.comparisonToken(
-                normalized.identifierType(), normalized.issuer(), normalized.jurisdiction(), normalized.value());
+        String contextValue = identifierContext(normalized);
+        UUID identifierId = ids.next();
         String status = "SELF_DECLARED".equals(verificationSource) ? "SELF_DECLARED" : "STAFF_RECORDED";
-
-        store.insertPatientIdentifier(new PatientIdentifierRow(
-                id, patientId, normalized.identifierType(), normalized.issuer(), normalized.jurisdiction(), protectedValue,
-                comparisonToken, normalized.displaySuffix(), status, verificationSource, actorId, now, null, now, null, null, 0));
-
-        audit.record(actorId, null, "patient.identifier.create", "SUCCEEDED", null,
-                "PatientIdentifier", id, 0L, null, ids.next().toString(), ids.next().toString());
-        return store.patientIdentifierById(id).orElseThrow();
+        store.insertPatientIdentifier(new PatientIdentifierRow(identifierId, patientId, normalized.identifierType(),
+                normalized.issuer(), normalized.jurisdiction(), crypto.encrypt(normalized.value(), contextValue),
+                crypto.comparisonToken(normalized.identifierType(), normalized.issuer(), normalized.jurisdiction(), normalized.value()),
+                normalized.displaySuffix(), status, verificationSource, context.actorAccountId(), now, null, now,
+                null, null, 0));
+        PatientIdentifierView view = store.patientIdentifierById(identifierId).orElseThrow();
+        record(context, patientId, "patient_identifier.create", "PatientIdentifier", view.id(), view.version(), "created");
+        return view;
     }
 
     @Override
-    public PatientIdentifierView verifyPatientIdentifierManually(UUID id, String evidenceReference, long version, UUID actorId) {
+    public PatientIdentifierView verifyPatientIdentifierManually(
+            UUID id, String evidenceReference, long version, PatientAuditContext context) {
         PatientIdentifierView existing = store.patientIdentifierByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
-        if ("MANUALLY_VERIFIED".equals(existing.status())) {
-            return existing;
-        }
-        
-        Instant now = clock.instant();
-        if (existing.version() != version) throw new vn.medicore.common.exception.StaleVersionException();
+        if (existing.version() != version) throw new StaleVersionException();
         if (!"SELF_DECLARED".equals(existing.status()) && !"STAFF_RECORDED".equals(existing.status())) {
             throw new IllegalStateException("Identifier cannot be manually verified from current state");
         }
-        store.updatePatientIdentifier(new PatientIdentifierRow(
-                id, existing.patientId(), existing.identifierType(), existing.issuer(), existing.jurisdiction(), null, null, null,
-                "MANUALLY_VERIFIED", null, null, null, now, null, null, evidenceReference, version + 1), version);
-        
-        audit.record(actorId, null, "patient.identifier.verify", "SUCCEEDED", "evidence_reference_provided", "PatientIdentifier", id, version + 1, null, ids.next().toString(), ids.next().toString());
-        
-        return store.patientIdentifierById(id).orElseThrow();
-    }
-
-    @Override
-    public PatientIdentifierView revokePatientIdentifier(UUID id, long version, UUID actorId) {
-        PatientIdentifierView existing = store.patientIdentifierByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
-        
-        if (existing.version() != version) throw new vn.medicore.common.exception.StaleVersionException();
-        if ("REVOKED".equals(existing.status()) || "ENTERED_IN_ERROR".equals(existing.status())) {
-            throw new IllegalStateException("Identifier is already terminal");
-        }
-        store.updatePatientIdentifier(new PatientIdentifierRow(
-                id, existing.patientId(), existing.identifierType(), existing.issuer(), existing.jurisdiction(), null, null, null,
-                "REVOKED", null, null, null, null, null, now, existing.evidenceReference(), version + 1), version);
-        
-        audit.record(actorId, null, "patient.identifier.revoke", "SUCCEEDED", null, "PatientIdentifier", id, version + 1, null, ids.next().toString(), ids.next().toString());
-        
-        return store.patientIdentifierById(id).orElseThrow();
+        store.updatePatientIdentifier(identifierRow(existing, "MANUALLY_VERIFIED", now, null, evidenceReference, version + 1), version);
+        PatientIdentifierView view = store.patientIdentifierById(id).orElseThrow();
+        record(context, view.patientId(), "patient_identifier.verify", "PatientIdentifier", view.id(), view.version(), "evidence_reference_provided");
+        return view;
     }
 
     @Override
-    public PatientIdentifierView enterPatientIdentifierInError(UUID id, String reason, long version, UUID actorId) {
+    public PatientIdentifierView revokePatientIdentifier(
+            UUID id, String reason, long version, PatientAuditContext context) {
         PatientIdentifierView existing = store.patientIdentifierByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
-        if (existing.version() != version) throw new vn.medicore.common.exception.StaleVersionException();
-        if ("REVOKED".equals(existing.status()) || "ENTERED_IN_ERROR".equals(existing.status())) {
-            throw new IllegalStateException("Identifier is already terminal");
-        }
-        store.updatePatientIdentifier(new PatientIdentifierRow(id, existing.patientId(), existing.identifierType(), existing.issuer(),
-                existing.jurisdiction(), null, null, null, "ENTERED_IN_ERROR", null, null, null, null, null, null,
-                existing.evidenceReference(), version + 1), version);
-        audit.record(actorId, null, "patient.identifier.enter_in_error", "SUCCEEDED", "reason_provided", "PatientIdentifier",
-                id, version + 1, null, ids.next().toString(), ids.next().toString());
-        return store.patientIdentifierById(id).orElseThrow();
+        if (existing.version() != version) throw new StaleVersionException();
+        requireActiveIdentifier(existing);
+        Instant now = clock.instant();
+        store.updatePatientIdentifier(identifierRow(existing, "REVOKED", null, now, existing.evidenceReference(), version + 1), version);
+        PatientIdentifierView view = store.patientIdentifierById(id).orElseThrow();
+        record(context, view.patientId(), "patient_identifier.revoke", "PatientIdentifier", view.id(), view.version(), "reason_provided");
+        return view;
     }
 
-    // ===========================================================
-    // PatientAccountLink
-    // ===========================================================
+    @Override
+    public PatientIdentifierView enterPatientIdentifierInError(
+            UUID id, String reason, long version, PatientAuditContext context) {
+        PatientIdentifierView existing = store.patientIdentifierByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        if (existing.version() != version) throw new StaleVersionException();
+        requireActiveIdentifier(existing);
+        store.updatePatientIdentifier(identifierRow(existing, "ENTERED_IN_ERROR", null, null,
+                existing.evidenceReference(), version + 1), version);
+        PatientIdentifierView view = store.patientIdentifierById(id).orElseThrow();
+        record(context, view.patientId(), "patient_identifier.enter_in_error", "PatientIdentifier", view.id(), view.version(), "reason_provided");
+        return view;
+    }
 
     @Override
     @Transactional(readOnly = true)
-    public List<PatientAccountLinkView> listPatientAccountLinks(UUID patientId) {
-        return store.listPatientAccountLinks(patientId);
+    public Page<PatientAccountLinkView> listPatientAccountLinks(UUID patientId, String cursor, int limit) {
+        int offset = offset(cursor);
+        return page(store.listPatientAccountLinks(patientId, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -224,29 +225,38 @@ public class PatientServiceImpl implements PatientService {
     }
 
     @Override
-    public PatientAccountLinkView linkPatientAccount(UUID accountId, UUID patientId, String relationship, String verificationTier, Map<String, Object> permissionScope, Instant validFrom, Instant validTo, UUID actorId) {
+    public PatientAccountLinkView linkPatientAccount(
+            UUID accountId,
+            UUID patientId,
+            String relationship,
+            String verificationTier,
+            Map<String, Object> permissionScope,
+            Instant validFrom,
+            Instant validTo,
+            PatientAuditContext context) {
         store.patientById(patientId).orElseThrow(ResourceNotFoundException::new);
+        if (validTo != null && !validTo.isAfter(validFrom)) throw new IllegalArgumentException("valid_to must be after valid_from");
+        if (!RELATIONSHIPS.contains(relationship) || !TIERS.contains(verificationTier)) {
+            throw new IllegalArgumentException("Patient account link relationship or verification tier is invalid");
+        }
+        validatePermissionScope(permissionScope);
+        if ("OWN".equals(relationship) && "REPRESENTATION_VERIFIED".equals(verificationTier)) {
+            throw new IllegalArgumentException("OWN link may not assert representation verification");
+        }
         Instant now = clock.instant();
         UUID id = ids.next();
-        
-        if (validTo != null && !validTo.isAfter(validFrom)) {
-            throw new IllegalArgumentException("valid_to must be after valid_from");
-        }
-        
-        store.insertPatientAccountLink(new PatientAccountLinkRow(id, accountId, patientId, relationship, verificationTier, toJson(permissionScope), validFrom, validTo, "ACTIVE", null, null, 0, now, now));
-        audit.record(actorId, null, "patient.account_link.create", "SUCCEEDED", relationship,
-                "PatientAccountLink", id, 0L, null, ids.next().toString(), ids.next().toString());
-        return store.patientAccountLinkById(id).orElseThrow();
+        store.insertPatientAccountLink(new PatientAccountLinkRow(id, accountId, patientId, relationship, verificationTier,
+                toJson(permissionScope), validFrom, validTo, "ACTIVE", null, null, 0, now, now));
+        PatientAccountLinkView view = store.patientAccountLinkById(id).orElseThrow();
+        record(context, patientId, "patient_account_link.create", "PatientAccountLink", view.id(), view.version(), "created");
+        return view;
     }
-
-    // ===========================================================
-    // PatientDuplicateCandidate
-    // ===========================================================
 
     @Override
     @Transactional(readOnly = true)
-    public List<PatientDuplicateCandidateView> listDuplicateCandidates(String status, int limit, int offset) {
-        return store.listDuplicateCandidates(status, limit, offset);
+    public Page<PatientDuplicateCandidateView> listDuplicateCandidates(String status, String cursor, int limit) {
+        int offset = offset(cursor);
+        return page(store.listDuplicateCandidates(status, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -256,72 +266,133 @@ public class PatientServiceImpl implements PatientService {
     }
 
     @Override
-    public PatientDuplicateCandidateView reviewDuplicateCandidate(UUID id, String status, String reviewReason, long version, UUID actorId) {
+    public PatientDuplicateCandidateView reviewDuplicateCandidate(
+            UUID id, String status, String reviewReason, long version, PatientAuditContext context) {
         PatientDuplicateCandidateView existing = store.duplicateCandidateByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
-        if (!"CONFIRMED".equals(status) && !"REJECTED".equals(status)) {
-            throw new IllegalArgumentException("Review status must be CONFIRMED or REJECTED");
+        if (existing.version() != version) throw new StaleVersionException();
+        if (!"PENDING".equals(existing.status()) || !("CONFIRMED".equals(status) || "REJECTED".equals(status))) {
+            throw new IllegalStateException("Only pending duplicate candidates may be confirmed or rejected");
         }
-        if (!"PENDING".equals(existing.status())) {
-            throw new IllegalStateException("Only pending duplicate candidates may be reviewed");
-        }
-        if (existing.version() != version) throw new vn.medicore.common.exception.StaleVersionException();
-
         Instant now = clock.instant();
-        store.updateDuplicateCandidate(new PatientDuplicateCandidateRow(id, existing.sourcePatientId(), existing.candidatePatientId(), null, null, null, null, status, actorId, now, reviewReason, version + 1, null, now), version);
-        
-        audit.record(actorId, null, "patient.duplicate.review", "SUCCEEDED", status + ": " + reviewReason, "PatientDuplicateCandidate", id, version + 1, null, ids.next().toString(), ids.next().toString());
-        
-        return store.duplicateCandidateById(id).orElseThrow();
+        store.updateDuplicateCandidate(new PatientDuplicateCandidateRow(id, existing.sourcePatientId(), existing.candidatePatientId(),
+                null, null, null, null, status, context.actorAccountId(), now, reviewReason.strip(), version + 1,
+                null, now), version);
+        PatientDuplicateCandidateView view = store.duplicateCandidateById(id).orElseThrow();
+        record(context, view.sourcePatientId(), "patient_duplicate.review", "PatientDuplicateCandidate", view.id(), view.version(), "reviewed");
+        return view;
     }
-    
+
     @Override
-    public PatientDuplicateCandidateView enterDuplicateCandidateInError(UUID id, String reason, long version, UUID actorId) {
+    public PatientDuplicateCandidateView enterDuplicateCandidateInError(
+            UUID id, String reason, long version, PatientAuditContext context) {
         PatientDuplicateCandidateView existing = store.duplicateCandidateByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
-        if (existing.version() != version) throw new vn.medicore.common.exception.StaleVersionException();
+        if (existing.version() != version) throw new StaleVersionException();
         if (!"PENDING".equals(existing.status())) throw new IllegalStateException("Only pending candidate may enter error");
         Instant now = clock.instant();
         store.updateDuplicateCandidate(new PatientDuplicateCandidateRow(id, existing.sourcePatientId(), existing.candidatePatientId(),
                 null, null, null, null, "ENTERED_IN_ERROR", null, null, null, version + 1, null, now), version);
-        audit.record(actorId, null, "patient.duplicate.enter_in_error", "SUCCEEDED", "reason_provided",
-                "PatientDuplicateCandidate", id, version + 1, null, ids.next().toString(), ids.next().toString());
-        return store.duplicateCandidateById(id).orElseThrow();
+        PatientDuplicateCandidateView view = store.duplicateCandidateById(id).orElseThrow();
+        record(context, view.sourcePatientId(), "patient_duplicate.enter_in_error", "PatientDuplicateCandidate", view.id(), view.version(), "reason_provided");
+        return view;
     }
 
-    // ===========================================================
-    // Helpers
-    // ===========================================================
+    private PatientRow newPatientRow(
+            String fullName, LocalDate dateOfBirth, String phone, String email, String declaredGender,
+            String address, Map<String, Object> emergencyContact) {
+        validateDemographics(fullName, dateOfBirth, emergencyContact);
+        Instant now = clock.instant();
+        return new PatientRow(ids.next(), fullName.strip(), dateOfBirth, cleanPhone(phone), cleanEmail(email), declaredGender,
+                cleanNullable(address), toJson(emergencyContact), 0, now, now);
+    }
 
-    private void createDuplicateCandidate(UUID p1, UUID p2, boolean samePhone, boolean sameNameDob, Instant now) {
-        UUID low = p1.compareTo(p2) < 0 ? p1 : p2;
-        UUID high = p1.compareTo(p2) > 0 ? p1 : p2;
-        
-        // Skip if already a pending candidate exists between them
-        List<PatientDuplicateCandidateView> existing = store.findPendingCandidatesBySourceOrCandidate(p1);
-        for (PatientDuplicateCandidateView view : existing) {
-            if (view.sourcePatientId().equals(p2) || view.candidatePatientId().equals(p2)) return;
+    private void createDuplicateCandidates(PatientView patient, Instant now) {
+        for (PatientView candidate : store.findDuplicatePatients(patient.phone(), patient.email(), patient.fullName(), patient.dateOfBirth())) {
+            if (candidate.id().equals(patient.id())) continue;
+            boolean samePhone = patient.phone() != null && patient.phone().equals(candidate.phone());
+            boolean sameEmail = patient.email() != null && patient.email().equalsIgnoreCase(candidate.email());
+            boolean sameNameDateOfBirth = patient.fullName().equalsIgnoreCase(candidate.fullName())
+                    && patient.dateOfBirth().equals(candidate.dateOfBirth());
+            if (!(samePhone || sameEmail || sameNameDateOfBirth)) continue;
+            UUID low = patient.id().compareTo(candidate.id()) < 0 ? patient.id() : candidate.id();
+            UUID high = patient.id().compareTo(candidate.id()) < 0 ? candidate.id() : patient.id();
+            BigDecimal score = BigDecimal.valueOf(samePhone && sameNameDateOfBirth ? 0.95
+                    : sameEmail && sameNameDateOfBirth ? 0.90 : samePhone || sameEmail ? 0.80 : 0.70);
+            Map<String, Object> reasons = Map.of("phone", samePhone, "email", sameEmail, "nameDateOfBirth", sameNameDateOfBirth);
+            store.insertDuplicateCandidate(new PatientDuplicateCandidateRow(ids.next(), patient.id(), candidate.id(), low, high,
+                    toJson(reasons), score, "PENDING", null, null, null, 0, now, now));
         }
-        
-        UUID id = ids.next();
-        BigDecimal score = BigDecimal.valueOf(samePhone && sameNameDob ? 0.95 : (samePhone ? 0.8 : 0.7));
-        Map<String, Object> reasons = Map.of("samePhone", samePhone, "sameNameDob", sameNameDob);
-        
-        store.insertDuplicateCandidate(new PatientDuplicateCandidateRow(id, p1, p2, low, high, toJson(reasons), score, "PENDING", null, null, null, 0, now, now));
     }
 
-    private static void requireContact(String phone, String email) {
-        if (phone == null && email == null) throw new IllegalArgumentException("Patient requires phone or email contact");
+    private static PatientIdentifierRow identifierRow(
+            PatientIdentifierView existing, String status, Instant verifiedAt, Instant revokedAt,
+            String evidenceReference, long version) {
+        return new PatientIdentifierRow(existing.id(), existing.patientId(), existing.identifierType(), existing.issuer(),
+                existing.jurisdiction(), null, null, null, status, existing.verificationSource(), null, null, verifiedAt,
+                existing.effectiveFrom(), revokedAt, evidenceReference, version);
     }
 
+    private static void requireActiveIdentifier(PatientIdentifierView value) {
+        if ("REVOKED".equals(value.status()) || "ENTERED_IN_ERROR".equals(value.status())) {
+            throw new IllegalStateException("Identifier is already terminal");
+        }
+    }
+
+    private void record(PatientAuditContext context, UUID patientId, String action, String resourceType,
+                        UUID resourceId, long version, String reason) {
+        audit.record(context.actorAccountId(), context.permissionSnapshot(), patientId, action, "SUCCEEDED", reason,
+                resourceType, resourceId, version, context.sessionId(), context.requestId(), context.correlationId());
+    }
+
+    private void validateDemographics(String fullName, LocalDate dateOfBirth, Map<String, Object> emergencyContact) {
+        if (fullName == null || fullName.isBlank()) throw new IllegalArgumentException("Patient full name is required");
+        if (dateOfBirth == null || dateOfBirth.isAfter(LocalDate.now(clock))) throw new IllegalArgumentException("Patient date of birth is invalid");
+        if (emergencyContact == null) return;
+        if (!emergencyContact.keySet().stream().allMatch(EMERGENCY_CONTACT_FIELDS::contains)
+                || !Integer.valueOf(1).equals(emergencyContact.get("version"))) {
+            throw new IllegalArgumentException("Emergency contact is invalid");
+        }
+    }
+
+    private static void validatePermissionScope(Map<String, Object> scope) {
+        if (scope == null || !Integer.valueOf(1).equals(scope.get("version"))
+                || !scope.keySet().stream().allMatch(key -> "version".equals(key) || "patient.read".equals(key))
+                || (scope.containsKey("patient.read") && !(scope.get("patient.read") instanceof Boolean))) {
+            throw new IllegalArgumentException("Patient permission scope is invalid");
+        }
+    }
+
+    private static String cleanPhone(String value) { return value == null || value.isBlank() ? null : value.strip(); }
+    private static String cleanEmail(String value) { return value == null || value.isBlank() ? null : value.strip().toLowerCase(Locale.ROOT); }
+    private static String cleanNullable(String value) { return value == null || value.isBlank() ? null : value.strip(); }
     private static String identifierContext(CryptoService.NormalizedIdentifier identifier) {
         return String.join("|", identifier.identifierType(), identifier.issuer(), identifier.jurisdiction());
     }
 
-    private String toJson(Map<String, Object> map) {
-        if (map == null) return null;
+    private String toJson(Map<String, Object> value) {
+        if (value == null) return null;
         try {
-            return mapper.writeValueAsString(map);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+            return mapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Patient JSON is invalid", exception);
         }
+    }
+
+    private static int offset(String cursor) {
+        if (cursor == null || cursor.isBlank()) return 0;
+        try {
+            int value = Integer.parseInt(new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8));
+            if (value < 0) throw new IllegalArgumentException("Cursor is invalid");
+            return value;
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Cursor is invalid");
+        }
+    }
+
+    private static <T> Page<T> page(List<T> values, int limit, int offset) {
+        boolean hasMore = values.size() > limit;
+        List<T> items = hasMore ? values.subList(0, limit) : values;
+        String next = hasMore ? Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(Integer.toString(offset + items.size()).getBytes(StandardCharsets.UTF_8)) : null;
+        return new Page<>(List.copyOf(items), next, hasMore);
     }
 }

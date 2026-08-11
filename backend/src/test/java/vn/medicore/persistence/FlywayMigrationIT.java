@@ -75,6 +75,17 @@ class FlywayMigrationIT {
                     "slot_hold");
             assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("5");
             assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("50");
+            assertThat(singleValue(statement, """
+                    select count(*) from pg_constraint
+                    where conname in ('ck_patient_identifier_verification_source', 'ck_patient_account_link_scope',
+                        'ck_patient_account_link_revocation')
+                    """)).isEqualTo("3");
+            assertThat(singleValue(statement, """
+                    select count(*) from pg_indexes
+                    where schemaname = 'public' and indexname in ('ix_duplicate_candidate_source_pending',
+                        'ix_duplicate_candidate_candidate_pending', 'ix_patient_identifier_patient_effective',
+                        'ix_patient_account_link_patient_valid')
+                    """)).isEqualTo("4");
             assertAuditIsAppendOnly(statement);
         }
     }

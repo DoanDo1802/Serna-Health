@@ -40,6 +40,7 @@ public class IdempotencyServiceImpl {
     public Reservation reserve(String principalScope, String operation, String key, byte[] fingerprint) {
         String requestHash = hash(fingerprint);
         Instant now = clock.instant();
+        store.deleteExpiredIdempotency(principalScope, operation, key, now);
         Optional<IdempotencyRow> found = store.idempotencyForUpdate(principalScope, operation, key);
         if (found.isPresent()) return replayOrConflict(found.get(), requestHash);
         UUID id = ids.next();

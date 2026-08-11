@@ -59,7 +59,7 @@ for (const { module, operation } of expected) {
   }
 }
 
-if (typedCount !== 56) errors.push(`R1-02/R1-03 typed operation count must be 56, found ${typedCount}`)
+if (typedCount !== 72) errors.push(`R1-02/R1-04 typed operation count must be 72, found ${typedCount}`)
 if (actual.length !== expected.length) errors.push(`operation count mismatch: expected ${expected.length}, found ${actual.length}`)
 if (spec.openapi !== '3.1.0') errors.push(`OpenAPI must be 3.1.0, found ${spec.openapi}`)
 if (spec.servers?.[0]?.url !== '/api/v1') errors.push('first server must be /api/v1')
@@ -98,7 +98,7 @@ if (errors.length) {
   for (const error of errors) console.error(`- ${error}`)
   process.exit(1)
 }
-console.log(`OpenAPI inventory check passed: ${actual.length} operations, ${typedCount} typed R1-02/R1-03 operations, ${modules.length} modules, 0 forbidden paths.`)
+console.log(`OpenAPI inventory check passed: ${actual.length} operations, ${typedCount} typed R1-02/R1-04 operations, ${modules.length} modules, 0 forbidden paths.`)
 
 function resolve(value) {
   if (!value?.$ref?.startsWith('#/')) return value

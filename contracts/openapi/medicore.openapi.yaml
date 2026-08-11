@@ -4822,7 +4822,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Patient'
         '400':
           description: Invalid request
           content:
@@ -4871,7 +4871,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CreatePatientRequest'
     get:
       tags:
         - Patient
@@ -4882,6 +4882,12 @@ paths:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 320
       security:
         - sessionCookie: []
       responses:
@@ -4897,7 +4903,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/PatientPage'
         '400':
           description: Invalid request
           content:
@@ -4973,7 +4979,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Patient'
         '400':
           description: Invalid request
           content:
@@ -5022,7 +5028,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CreatePatientRequest'
   /patients/{patientId}:
     get:
       tags:
@@ -5053,7 +5059,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Patient'
         '400':
           description: Invalid request
           content:
@@ -5134,7 +5140,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Patient'
         '400':
           description: Invalid request
           content:
@@ -5201,7 +5207,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/UpdatePatientRequest'
   /patients/{patientId}/identifiers:
     get:
       tags:
@@ -5234,7 +5240,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/PatientIdentifierPage'
         '400':
           description: Invalid request
           content:
@@ -5315,7 +5321,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PatientIdentifier'
         '400':
           description: Invalid request
           content:
@@ -5370,7 +5376,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/AddPatientIdentifierRequest'
   /patient-identifiers/{identifierId}/actions/verify-manually:
     post:
       tags:
@@ -5403,7 +5409,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PatientIdentifier'
         '400':
           description: Invalid request
           content:
@@ -5470,7 +5476,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/VerifyPatientIdentifierRequest'
   /patient-identifiers/{identifierId}/actions/revoke:
     post:
       tags:
@@ -5503,7 +5509,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PatientIdentifier'
         '400':
           description: Invalid request
           content:
@@ -5570,7 +5576,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/RevokePatientIdentifierRequest'
   /patient-identifiers/{identifierId}/actions/enter-in-error:
     post:
       tags:
@@ -5603,7 +5609,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PatientIdentifier'
         '400':
           description: Invalid request
           content:
@@ -5670,7 +5676,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/PatientIdentifierErrorRequest'
   /patients/{patientId}/account-links:
     get:
       tags:
@@ -5703,7 +5709,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/PatientAccountLinkPage'
         '400':
           description: Invalid request
           content:
@@ -5784,7 +5790,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PatientAccountLink'
         '400':
           description: Invalid request
           content:
@@ -5839,7 +5845,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CreatePatientAccountLinkRequest'
   /patient-duplicate-candidates:
     get:
       tags:
@@ -5851,6 +5857,11 @@ paths:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/PatientDuplicateCandidateStatus'
       security:
         - sessionCookie: []
       responses:
@@ -5866,7 +5877,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/PatientDuplicateCandidatePage'
         '400':
           description: Invalid request
           content:
@@ -5946,7 +5957,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PatientDuplicateCandidate'
         '400':
           description: Invalid request
           content:
@@ -6028,7 +6039,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PatientDuplicateCandidate'
         '400':
           description: Invalid request
           content:
@@ -6095,7 +6106,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/ReviewPatientDuplicateCandidateRequest'
   /patient-duplicate-candidates/{candidateId}/actions/enter-in-error:
     post:
       tags:
@@ -6128,7 +6139,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PatientDuplicateCandidate'
         '400':
           description: Invalid request
           content:
@@ -6195,7 +6206,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/PatientDuplicateCandidateErrorRequest'
   /appointment-slots:
     get:
       tags:
@@ -15514,6 +15525,592 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PractitionerRole'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    PatientGender:
+      type: string
+      enum:
+        - MALE
+        - FEMALE
+        - OTHER
+        - UNKNOWN
+    PatientIdentifierType:
+      type: string
+      enum:
+        - CCCD
+        - NATIONAL_ID
+        - PASSPORT
+    PatientIdentifierStatus:
+      type: string
+      enum:
+        - SELF_DECLARED
+        - STAFF_RECORDED
+        - MANUALLY_VERIFIED
+        - ENTERED_IN_ERROR
+        - REVOKED
+    PatientIdentifierVerificationSource:
+      type: string
+      enum:
+        - SELF_DECLARED
+        - STAFF_RECORDED
+        - MANUALLY_VERIFIED
+    PatientAccountLinkVerificationTier:
+      type: string
+      enum:
+        - PENDING
+        - IDENTITY_VERIFIED
+        - REPRESENTATION_VERIFIED
+    PatientAccountLinkStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - REVOKED
+        - EXPIRED
+    PatientDuplicateCandidateStatus:
+      type: string
+      enum:
+        - PENDING
+        - CONFIRMED
+        - REJECTED
+        - ENTERED_IN_ERROR
+    PatientEmergencyContact:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+      properties:
+        version:
+          type: integer
+          const: 1
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        phone:
+          type: string
+          minLength: 1
+          maxLength: 32
+        relationship:
+          type: string
+          minLength: 1
+          maxLength: 64
+    CreatePatientRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - fullName
+        - dateOfBirth
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        dateOfBirth:
+          type: string
+          format: date
+        phone:
+          type:
+            - string
+            - 'null'
+          maxLength: 32
+        email:
+          type:
+            - string
+            - 'null'
+          format: email
+          maxLength: 320
+        declaredGender:
+          $ref: '#/components/schemas/PatientGender'
+        address:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+        emergencyContact:
+          anyOf:
+            - $ref: '#/components/schemas/PatientEmergencyContact'
+            - type: 'null'
+    UpdatePatientRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - fullName
+        - dateOfBirth
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        dateOfBirth:
+          type: string
+          format: date
+        phone:
+          type:
+            - string
+            - 'null'
+          maxLength: 32
+        email:
+          type:
+            - string
+            - 'null'
+          format: email
+          maxLength: 320
+        declaredGender:
+          $ref: '#/components/schemas/PatientGender'
+        address:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+        emergencyContact:
+          anyOf:
+            - $ref: '#/components/schemas/PatientEmergencyContact'
+            - type: 'null'
+    Patient:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - fullName
+        - dateOfBirth
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        fullName:
+          type: string
+          maxLength: 200
+        dateOfBirth:
+          type: string
+          format: date
+        phone:
+          type:
+            - string
+            - 'null'
+          maxLength: 32
+        email:
+          type:
+            - string
+            - 'null'
+          format: email
+          maxLength: 320
+        declaredGender:
+          anyOf:
+            - $ref: '#/components/schemas/PatientGender'
+            - type: 'null'
+        address:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+        emergencyContact:
+          anyOf:
+            - $ref: '#/components/schemas/PatientEmergencyContact'
+            - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PatientPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Patient'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    AddPatientIdentifierRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - identifierType
+        - issuer
+        - jurisdiction
+        - value
+        - verificationSource
+      properties:
+        identifierType:
+          $ref: '#/components/schemas/PatientIdentifierType'
+        issuer:
+          type: string
+          minLength: 1
+          maxLength: 128
+        jurisdiction:
+          type: string
+          minLength: 1
+          maxLength: 64
+        value:
+          type: string
+          minLength: 1
+          maxLength: 512
+          writeOnly: true
+        verificationSource:
+          type: string
+          enum:
+            - SELF_DECLARED
+            - STAFF_RECORDED
+    VerifyPatientIdentifierRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - evidenceReference
+      properties:
+        evidenceReference:
+          type: string
+          minLength: 1
+          maxLength: 256
+    RevokePatientIdentifierRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    PatientIdentifierErrorRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    PatientIdentifier:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - patientId
+        - identifierType
+        - issuer
+        - jurisdiction
+        - displaySuffix
+        - status
+        - verificationSource
+        - collectedAt
+        - effectiveFrom
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        patientId:
+          type: string
+          format: uuid
+        identifierType:
+          $ref: '#/components/schemas/PatientIdentifierType'
+        issuer:
+          type: string
+          maxLength: 128
+        jurisdiction:
+          type: string
+          maxLength: 64
+        displaySuffix:
+          type: string
+          maxLength: 16
+        status:
+          $ref: '#/components/schemas/PatientIdentifierStatus'
+        verificationSource:
+          $ref: '#/components/schemas/PatientIdentifierVerificationSource'
+        collectedByAccountId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        collectedAt:
+          type: string
+          format: date-time
+        verifiedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        effectiveFrom:
+          type: string
+          format: date-time
+        revokedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        evidenceReference:
+          type:
+            - string
+            - 'null'
+          maxLength: 256
+    PatientIdentifierPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatientIdentifier'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    PatientPermissionScope:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+      properties:
+        version:
+          type: integer
+          const: 1
+        patient.read:
+          type: boolean
+    CreatePatientAccountLinkRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - accountId
+        - relationship
+        - verificationTier
+        - permissionScope
+        - validFrom
+      properties:
+        accountId:
+          type: string
+          format: uuid
+        relationship:
+          type: string
+          minLength: 1
+          maxLength: 64
+        verificationTier:
+          $ref: '#/components/schemas/PatientAccountLinkVerificationTier'
+        permissionScope:
+          $ref: '#/components/schemas/PatientPermissionScope'
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type:
+            - string
+            - 'null'
+          format: date-time
+    PatientAccountLink:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - accountId
+        - patientId
+        - relationship
+        - verificationTier
+        - permissionScope
+        - validFrom
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        accountId:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        relationship:
+          type: string
+          maxLength: 64
+        verificationTier:
+          $ref: '#/components/schemas/PatientAccountLinkVerificationTier'
+        permissionScope:
+          $ref: '#/components/schemas/PatientPermissionScope'
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        status:
+          $ref: '#/components/schemas/PatientAccountLinkStatus'
+        revokedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        revokeReason:
+          type:
+            - string
+            - 'null'
+          maxLength: 500
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PatientAccountLinkPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatientAccountLink'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    PatientDuplicateMatchReasons:
+      type: object
+      additionalProperties: false
+      properties:
+        phone:
+          type: boolean
+        email:
+          type: boolean
+        nameDateOfBirth:
+          type: boolean
+    ReviewPatientDuplicateCandidateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - reviewReason
+      properties:
+        status:
+          type: string
+          enum:
+            - CONFIRMED
+            - REJECTED
+        reviewReason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    PatientDuplicateCandidateErrorRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    PatientDuplicateCandidate:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - sourcePatientId
+        - candidatePatientId
+        - matchReasons
+        - score
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        sourcePatientId:
+          type: string
+          format: uuid
+        candidatePatientId:
+          type: string
+          format: uuid
+        matchReasons:
+          $ref: '#/components/schemas/PatientDuplicateMatchReasons'
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        status:
+          $ref: '#/components/schemas/PatientDuplicateCandidateStatus'
+        reviewerAccountId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        reviewedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        reviewReason:
+          type:
+            - string
+            - 'null'
+          maxLength: 500
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PatientDuplicateCandidatePage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatientDuplicateCandidate'
         nextCursor:
           type:
             - string
