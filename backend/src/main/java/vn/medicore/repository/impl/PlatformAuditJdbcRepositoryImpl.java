@@ -23,6 +23,7 @@ import vn.medicore.repository.PlatformAuditRepository;
 public class PlatformAuditJdbcRepositoryImpl implements PlatformAuditRepository {
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() { };
+    private static final TypeReference<Map<String, List<String>>> HEADER_MAP_TYPE = new TypeReference<>() { };
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
 
@@ -37,8 +38,8 @@ public class PlatformAuditJdbcRepositoryImpl implements PlatformAuditRepository 
                 insert into break_glass_grant(id, requester_account_id, grantor_account_id,
                     requester_effective_role_snapshot, patient_id, purpose, reason, requested_at, granted_at,
                     effective_from, expires_at, review_due_at, alert_reference, ticket_reference, request_id,
-                    session_id, correlation_id, status, version)
-                values (?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    session_id, correlation_id, status, grant_mechanism, policy_reference, version)
+                values (?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'POLICY', 'r1-policy-v1', ?)
                 """, value.id(), value.requesterAccountId(), value.grantorAccountId(), json(roleSnapshot),
                 value.patientId(), value.purpose(), value.reason(), value.requestedAt(), value.grantedAt(),
                 value.effectiveFrom(), value.expiresAt(), value.reviewDueAt(), value.alertReference(),
@@ -123,14 +124,22 @@ public class PlatformAuditJdbcRepositoryImpl implements PlatformAuditRepository 
     public Optional<IdempotencyRow> idempotencyForUpdate(String principalScope, String operation, String key) {
         return queryOne("""
                 select id, principal_scope, operation, idempotency_key, request_hash, status, response_status,
-                    response_body, response_content_type, response_etag, response_location, expires_at from idempotency_record
+                    response_body, response_content_type, response_etag, response_location, response_headers,
+                    error_code, expires_at from idempotency_record
                 where principal_scope = ? and operation = ? and idempotency_key = ? for update
                 """, this::idempotency, principalScope, operation, key);
     }
 
     @Override
-    public boolean insertIdempotency(IdempotencyRow row) {
-        Instant now = Instant.now();
+    public void deleteExpiredIdempotency(String principalScope, String operation, String key, Instant now) {
+        update("""
+                delete from idempotency_record
+                where principal_scope = ? and operation = ? and idempotency_key = ? and expires_at <= ?
+                """, principalScope, operation, key, now);
+    }
+
+    @Override
+    public boolean insertIdempotency(IdempotencyRow row, Instant now) {
         return update("""
                 insert into idempotency_record(id, principal_scope, operation, idempotency_key, request_hash,
                     fingerprint_version, status, created_at, updated_at, expires_at, version)
@@ -141,20 +150,28 @@ public class PlatformAuditJdbcRepositoryImpl implements PlatformAuditRepository 
 
     @Override
     public void completeIdempotency(
-            UUID id, int status, byte[] responseBody, String contentType, String etag, String location, Instant now) {
+            UUID id,
+            int status,
+            byte[] responseBody,
+            String contentType,
+            String etag,
+            String location,
+            Map<String, List<String>> responseHeaders,
+            String errorCode,
+            Instant now) {
+        String state = status < 400 ? "SUCCEEDED" : "FAILED";
         update("""
-                update idempotency_record set status = 'SUCCEEDED', response_status = ?, response_body = ?,
-                    response_content_type = ?, response_etag = ?, response_location = ?, updated_at = ?,
-                    version = version + 1 where id = ? and status = 'IN_PROGRESS'
-                """, status, responseBody, contentType, etag, location, now, id);
+                update idempotency_record set status = ?, response_status = ?, response_body = ?,
+                    response_content_type = ?, response_etag = ?, response_location = ?, response_headers = ?::jsonb,
+                    error_code = ?, updated_at = ?, version = version + 1
+                where id = ? and status = 'IN_PROGRESS'
+                """, state, status, responseBody, contentType, etag, location, jsonHeaders(responseHeaders), errorCode,
+                now, id);
     }
 
     @Override
     public void failIdempotency(UUID id, int status, String errorCode, Instant now) {
-        update("""
-                update idempotency_record set status = 'FAILED', response_status = ?, error_code = ?,
-                    updated_at = ?, version = version + 1 where id = ? and status = 'IN_PROGRESS'
-                """, status, errorCode, now, id);
+        completeIdempotency(id, status, null, null, null, null, null, errorCode, now);
     }
 
     private BreakGlassView breakGlass(ResultSet rs, int row) throws SQLException {
@@ -184,7 +201,8 @@ public class PlatformAuditJdbcRepositoryImpl implements PlatformAuditRepository 
                 rs.getString("idempotency_key"), rs.getString("request_hash"), rs.getString("status"),
                 rs.getObject("response_status", Integer.class), rs.getBytes("response_body"),
                 rs.getString("response_content_type"), rs.getString("response_etag"),
-                rs.getString("response_location"), instant(rs, "expires_at"));
+                rs.getString("response_location"), headers(rs.getString("response_headers")),
+                rs.getString("error_code"), instant(rs, "expires_at"));
     }
 
     private String json(Map<String, Object> value) {
@@ -202,6 +220,24 @@ public class PlatformAuditJdbcRepositoryImpl implements PlatformAuditRepository 
             return objectMapper.readValue(value, MAP_TYPE);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Cannot decode redacted audit metadata", exception);
+        }
+    }
+
+    private String jsonHeaders(Map<String, List<String>> value) {
+        if (value == null) return null;
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Cannot encode idempotency response headers", exception);
+        }
+    }
+
+    private Map<String, List<String>> headers(String value) {
+        if (value == null) return null;
+        try {
+            return objectMapper.readValue(value, HEADER_MAP_TYPE);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Cannot decode idempotency response headers", exception);
         }
     }
 

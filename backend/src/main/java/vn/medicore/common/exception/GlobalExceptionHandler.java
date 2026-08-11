@@ -2,7 +2,6 @@ package vn.medicore.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
-import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -13,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import vn.medicore.common.web.RequestContext;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -51,6 +51,8 @@ public class GlobalExceptionHandler {
         response.getBody().setProperty("retryAfterSeconds", exception.retryAfterSeconds());
         return ResponseEntity.status(response.getStatusCode())
                 .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()))
+                .header(RequestContext.REQUEST_ID_HEADER, RequestContext.requestId(request))
+                .header(RequestContext.CORRELATION_ID_HEADER, RequestContext.correlationId(request))
                 .body(response.getBody());
     }
 
@@ -69,13 +71,13 @@ public class GlobalExceptionHandler {
         detail.setType(URI.create("https://medicore.vn/problems/" + code.toLowerCase().replace('_', '-')));
         detail.setTitle(title);
         detail.setProperty("code", code);
-        detail.setProperty("requestId", requestId(request));
-        detail.setProperty("correlationId", request.getHeader("X-Correlation-Id"));
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    private String requestId(HttpServletRequest request) {
-        String value = request.getHeader("X-Request-Id");
-        return value == null || value.isBlank() ? UUID.randomUUID().toString() : value;
+        String requestId = RequestContext.requestId(request);
+        String correlationId = RequestContext.correlationId(request);
+        detail.setProperty("requestId", requestId);
+        detail.setProperty("correlationId", correlationId);
+        return ResponseEntity.status(status)
+                .header(RequestContext.REQUEST_ID_HEADER, requestId)
+                .header(RequestContext.CORRELATION_ID_HEADER, correlationId)
+                .body(detail);
     }
 }

@@ -32,9 +32,26 @@ public interface PlatformAuditService {
             String cursor,
             int limit);
 
-    BreakGlassView revokeBreakGlass(UUID grantId, UUID actorId, String reason, long version);
+    BreakGlassView revokeBreakGlass(
+            UUID grantId,
+            UUID actorId,
+            String reason,
+            long version,
+            UUID sessionId,
+            Map<String, Object> effectiveRoleSnapshot,
+            String requestId,
+            String correlationId);
 
-    BreakGlassView reviewBreakGlass(UUID grantId, UUID reviewerId, String outcome, String reason, long version);
+    BreakGlassView reviewBreakGlass(
+            UUID grantId,
+            UUID reviewerId,
+            String outcome,
+            String reason,
+            long version,
+            UUID sessionId,
+            Map<String, Object> effectiveRoleSnapshot,
+            String requestId,
+            String correlationId);
 
     Page<AuditEventView> listAuditEvents(
             Instant occurredFrom,

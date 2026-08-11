@@ -10,6 +10,7 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
+import vn.medicore.common.exception.ProblemResponseWriter;
 import vn.medicore.controller.SessionAuthenticationFilter;
 import vn.medicore.service.IdentityAccessService;
 
@@ -21,7 +22,8 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             IdentityAccessService identityAccess,
-            AuthProperties properties) throws Exception {
+            AuthProperties properties,
+            ProblemResponseWriter problems) throws Exception {
         return http
                 .authorizeHttpRequests(authorize -> authorize
                         // Auth public endpoints (method-agnostic — POST only in practice)
@@ -39,9 +41,12 @@ public class SecurityConfig {
                                 "/api/v1/auth/password-resets")
                         .permitAll()
                         .anyRequest().authenticated())
-                .exceptionHandling(errors -> errors.authenticationEntryPoint(
-                        (request, response, exception) -> response.sendError(HttpStatus.UNAUTHORIZED.value())))
-                .addFilterBefore(new SessionAuthenticationFilter(identityAccess, properties), AnonymousAuthenticationFilter.class)
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint((request, response, exception) ->
+                                problems.write(request, response, HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required"))
+                        .accessDeniedHandler((request, response, exception) ->
+                                problems.write(request, response, HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Access denied")))
+                .addFilterBefore(new SessionAuthenticationFilter(identityAccess, properties, problems), AnonymousAuthenticationFilter.class)
                 .httpBasic(httpBasic -> httpBasic.disable())
                 .formLogin(form -> form.disable())
                 .logout(logout -> logout.disable())

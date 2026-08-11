@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -21,6 +22,8 @@ import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.config.AuthProperties;
 import vn.medicore.config.SecretHasher;
 import vn.medicore.dto.AuthenticatedAccount;
+import vn.medicore.dto.IdentityAuditContext;
+import vn.medicore.dto.SecurityAuditRecorder;
 import vn.medicore.dto.IdentityModels.AccountView;
 import vn.medicore.dto.IdentityModels.AssignmentView;
 import vn.medicore.dto.IdentityModels.CommandAccepted;
@@ -56,6 +59,7 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     private final AuthProperties properties;
     private final Clock clock;
     private final UuidV7Generator ids;
+    private final SecurityAuditRecorder securityAudit;
 
     public IdentityAccessServiceImpl(
             IdentityRepository store,
@@ -65,7 +69,8 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
             AuthenticationDeliveryService delivery,
             AuthProperties properties,
             Clock clock,
-            UuidV7Generator ids) {
+            UuidV7Generator ids,
+            SecurityAuditRecorder securityAudit) {
         this.store = store;
         this.passwordPolicy = passwordPolicy;
         this.passwordEncoder = passwordEncoder;
@@ -74,6 +79,7 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         this.properties = properties;
         this.clock = clock;
         this.ids = ids;
+        this.securityAudit = securityAudit;
     }
 
     @Override
@@ -215,15 +221,29 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     }
 
     @Override
-    public void logoutCurrent(String rawSessionToken, String reason) {
-        if (rawSessionToken != null) {
-            store.revokeSessionByHash(secretHasher.hash("SESSION", rawSessionToken), clock.instant(), reason);
-        }
+    public void logoutCurrent(String rawSessionToken, String reason, String requestId, String correlationId) {
+        if (rawSessionToken == null || rawSessionToken.isBlank()) return;
+        Instant now = clock.instant();
+        Optional<SessionRow> session = store.activeSession(secretHasher.hash("SESSION", rawSessionToken));
+        store.revokeSessionByHash(secretHasher.hash("SESSION", rawSessionToken), now, reason);
+        session.ifPresent(value -> securityAudit.record(
+                value.accountId(),
+                Map.of(),
+                "identity.session.logout",
+                "SUCCEEDED",
+                reason,
+                "session",
+                value.id(),
+                null,
+                value.id().toString(),
+                requestId,
+                correlationId));
     }
 
     @Override
-    public void logoutAll(UUID accountId, String reason) {
+    public void logoutAll(UUID accountId, String reason, IdentityAuditContext audit) {
         store.revokeAllSessions(accountId, clock.instant(), reason);
+        recordAudit(audit, "identity.session.logout_all", reason, "account", accountId, null);
     }
 
     @Override
@@ -266,7 +286,8 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         passwordPolicy.validate(newPassword);
         Instant now = clock.instant();
         AccountRow account = store.findAccountByIdForUpdate(accountId).orElseThrow(ResourceNotFoundException::new);
-        if (account.version() != version || !passwordEncoder.matches(currentPassword, store.activeCredentialHash(accountId).orElse(""))) {
+        if (account.version() != version) throw new StaleVersionException();
+        if (!passwordEncoder.matches(currentPassword, store.activeCredentialHash(accountId).orElse(""))) {
             throw new InvalidAuthenticationException(GENERIC_AUTHENTICATION_FAILURE);
         }
         store.supersedeCredential(account.id(), now, "PASSWORD_CHANGE");
@@ -279,7 +300,8 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     @Override
     @Transactional(readOnly = true)
     public Page<AccountView> listAccounts(String status, String cursor, int limit) {
-        return page(store.listAccounts(status, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listAccounts(status, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -289,7 +311,12 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     }
 
     @Override
-    public AccountView changeAccountStatus(UUID accountId, String status, String reason, long version, UUID actorId) {
+    public AccountView changeAccountStatus(
+            UUID accountId,
+            String status,
+            String reason,
+            long version,
+            IdentityAuditContext audit) {
         AccountStatus target = AccountStatus.valueOf(status);
         if (target == AccountStatus.PENDING_VERIFICATION || target == AccountStatus.TEMPORARILY_LOCKED) {
             throw new IllegalArgumentException("Unsupported administrative account status");
@@ -309,58 +336,83 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
             store.revokeAllPendingTokens(accountId, now);
             store.revokeAllSessions(accountId, now, reason);
         }
+        recordAudit(audit, "identity.account.status.change", reason, "account", changed.id(), changed.version());
         return changed.toView();
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<RoleView> listRoles(Boolean active, String cursor, int limit) {
-        return page(store.listRoles(active, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listRoles(active, limit + 1, offset), limit, offset);
     }
 
     @Override
-    public RoleView createRole(String code, String name, UUID actorId) {
+    public RoleView createRole(String code, String name, IdentityAuditContext audit) {
         UUID id = ids.next();
         store.insertRole(id, code, name, clock.instant());
-        return store.role(id).orElseThrow();
+        RoleView role = store.role(id).orElseThrow();
+        recordAudit(audit, "identity.role.create", null, "role", role.id(), role.version());
+        return role;
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<PermissionView> listPermissions(Boolean active, String cursor, int limit) {
-        return page(store.listPermissions(active, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listPermissions(active, limit + 1, offset), limit, offset);
     }
 
     @Override
-    public RoleView replaceRolePermissions(UUID roleId, Set<UUID> permissionIds, long version, UUID actorId) {
-        store.replaceRolePermissions(roleId, permissionIds, actorId, clock.instant(), version);
-        return store.role(roleId).orElseThrow(ResourceNotFoundException::new);
+    public RoleView replaceRolePermissions(
+            UUID roleId,
+            Set<UUID> permissionIds,
+            long version,
+            IdentityAuditContext audit) {
+        store.replaceRolePermissions(roleId, permissionIds, audit.actorAccountId(), clock.instant(), version);
+        RoleView role = store.role(roleId).orElseThrow(ResourceNotFoundException::new);
+        recordAudit(audit, "identity.role.permissions.replace", null, "role", role.id(), role.version());
+        return role;
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<AssignmentView> listAssignments(UUID accountId, String status, Instant effectiveAt, String cursor, int limit) {
-        return page(store.listAssignments(accountId, status, effectiveAt, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listAssignments(accountId, status, effectiveAt, limit + 1, offset), limit, offset);
     }
 
     @Override
-    public AssignmentView assignRole(UUID accountId, UUID roleId, UUID departmentId, Instant effectiveFrom,
-                                      Instant effectiveTo, String reason, UUID actorId) {
+    public AssignmentView assignRole(
+            UUID accountId,
+            UUID roleId,
+            UUID departmentId,
+            Instant effectiveFrom,
+            Instant effectiveTo,
+            String reason,
+            IdentityAuditContext audit) {
         if (effectiveTo != null && !effectiveTo.isAfter(effectiveFrom)) {
             throw new IllegalArgumentException("Role assignment interval is invalid");
         }
         store.findAccountById(accountId).orElseThrow(ResourceNotFoundException::new);
         store.role(roleId).orElseThrow(ResourceNotFoundException::new);
         AssignmentView assignment = new AssignmentView(ids.next(), accountId, roleId, departmentId,
-                effectiveFrom, effectiveTo, "ACTIVE", actorId, reason, 0);
+                effectiveFrom, effectiveTo, "ACTIVE", audit.actorAccountId(), reason, 0);
         store.insertAssignment(assignment);
+        recordAudit(audit, "identity.assignment.create", reason, "role_assignment", assignment.id(), assignment.version());
         return assignment;
     }
 
     @Override
-    public AssignmentView revokeAssignment(UUID assignmentId, String reason, long version, UUID actorId) {
-        store.revokeAssignment(assignmentId, reason, actorId, clock.instant(), version);
-        return store.assignment(assignmentId).orElseThrow(ResourceNotFoundException::new);
+    public AssignmentView revokeAssignment(
+            UUID assignmentId,
+            String reason,
+            long version,
+            IdentityAuditContext audit) {
+        store.revokeAssignment(assignmentId, reason, audit.actorAccountId(), clock.instant(), version);
+        AssignmentView assignment = store.assignment(assignmentId).orElseThrow(ResourceNotFoundException::new);
+        recordAudit(audit, "identity.assignment.revoke", reason, "role_assignment", assignment.id(), assignment.version());
+        return assignment;
     }
 
     @Override
@@ -466,6 +518,27 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         requireUpdated(store.updateAccount(successful, account.version()));
     }
 
+    private void recordAudit(
+            IdentityAuditContext audit,
+            String action,
+            String reason,
+            String resourceType,
+            UUID resourceId,
+            Long resourceVersion) {
+        securityAudit.record(
+                audit.actorAccountId(),
+                audit.effectiveRoleSnapshot(),
+                action,
+                "SUCCEEDED",
+                reason,
+                resourceType,
+                resourceId,
+                resourceVersion,
+                audit.sessionId(),
+                audit.requestId(),
+                audit.correlationId());
+    }
+
     private static void requireUpdated(int updated) {
         if (updated != 1) throw new StaleVersionException();
     }
@@ -497,11 +570,11 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         }
     }
 
-    private static <T> Page<T> page(List<T> values, int limit) {
+    private static <T> Page<T> page(List<T> values, int limit, int offset) {
         boolean hasMore = values.size() > limit;
         List<T> items = hasMore ? values.subList(0, limit) : values;
         String next = hasMore ? Base64.getUrlEncoder().withoutPadding().encodeToString(
-                Integer.toString(limit).getBytes(java.nio.charset.StandardCharsets.UTF_8)) : null;
+                Integer.toString(offset + items.size()).getBytes(java.nio.charset.StandardCharsets.UTF_8)) : null;
         return new Page<>(List.copyOf(items), next, hasMore);
     }
 }

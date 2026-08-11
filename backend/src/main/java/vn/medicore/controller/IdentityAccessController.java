@@ -2,13 +2,14 @@ package vn.medicore.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpHeaders;
@@ -27,8 +28,10 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vn.medicore.common.web.RequestContext;
 import vn.medicore.config.AuthProperties;
 import vn.medicore.dto.AuthenticatedAccount;
+import vn.medicore.dto.IdentityAuditContext;
 import vn.medicore.dto.IdentityModels.AccountView;
 import vn.medicore.dto.IdentityModels.AssignmentView;
 import vn.medicore.dto.IdentityModels.CommandAccepted;
@@ -52,59 +55,52 @@ public class IdentityAccessController {
     }
 
     @PostMapping("/auth/registrations")
-    ResponseEntity<CommandAccepted> register(
-            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
-            HttpServletRequest request,
-            @Valid @RequestBody RegistrationRequest body) {
+    ResponseEntity<CommandAccepted> register(HttpServletRequest request, @Valid @RequestBody RegistrationRequest body) {
         CommandAccepted result = identityAccess.register(
-                body.email(), body.password(), requestId(requestId), request.getRemoteAddr());
+                body.email(), body.password(), RequestContext.requestId(request), request.getRemoteAddr());
         return ResponseEntity.accepted().body(result);
     }
 
     @PostMapping("/auth/email-verification-challenges")
     ResponseEntity<CommandAccepted> requestEmailVerification(
-            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
             HttpServletRequest request,
             @Valid @RequestBody TargetEmailRequest body) {
         CommandAccepted result = identityAccess.requestEmailVerification(
-                body.email(), requestId(requestId), request.getRemoteAddr());
+                body.email(), RequestContext.requestId(request), request.getRemoteAddr());
         return ResponseEntity.accepted().body(result);
     }
 
     @PostMapping("/auth/email-verifications")
     AccountView verifyEmail(
-            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            HttpServletRequest request,
             @Valid @RequestBody EmailVerificationRequest body) {
-        return identityAccess.verifyEmail(body.email(), body.code(), body.token(), requestId(requestId));
+        return identityAccess.verifyEmail(body.email(), body.code(), body.token(), RequestContext.requestId(request));
     }
 
     @PostMapping("/auth/password-sessions")
     ResponseEntity<SessionView> loginWithPassword(
-            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
             HttpServletRequest request,
             @Valid @RequestBody PasswordLoginRequest body) {
         SessionIssue issue = identityAccess.loginWithPassword(
-                body.email(), body.password(), requestId(requestId), request.getRemoteAddr(), request.getHeader("User-Agent"));
+                body.email(), body.password(), RequestContext.requestId(request), request.getRemoteAddr(), request.getHeader("User-Agent"));
         return sessionResponse(issue);
     }
 
     @PostMapping("/auth/otp-challenges")
     ResponseEntity<CommandAccepted> requestLoginOtp(
-            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
             HttpServletRequest request,
             @Valid @RequestBody TargetEmailRequest body) {
         CommandAccepted result = identityAccess.requestLoginOtp(
-                body.email(), requestId(requestId), request.getRemoteAddr());
+                body.email(), RequestContext.requestId(request), request.getRemoteAddr());
         return ResponseEntity.accepted().body(result);
     }
 
     @PostMapping("/auth/otp-sessions")
     ResponseEntity<SessionView> loginWithOtp(
-            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
             HttpServletRequest request,
             @Valid @RequestBody OtpLoginRequest body) {
         SessionIssue issue = identityAccess.loginWithOtp(
-                body.email(), body.code(), requestId(requestId), request.getRemoteAddr(), request.getHeader("User-Agent"));
+                body.email(), body.code(), RequestContext.requestId(request), request.getRemoteAddr(), request.getHeader("User-Agent"));
         return sessionResponse(issue);
     }
 
@@ -115,32 +111,35 @@ public class IdentityAccessController {
     }
 
     @DeleteMapping("/auth/session")
-    ResponseEntity<Void> logoutCurrent(@CookieValue(name = "${medicore.auth.session.cookie-name:MEDICORE_SESSION}", required = false) String sessionToken) {
-        identityAccess.logoutCurrent(sessionToken, "USER_LOGOUT");
+    ResponseEntity<Void> logoutCurrent(
+            HttpServletRequest request,
+            @CookieValue(name = "${medicore.auth.session.cookie-name:MEDICORE_SESSION}", required = false) String sessionToken) {
+        identityAccess.logoutCurrent(sessionToken, "USER_LOGOUT", RequestContext.requestId(request), RequestContext.correlationId(request));
         return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, expiredCookie().toString()).build();
     }
 
     @DeleteMapping("/auth/sessions")
-    ResponseEntity<Void> logoutAll(@AuthenticationPrincipal AuthenticatedAccount principal) {
-        identityAccess.logoutAll(principal.accountId(), "USER_REVOKED_ALL");
+    ResponseEntity<Void> logoutAll(
+            HttpServletRequest request,
+            @AuthenticationPrincipal AuthenticatedAccount principal) {
+        identityAccess.logoutAll(principal.accountId(), "USER_REVOKED_ALL", auditContext(request, principal));
         return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, expiredCookie().toString()).build();
     }
 
     @PostMapping("/auth/password-recovery-challenges")
     ResponseEntity<CommandAccepted> requestPasswordRecovery(
-            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
             HttpServletRequest request,
             @Valid @RequestBody TargetEmailRequest body) {
         CommandAccepted result = identityAccess.requestPasswordRecovery(
-                body.email(), requestId(requestId), request.getRemoteAddr());
+                body.email(), RequestContext.requestId(request), request.getRemoteAddr());
         return ResponseEntity.accepted().body(result);
     }
 
     @PostMapping("/auth/password-resets")
     AccountView resetPassword(
-            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            HttpServletRequest request,
             @Valid @RequestBody PasswordResetRequest body) {
-        return identityAccess.resetPassword(body.token(), body.newPassword(), requestId(requestId));
+        return identityAccess.resetPassword(body.token(), body.newPassword(), RequestContext.requestId(request));
     }
 
     @PutMapping("/auth/password")
@@ -170,11 +169,13 @@ public class IdentityAccessController {
     @PostMapping("/admin/accounts/{id}/actions/change-status")
     @PreAuthorize("hasAuthority('account.status.change')")
     ResponseEntity<AccountView> changeAccountStatus(
+            HttpServletRequest request,
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @RequestHeader("If-Match") String ifMatch,
             @Valid @RequestBody ChangeAccountStatusRequest body) {
-        AccountView view = identityAccess.changeAccountStatus(id, body.targetStatus(), body.reason(), version(ifMatch), principal.accountId());
+        AccountView view = identityAccess.changeAccountStatus(
+                id, body.status(), body.reason(), version(ifMatch), auditContext(request, principal));
         return versioned(view, view.version());
     }
 
@@ -188,9 +189,12 @@ public class IdentityAccessController {
     }
 
     @PostMapping("/admin/roles")
-    @PreAuthorize("hasAuthority('role.permission.manage')")
-    RoleView createRole(@AuthenticationPrincipal AuthenticatedAccount principal, @Valid @RequestBody RoleCreateRequest body) {
-        return identityAccess.createRole(body.code(), body.name(), principal.accountId());
+    @PreAuthorize("hasAuthority('role.create')")
+    RoleView createRole(
+            HttpServletRequest request,
+            @AuthenticationPrincipal AuthenticatedAccount principal,
+            @Valid @RequestBody RoleCreateRequest body) {
+        return identityAccess.createRole(body.code(), body.name(), auditContext(request, principal));
     }
 
     @GetMapping("/admin/permissions")
@@ -205,11 +209,17 @@ public class IdentityAccessController {
     @PutMapping("/admin/roles/{id}/permissions")
     @PreAuthorize("hasAuthority('role.permission.manage')")
     ResponseEntity<RoleView> replaceRolePermissions(
+            HttpServletRequest request,
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @RequestHeader("If-Match") String ifMatch,
             @Valid @RequestBody RolePermissionsRequest body) {
-        RoleView view = identityAccess.replaceRolePermissions(id, body.permissionIds(), version(ifMatch), principal.accountId());
+        Set<UUID> permissionIds = Set.copyOf(body.permissionIds());
+        if (permissionIds.size() != body.permissionIds().size()) {
+            throw new IllegalArgumentException("Permission identifiers must be unique");
+        }
+        RoleView view = identityAccess.replaceRolePermissions(
+                id, permissionIds, version(ifMatch), auditContext(request, principal));
         return versioned(view, view.version());
     }
 
@@ -227,22 +237,36 @@ public class IdentityAccessController {
     @PostMapping("/admin/accounts/{id}/role-assignments")
     @PreAuthorize("hasAuthority('account.manage_role')")
     AssignmentView assignRole(
+            HttpServletRequest request,
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @Valid @RequestBody RoleAssignmentRequest body) {
         return identityAccess.assignRole(id, body.roleId(), body.departmentId(), body.effectiveFrom(),
-                body.effectiveTo(), body.reason(), principal.accountId());
+                body.effectiveTo(), body.reason(), auditContext(request, principal));
     }
 
     @PostMapping("/admin/role-assignments/{id}/actions/revoke")
     @PreAuthorize("hasAuthority('account.manage_role')")
     ResponseEntity<AssignmentView> revokeAssignment(
+            HttpServletRequest request,
             @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @RequestHeader("If-Match") String ifMatch,
             @Valid @RequestBody RevokeAssignmentRequest body) {
-        AssignmentView view = identityAccess.revokeAssignment(id, body.reason(), version(ifMatch), principal.accountId());
+        AssignmentView view = identityAccess.revokeAssignment(
+                id, body.reason(), version(ifMatch), auditContext(request, principal));
         return versioned(view, view.version());
+    }
+
+    private static IdentityAuditContext auditContext(
+            HttpServletRequest request,
+            AuthenticatedAccount principal) {
+        return new IdentityAuditContext(
+                principal.accountId(),
+                principal.sessionId().toString(),
+                Map.of("permissions", List.copyOf(principal.permissions())),
+                RequestContext.requestId(request),
+                RequestContext.correlationId(request));
     }
 
     private ResponseEntity<SessionView> sessionResponse(SessionIssue issue) {
@@ -278,20 +302,25 @@ public class IdentityAccessController {
         return Long.parseLong(value.substring(1, value.length() - 1));
     }
 
-    private static String requestId(String value) {
-        return value == null || value.isBlank() ? UUID.randomUUID().toString() : value;
-    }
-
-    record RegistrationRequest(@NotBlank String email, @NotBlank String password) {}
-    record TargetEmailRequest(@NotBlank String email) {}
-    record EmailVerificationRequest(@NotBlank String email, String code, String token) {}
-    record PasswordLoginRequest(@NotBlank String email, @NotBlank String password) {}
-    record OtpLoginRequest(@NotBlank String email, @NotBlank String code) {}
-    record PasswordResetRequest(@NotBlank String token, @NotBlank String newPassword) {}
-    record PasswordChangeRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {}
-    record ChangeAccountStatusRequest(@NotBlank String targetStatus, @NotBlank @Size(max = 500) String reason) {}
-    record RoleCreateRequest(@NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 255) String name) {}
-    record RolePermissionsRequest(@NotNull Set<UUID> permissionIds) {}
+    record RegistrationRequest(@NotBlank @Size(max = 320) String email,
+                               @NotBlank @Size(max = 128) String password) {}
+    record TargetEmailRequest(@NotBlank @Size(max = 320) String email) {}
+    record EmailVerificationRequest(@Size(max = 320) String email,
+                                    @Size(min = 6, max = 12) String code,
+                                    @Size(min = 32, max = 512) String token) {}
+    record PasswordLoginRequest(@NotBlank @Size(max = 320) String email,
+                                @NotBlank @Size(max = 128) String password) {}
+    record OtpLoginRequest(@NotBlank @Size(max = 320) String email,
+                           @NotBlank @Size(min = 6, max = 12) String code) {}
+    record PasswordResetRequest(@NotBlank @Size(min = 32, max = 512) String token,
+                                @NotBlank @Size(min = 12, max = 128) String newPassword) {}
+    record PasswordChangeRequest(@NotBlank @Size(max = 128) String currentPassword,
+                                 @NotBlank @Size(min = 12, max = 128) String newPassword) {}
+    record ChangeAccountStatusRequest(@NotBlank String status,
+                                      @NotBlank @Size(max = 500) String reason) {}
+    record RoleCreateRequest(@NotBlank @Size(max = 64) @jakarta.validation.constraints.Pattern(regexp = "^[A-Z][A-Z0-9_]*$") String code,
+                             @NotBlank @Size(max = 200) String name) {}
+    record RolePermissionsRequest(@NotNull List<UUID> permissionIds) {}
     record RoleAssignmentRequest(@NotNull UUID roleId, UUID departmentId, @NotNull Instant effectiveFrom, Instant effectiveTo, @NotBlank @Size(max = 500) String reason) {}
     record RevokeAssignmentRequest(@NotBlank @Size(max = 500) String reason) {}
 }

@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vn.medicore.common.web.RequestContext;
 import vn.medicore.dto.AuditModels.AuditEventView;
 import vn.medicore.dto.AuditModels.BreakGlassView;
 import vn.medicore.dto.AuditModels.Page;
@@ -42,12 +43,12 @@ public class PlatformAuditController {
     ResponseEntity<BreakGlassView> requestBreakGlass(
             @PathVariable UUID patientId,
             @AuthenticationPrincipal AuthenticatedAccount principal,
-            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            jakarta.servlet.http.HttpServletRequest request,
             @Valid @RequestBody BreakGlassRequest body) {
         BreakGlassView result = audit.requestBreakGlass(patientId, principal.accountId(), principal.sessionId(),
-                Map.of("permissions", List.copyOf(principal.permissions())), body.purpose(), body.reason(), Duration.ofMinutes(body.ttlMinutes()),
-                body.alertReference(), body.ticketReference(), requestId(requestId), requestId(correlationId));
+                snapshot(principal), body.purpose(), body.reason(), Duration.ofMinutes(body.ttlMinutes()),
+                body.alertReference(), body.ticketReference(), RequestContext.requestId(request),
+                RequestContext.correlationId(request));
         return versioned(result, result.version());
     }
 
@@ -70,8 +71,10 @@ public class PlatformAuditController {
             @PathVariable UUID grantId,
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @RequestHeader("If-Match") String ifMatch,
+            jakarta.servlet.http.HttpServletRequest request,
             @Valid @RequestBody ReasonRequest body) {
-        BreakGlassView result = audit.revokeBreakGlass(grantId, principal.accountId(), body.reason(), version(ifMatch));
+        BreakGlassView result = audit.revokeBreakGlass(grantId, principal.accountId(), body.reason(), version(ifMatch),
+                principal.sessionId(), snapshot(principal), RequestContext.requestId(request), RequestContext.correlationId(request));
         return versioned(result, result.version());
     }
 
@@ -81,9 +84,10 @@ public class PlatformAuditController {
             @PathVariable UUID grantId,
             @AuthenticationPrincipal AuthenticatedAccount principal,
             @RequestHeader("If-Match") String ifMatch,
+            jakarta.servlet.http.HttpServletRequest request,
             @Valid @RequestBody ReviewRequest body) {
-        BreakGlassView result = audit.reviewBreakGlass(
-                grantId, principal.accountId(), body.outcome(), body.reason(), version(ifMatch));
+        BreakGlassView result = audit.reviewBreakGlass(grantId, principal.accountId(), body.outcome(), body.reason(), version(ifMatch),
+                principal.sessionId(), snapshot(principal), RequestContext.requestId(request), RequestContext.correlationId(request));
         return versioned(result, result.version());
     }
 
@@ -109,6 +113,10 @@ public class PlatformAuditController {
         return audit.getAuditEvent(auditEventId);
     }
 
+    private static Map<String, Object> snapshot(AuthenticatedAccount principal) {
+        return Map.of("permissions", List.copyOf(principal.permissions()));
+    }
+
     private static <T> ResponseEntity<T> versioned(T body, long version) {
         return ResponseEntity.ok().eTag(Long.toString(version)).body(body);
     }
@@ -118,9 +126,6 @@ public class PlatformAuditController {
         return Long.parseLong(value.substring(1, value.length() - 1));
     }
 
-    private static String requestId(String value) {
-        return value == null || value.isBlank() ? UUID.randomUUID().toString() : value;
-    }
 
     record BreakGlassRequest(
             @NotBlank @Size(max = 500) String purpose,
@@ -134,7 +139,8 @@ public class PlatformAuditController {
     }
 
     record ReviewRequest(
-            @NotBlank @Size(max = 64) String outcome,
+            @NotBlank @Size(max = 64)
+            @jakarta.validation.constraints.Pattern(regexp = "^[A-Z][A-Z0-9_]*$") String outcome,
             @NotBlank @Size(max = 500) String reason) {
     }
 }
