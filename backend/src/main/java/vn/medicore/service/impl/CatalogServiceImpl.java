@@ -11,14 +11,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.exception.ResourceNotFoundException;
 import vn.medicore.common.utils.UuidV7Generator;
+import vn.medicore.dto.CatalogAuditContext;
 import vn.medicore.dto.CatalogModels.DepartmentView;
-import vn.medicore.dto.SecurityAuditRecorder;
 import vn.medicore.dto.CatalogModels.Page;
 import vn.medicore.dto.CatalogModels.PractitionerRoleView;
 import vn.medicore.dto.CatalogModels.PractitionerView;
 import vn.medicore.dto.CatalogModels.RoomView;
 import vn.medicore.dto.CatalogModels.ServicePriceView;
 import vn.medicore.dto.CatalogModels.ServiceView;
+import vn.medicore.dto.SecurityAuditRecorder;
 import vn.medicore.repository.CatalogRepository;
 import vn.medicore.repository.CatalogRepository.DepartmentRow;
 import vn.medicore.repository.CatalogRepository.PractitionerRoleRow;
@@ -44,14 +45,11 @@ public class CatalogServiceImpl implements CatalogService {
         this.ids = ids;
     }
 
-    // ===========================================================
-    // Department
-    // ===========================================================
-
     @Override
     @Transactional(readOnly = true)
     public Page<DepartmentView> listDepartments(Boolean active, String cursor, int limit) {
-        return page(store.listDepartments(active, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listDepartments(active, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -61,46 +59,47 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
-    public DepartmentView createDepartment(String code, String name, Instant effectiveFrom, Instant effectiveTo, UUID actorId) {
+    public DepartmentView createDepartment(
+            String code, String name, Instant effectiveFrom, Instant effectiveTo, CatalogAuditContext context) {
+        validateRange(effectiveFrom, effectiveTo);
         Instant now = clock.instant();
         UUID id = ids.next();
-        if (effectiveTo != null && !effectiveTo.isAfter(effectiveFrom)) {
-            throw new IllegalArgumentException("effective_to must be after effective_from");
-        }
         store.insertDepartment(new DepartmentRow(id, code.strip(), name.strip(), true,
                 effectiveFrom, effectiveTo, 0, now, now));
-        return store.departmentById(id).orElseThrow();
+        DepartmentView view = store.departmentById(id).orElseThrow();
+        record(context, "department.create", "Department", view.id(), view.version(), "created");
+        return view;
     }
 
     @Override
-    public DepartmentView updateDepartment(UUID id, String code, String name, Instant effectiveFrom, Instant effectiveTo, long version, UUID actorId) {
+    public DepartmentView updateDepartment(
+            UUID id, String code, String name, Instant effectiveFrom, Instant effectiveTo, long version, CatalogAuditContext context) {
         DepartmentView existing = store.departmentByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
-        if (effectiveTo != null && !effectiveTo.isAfter(effectiveFrom)) {
-            throw new IllegalArgumentException("effective_to must be after effective_from");
-        }
+        validateRange(effectiveFrom, effectiveTo);
         Instant now = clock.instant();
         store.updateDepartment(new DepartmentRow(id, code.strip(), name.strip(), existing.active(),
                 effectiveFrom, effectiveTo, version + 1, existing.createdAt(), now), version);
-        return store.departmentById(id).orElseThrow();
+        DepartmentView view = store.departmentById(id).orElseThrow();
+        record(context, "department.update", "Department", view.id(), view.version(), "updated");
+        return view;
     }
 
     @Override
-    public DepartmentView deactivateDepartment(UUID id, long version, UUID actorId) {
+    public DepartmentView deactivateDepartment(UUID id, long version, CatalogAuditContext context) {
         DepartmentView existing = store.departmentByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
         store.updateDepartment(new DepartmentRow(id, existing.code(), existing.name(), false,
                 existing.effectiveFrom(), existing.effectiveTo(), version + 1, existing.createdAt(), now), version);
-        return store.departmentById(id).orElseThrow();
+        DepartmentView view = store.departmentById(id).orElseThrow();
+        record(context, "department.update", "Department", view.id(), view.version(), "deactivated");
+        return view;
     }
-
-    // ===========================================================
-    // Room
-    // ===========================================================
 
     @Override
     @Transactional(readOnly = true)
     public Page<RoomView> listRooms(UUID departmentId, Boolean active, String cursor, int limit) {
-        return page(store.listRooms(departmentId, active, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listRooms(departmentId, active, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -110,41 +109,43 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
-    public RoomView createRoom(UUID departmentId, String code, String name, UUID actorId) {
-        // Validate department exists
+    public RoomView createRoom(UUID departmentId, String code, String name, CatalogAuditContext context) {
         store.departmentById(departmentId).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
         UUID id = ids.next();
         store.insertRoom(new RoomRow(id, departmentId, code.strip(), name.strip(), true, 0, now, now));
-        return store.roomById(id).orElseThrow();
+        RoomView view = store.roomById(id).orElseThrow();
+        record(context, "room.create", "Room", view.id(), view.version(), "created");
+        return view;
     }
 
     @Override
-    public RoomView updateRoom(UUID id, String code, String name, long version, UUID actorId) {
+    public RoomView updateRoom(UUID id, String code, String name, long version, CatalogAuditContext context) {
         RoomView existing = store.roomByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
         store.updateRoom(new RoomRow(id, existing.departmentId(), code.strip(), name.strip(),
                 existing.active(), version + 1, existing.createdAt(), now), version);
-        return store.roomById(id).orElseThrow();
+        RoomView view = store.roomById(id).orElseThrow();
+        record(context, "room.update", "Room", view.id(), view.version(), "updated");
+        return view;
     }
 
     @Override
-    public RoomView deactivateRoom(UUID id, long version, UUID actorId) {
+    public RoomView deactivateRoom(UUID id, long version, CatalogAuditContext context) {
         RoomView existing = store.roomByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
         store.updateRoom(new RoomRow(id, existing.departmentId(), existing.code(), existing.name(),
                 false, version + 1, existing.createdAt(), now), version);
-        return store.roomById(id).orElseThrow();
+        RoomView view = store.roomById(id).orElseThrow();
+        record(context, "room.update", "Room", view.id(), view.version(), "deactivated");
+        return view;
     }
-
-    // ===========================================================
-    // Service
-    // ===========================================================
 
     @Override
     @Transactional(readOnly = true)
     public Page<ServiceView> listServices(String serviceType, Boolean active, String cursor, int limit) {
-        return page(store.listServices(serviceType, active, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listServices(serviceType, active, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -154,39 +155,43 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
-    public ServiceView createService(String code, String name, String serviceType, UUID actorId) {
+    public ServiceView createService(String code, String name, String serviceType, CatalogAuditContext context) {
         Instant now = clock.instant();
         UUID id = ids.next();
         store.insertService(new ServiceRow(id, code.strip(), name.strip(), serviceType, true, false, 0, now, now));
-        return store.serviceById(id).orElseThrow();
+        ServiceView view = store.serviceById(id).orElseThrow();
+        record(context, "service.create", "Service", view.id(), view.version(), "created");
+        return view;
     }
 
     @Override
-    public ServiceView updateService(UUID id, String code, String name, String serviceType, long version, UUID actorId) {
+    public ServiceView updateService(
+            UUID id, String code, String name, String serviceType, long version, CatalogAuditContext context) {
         ServiceView existing = store.serviceByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
         store.updateService(new ServiceRow(id, code.strip(), name.strip(), serviceType,
                 existing.active(), existing.allowsCritical(), version + 1, existing.createdAt(), now), version);
-        return store.serviceById(id).orElseThrow();
+        ServiceView view = store.serviceById(id).orElseThrow();
+        record(context, "service.update", "Service", view.id(), view.version(), "updated");
+        return view;
     }
 
     @Override
-    public ServiceView deactivateService(UUID id, long version, UUID actorId) {
+    public ServiceView deactivateService(UUID id, long version, CatalogAuditContext context) {
         ServiceView existing = store.serviceByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
         store.updateService(new ServiceRow(id, existing.code(), existing.name(), existing.serviceType(),
                 false, existing.allowsCritical(), version + 1, existing.createdAt(), now), version);
-        return store.serviceById(id).orElseThrow();
+        ServiceView view = store.serviceById(id).orElseThrow();
+        record(context, "service.update", "Service", view.id(), view.version(), "deactivated");
+        return view;
     }
-
-    // ===========================================================
-    // ServicePrice
-    // ===========================================================
 
     @Override
     @Transactional(readOnly = true)
     public Page<ServicePriceView> listServicePrices(UUID serviceId, String cursor, int limit) {
-        return page(store.listPrices(serviceId, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listPrices(serviceId, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -196,41 +201,37 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
-    public ServicePriceView createServicePrice(UUID serviceId, BigDecimal amount, Instant effectiveFrom, UUID actorId) {
-        // Validate service exists
+    public ServicePriceView createServicePrice(
+            UUID serviceId, BigDecimal amount, Instant effectiveFrom, CatalogAuditContext context) {
         store.serviceById(serviceId).orElseThrow(ResourceNotFoundException::new);
-        if (amount.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Price amount must be >= 0");
-        }
+        if (amount.compareTo(BigDecimal.ZERO) < 0) throw new IllegalArgumentException("Price amount must be >= 0");
         Instant now = clock.instant();
         UUID id = ids.next();
-        // Close only predecessor range belonging to this service; DB exclusion protects races.
         store.closeOpenPriceForService(serviceId, effectiveFrom);
         store.insertServicePrice(new ServicePriceRow(id, serviceId, amount, "VND", effectiveFrom, null, now));
-        return store.priceById(id).orElseThrow();
+        ServicePriceView view = store.priceById(id).orElseThrow();
+        record(context, "service_price.create", "ServicePrice", view.id(), view.version(), "created");
+        return view;
     }
 
     @Override
-    public ServicePriceView endServicePrice(UUID id, Instant effectiveTo, long version, UUID actorId) {
+    public ServicePriceView endServicePrice(
+            UUID id, Instant effectiveTo, long version, CatalogAuditContext context) {
         ServicePriceView existing = store.priceById(id).orElseThrow(ResourceNotFoundException::new);
         if (!effectiveTo.isAfter(existing.effectiveFrom())) {
             throw new IllegalArgumentException("effective_to must be after effective_from");
         }
         store.endServicePrice(id, effectiveTo, version);
-        ServicePriceView ended = store.priceById(id).orElseThrow();
-        audit.record(actorId, null, "service_price.update", "SUCCEEDED", "ended", "ServicePrice", id, version + 1,
-                null, ids.next().toString(), ids.next().toString());
-        return ended;
+        ServicePriceView view = store.priceById(id).orElseThrow();
+        record(context, "service_price.update", "ServicePrice", view.id(), view.version(), "ended");
+        return view;
     }
-
-    // ===========================================================
-    // Practitioner
-    // ===========================================================
 
     @Override
     @Transactional(readOnly = true)
     public Page<PractitionerView> listPractitioners(Boolean active, String cursor, int limit) {
-        return page(store.listPractitioners(active, cursor, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listPractitioners(active, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -240,39 +241,45 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
-    public PractitionerView createPractitioner(UUID userAccountId, String staffCode, String fullName, UUID actorId) {
+    public PractitionerView createPractitioner(
+            UUID userAccountId, String staffCode, String fullName, CatalogAuditContext context) {
         Instant now = clock.instant();
         UUID id = ids.next();
         store.insertPractitioner(new PractitionerRow(id, userAccountId, staffCode.strip(), fullName.strip(), true, 0, now, now));
-        return store.practitionerById(id).orElseThrow();
+        PractitionerView view = store.practitionerById(id).orElseThrow();
+        record(context, "practitioner.create", "Practitioner", view.id(), view.version(), "created");
+        return view;
     }
 
     @Override
-    public PractitionerView updatePractitioner(UUID id, String staffCode, String fullName, long version, UUID actorId) {
+    public PractitionerView updatePractitioner(
+            UUID id, String staffCode, String fullName, long version, CatalogAuditContext context) {
         PractitionerView existing = store.practitionerByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
         store.updatePractitioner(new PractitionerRow(id, existing.userAccountId(), staffCode.strip(), fullName.strip(),
                 existing.active(), version + 1, existing.createdAt(), now), version);
-        return store.practitionerById(id).orElseThrow();
+        PractitionerView view = store.practitionerById(id).orElseThrow();
+        record(context, "practitioner.update", "Practitioner", view.id(), view.version(), "updated");
+        return view;
     }
 
     @Override
-    public PractitionerView deactivatePractitioner(UUID id, long version, UUID actorId) {
+    public PractitionerView deactivatePractitioner(UUID id, long version, CatalogAuditContext context) {
         PractitionerView existing = store.practitionerByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
         store.updatePractitioner(new PractitionerRow(id, existing.userAccountId(), existing.staffCode(), existing.fullName(),
                 false, version + 1, existing.createdAt(), now), version);
-        return store.practitionerById(id).orElseThrow();
+        PractitionerView view = store.practitionerById(id).orElseThrow();
+        record(context, "practitioner.update", "Practitioner", view.id(), view.version(), "deactivated");
+        return view;
     }
-
-    // ===========================================================
-    // PractitionerRole
-    // ===========================================================
 
     @Override
     @Transactional(readOnly = true)
-    public Page<PractitionerRoleView> listPractitionerRoles(UUID practitionerId, UUID departmentId, String status, String cursor, int limit) {
-        return page(store.listPractitionerRoles(practitionerId, departmentId, status, limit + 1, offset(cursor)), limit);
+    public Page<PractitionerRoleView> listPractitionerRoles(
+            UUID practitionerId, UUID departmentId, String status, String cursor, int limit) {
+        int offset = offset(cursor);
+        return page(store.listPractitionerRoles(practitionerId, departmentId, status, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -282,44 +289,79 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
-    public PractitionerRoleView assignPractitionerRole(UUID practitionerId, UUID departmentId, String roleCode, Instant effectiveFrom, Instant effectiveTo, UUID actorId) {
+    public PractitionerRoleView assignPractitionerRole(
+            UUID practitionerId,
+            UUID departmentId,
+            String roleCode,
+            Instant effectiveFrom,
+            Instant effectiveTo,
+            CatalogAuditContext context) {
         store.practitionerById(practitionerId).orElseThrow(ResourceNotFoundException::new);
         store.departmentById(departmentId).orElseThrow(ResourceNotFoundException::new);
-        if (effectiveTo != null && !effectiveTo.isAfter(effectiveFrom)) {
-            throw new IllegalArgumentException("effective_to must be after effective_from");
-        }
+        validateRange(effectiveFrom, effectiveTo);
         Instant now = clock.instant();
         UUID id = ids.next();
         store.insertPractitionerRole(new PractitionerRoleRow(id, practitionerId, departmentId, roleCode,
                 effectiveFrom, effectiveTo, "ACTIVE", 0, now, now));
-        return store.practitionerRoleById(id).orElseThrow();
+        PractitionerRoleView view = store.practitionerRoleById(id).orElseThrow();
+        record(context, "practitioner_role.create", "PractitionerRole", view.id(), view.version(), "assigned");
+        return view;
     }
 
     @Override
-    public PractitionerRoleView revokePractitionerRole(UUID id, long version, UUID actorId) {
+    public PractitionerRoleView revokePractitionerRole(
+            UUID id, long version, String reason, CatalogAuditContext context) {
         store.practitionerRoleByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
-        store.revokePractitionerRole(id, version, clock.instant());
-        return store.practitionerRoleById(id).orElseThrow();
+        Instant now = clock.instant();
+        store.revokePractitionerRole(id, version, now, context.actorAccountId(), reason.strip());
+        PractitionerRoleView view = store.practitionerRoleById(id).orElseThrow();
+        record(context, "practitioner_role.update", "PractitionerRole", view.id(), view.version(), "revoked");
+        return view;
     }
 
-    // ===========================================================
-    // Pagination helpers
-    // ===========================================================
+    private void record(
+            CatalogAuditContext context,
+            String action,
+            String resourceType,
+            UUID resourceId,
+            long resourceVersion,
+            String reason) {
+        audit.record(
+                context.actorAccountId(),
+                context.permissionSnapshot(),
+                action,
+                "SUCCEEDED",
+                reason,
+                resourceType,
+                resourceId,
+                resourceVersion,
+                context.sessionId(),
+                context.requestId(),
+                context.correlationId());
+    }
+
+    private static void validateRange(Instant effectiveFrom, Instant effectiveTo) {
+        if (effectiveTo != null && !effectiveTo.isAfter(effectiveFrom)) {
+            throw new IllegalArgumentException("effective_to must be after effective_from");
+        }
+    }
 
     private static int offset(String cursor) {
         if (cursor == null || cursor.isBlank()) return 0;
         try {
-            return Integer.parseInt(new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8));
-        } catch (IllegalArgumentException e) {
+            int offset = Integer.parseInt(new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8));
+            if (offset < 0) throw new IllegalArgumentException("Cursor is invalid");
+            return offset;
+        } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("Cursor is invalid");
         }
     }
 
-    private static <T> Page<T> page(List<T> values, int limit) {
+    private static <T> Page<T> page(List<T> values, int limit, int offset) {
         boolean hasMore = values.size() > limit;
         List<T> items = hasMore ? values.subList(0, limit) : values;
         String next = hasMore ? Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(Integer.toString(limit).getBytes(StandardCharsets.UTF_8)) : null;
+                .encodeToString(Integer.toString(offset + items.size()).getBytes(StandardCharsets.UTF_8)) : null;
         return new Page<>(List.copyOf(items), next, hasMore);
     }
 }

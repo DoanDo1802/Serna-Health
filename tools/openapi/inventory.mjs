@@ -41,19 +41,19 @@ export const modules = [
     ],
   },
   {
-    key: 'catalog', tag: 'Catalog', story: 'R1-03', scenarios: ['R1-03-CATALOG-CONSTRAINTS'], operations: [
+    key: 'catalog', tag: 'Catalog', story: 'R1-03', typed: true, scenarios: ['R1-03-CATALOG-CONSTRAINTS'], operations: [
       ...catalog('departments', 'Department', 'department'),
       ...catalog('rooms', 'Room', 'room'),
       ...catalog('services', 'Service', 'service'),
-      list('/services/{serviceId}/prices', 'listServicePrices', 'service_price.read'),
-      create('/services/{serviceId}/prices', 'createServicePrice', 'service_price.create'),
-      get('/service-prices/{priceId}', 'getServicePrice', 'service_price.read'),
-      action('/service-prices/{priceId}/actions/end', 'endServicePrice', 'service_price.update'),
+      list('/services/{serviceId}/prices', 'listServicePrices', 'service_price.read', { response: 'ServicePricePage' }),
+      create('/services/{serviceId}/prices', 'createServicePrice', 'service_price.create', { body: 'CreateServicePriceRequest', response: 'ServicePrice' }),
+      get('/service-prices/{priceId}', 'getServicePrice', 'service_price.read', { response: 'ServicePrice' }),
+      action('/service-prices/{priceId}/actions/end', 'endServicePrice', 'service_price.update', { body: 'EndServicePriceRequest', response: 'ServicePrice' }),
       ...catalog('practitioners', 'Practitioner', 'practitioner'),
-      list('/practitioners/{practitionerId}/roles', 'listPractitionerRoles', 'practitioner_role.read'),
-      create('/practitioners/{practitionerId}/roles', 'assignPractitionerRole', 'practitioner_role.create'),
-      get('/practitioner-roles/{roleId}', 'getPractitionerRole', 'practitioner_role.read'),
-      action('/practitioner-roles/{roleId}/actions/revoke', 'revokePractitionerRole', 'practitioner_role.update'),
+      list('/practitioners/{practitionerId}/roles', 'listPractitionerRoles', 'practitioner_role.read', { response: 'PractitionerRolePage' }),
+      create('/practitioners/{practitionerId}/roles', 'assignPractitionerRole', 'practitioner_role.create', { body: 'AssignPractitionerRoleRequest', response: 'PractitionerRole' }),
+      get('/practitioner-roles/{roleId}', 'getPractitionerRole', 'practitioner_role.read', { response: 'PractitionerRole' }),
+      action('/practitioner-roles/{roleId}/actions/revoke', 'revokePractitionerRole', 'practitioner_role.update', { body: 'RevokePractitionerRoleRequest', response: 'PractitionerRole' }),
     ],
   },
   {
@@ -161,7 +161,13 @@ function create(path, id, permission, options = {}) { return op('post', path, id
 function patch(path, id, permission, options = {}) { return op('patch', path, id, { permission, csrf: true, ifMatch: true, ...options }) }
 function action(path, id, permission, options = {}) { return op('post', path, id, { permission, csrf: true, ifMatch: true, ...options }) }
 function catalog(plural, singular, permission) {
-  return [list(`/${plural}`, `list${singular}s`, `${permission}.read`), create(`/${plural}`, `create${singular}`, `${permission}.create`), get(`/${plural}/{${permission}Id}`, `get${singular}`, `${permission}.read`), patch(`/${plural}/{${permission}Id}`, `update${singular}`, `${permission}.update`), action(`/${plural}/{${permission}Id}/actions/deactivate`, `deactivate${singular}`, `${permission}.update`)]
+  return [
+    list(`/${plural}`, `list${singular}s`, `${permission}.read`, { response: `${singular}Page` }),
+    create(`/${plural}`, `create${singular}`, `${permission}.create`, { body: `Create${singular}Request`, response: singular }),
+    get(`/${plural}/{${permission}Id}`, `get${singular}`, `${permission}.read`, { response: singular }),
+    patch(`/${plural}/{${permission}Id}`, `update${singular}`, `${permission}.update`, { body: `Update${singular}Request`, response: singular }),
+    action(`/${plural}/{${permission}Id}/actions/deactivate`, `deactivate${singular}`, `${permission}.update`, { response: singular }),
+  ]
 }
 function camel(value) { return value.split('-').map((x, i) => i ? x[0].toUpperCase() + x.slice(1) : x).join('') }
 function ref(schema) { return { $ref: `#/components/schemas/${schema}` } }

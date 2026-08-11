@@ -2404,7 +2404,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/DepartmentPage'
         '400':
           description: Invalid request
           content:
@@ -2479,7 +2479,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Department'
         '400':
           description: Invalid request
           content:
@@ -2528,7 +2528,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CreateDepartmentRequest'
   /departments/{departmentId}:
     get:
       tags:
@@ -2559,7 +2559,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Department'
         '400':
           description: Invalid request
           content:
@@ -2640,7 +2640,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Department'
         '400':
           description: Invalid request
           content:
@@ -2707,7 +2707,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/UpdateDepartmentRequest'
   /departments/{departmentId}/actions/deactivate:
     post:
       tags:
@@ -2740,7 +2740,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Department'
         '400':
           description: Invalid request
           content:
@@ -2834,7 +2834,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/RoomPage'
         '400':
           description: Invalid request
           content:
@@ -2909,7 +2909,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Room'
         '400':
           description: Invalid request
           content:
@@ -2958,7 +2958,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CreateRoomRequest'
   /rooms/{roomId}:
     get:
       tags:
@@ -2989,7 +2989,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Room'
         '400':
           description: Invalid request
           content:
@@ -3070,7 +3070,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Room'
         '400':
           description: Invalid request
           content:
@@ -3137,7 +3137,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/UpdateRoomRequest'
   /rooms/{roomId}/actions/deactivate:
     post:
       tags:
@@ -3170,7 +3170,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Room'
         '400':
           description: Invalid request
           content:
@@ -3264,7 +3264,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/ServicePage'
         '400':
           description: Invalid request
           content:
@@ -3339,7 +3339,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Service'
         '400':
           description: Invalid request
           content:
@@ -3388,7 +3388,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CreateServiceRequest'
   /services/{serviceId}:
     get:
       tags:
@@ -3419,7 +3419,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Service'
         '400':
           description: Invalid request
           content:
@@ -3500,7 +3500,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Service'
         '400':
           description: Invalid request
           content:
@@ -3567,7 +3567,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/UpdateServiceRequest'
   /services/{serviceId}/actions/deactivate:
     post:
       tags:
@@ -3600,7 +3600,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Service'
         '400':
           description: Invalid request
           content:
@@ -3700,7 +3700,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/ServicePricePage'
         '400':
           description: Invalid request
           content:
@@ -3781,7 +3781,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/ServicePrice'
         '400':
           description: Invalid request
           content:
@@ -3836,7 +3836,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CreateServicePriceRequest'
   /service-prices/{priceId}:
     get:
       tags:
@@ -3867,7 +3867,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/ServicePrice'
         '400':
           description: Invalid request
           content:
@@ -3949,7 +3949,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/ServicePrice'
         '400':
           description: Invalid request
           content:
@@ -4016,7 +4016,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/EndServicePriceRequest'
   /practitioners:
     get:
       tags:
@@ -4043,7 +4043,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/PractitionerPage'
         '400':
           description: Invalid request
           content:
@@ -4118,7 +4118,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Practitioner'
         '400':
           description: Invalid request
           content:
@@ -4167,7 +4167,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CreatePractitionerRequest'
   /practitioners/{practitionerId}:
     get:
       tags:
@@ -4198,7 +4198,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Practitioner'
         '400':
           description: Invalid request
           content:
@@ -4279,7 +4279,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Practitioner'
         '400':
           description: Invalid request
           content:
@@ -4346,7 +4346,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/UpdatePractitionerRequest'
   /practitioners/{practitionerId}/actions/deactivate:
     post:
       tags:
@@ -4379,7 +4379,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Practitioner'
         '400':
           description: Invalid request
           content:
@@ -4479,7 +4479,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/PractitionerRolePage'
         '400':
           description: Invalid request
           content:
@@ -4560,7 +4560,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PractitionerRole'
         '400':
           description: Invalid request
           content:
@@ -4615,7 +4615,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/AssignPractitionerRoleRequest'
   /practitioner-roles/{roleId}:
     get:
       tags:
@@ -4646,7 +4646,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PractitionerRole'
         '400':
           description: Invalid request
           content:
@@ -4728,7 +4728,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PractitionerRole'
         '400':
           description: Invalid request
           content:
@@ -4795,7 +4795,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/RevokePractitionerRoleRequest'
   /patients:
     post:
       tags:
@@ -14923,6 +14923,604 @@ components:
           maxLength: 128
         amount:
           $ref: '#/components/schemas/Money'
+    CatalogServiceType:
+      type: string
+      enum:
+        - CONSULTATION
+        - PROCEDURE
+        - DIAGNOSTIC
+        - LAB
+        - IMAGING
+        - THERAPY
+        - OTHER
+    PractitionerRoleCode:
+      type: string
+      enum:
+        - DOCTOR
+        - TECHNICIAN
+        - LAB_APPROVER
+        - RADIOLOGIST
+        - CARE_COORDINATOR
+    PractitionerRoleStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - REVOKED
+    CreateDepartmentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - name
+        - effectiveFrom
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        effectiveFrom:
+          type: string
+          format: date-time
+        effectiveTo:
+          type:
+            - string
+            - 'null'
+          format: date-time
+    UpdateDepartmentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - name
+        - effectiveFrom
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        effectiveFrom:
+          type: string
+          format: date-time
+        effectiveTo:
+          type:
+            - string
+            - 'null'
+          format: date-time
+    Department:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - code
+        - name
+        - active
+        - effectiveFrom
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        code:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          maxLength: 200
+        active:
+          type: boolean
+        effectiveFrom:
+          type: string
+          format: date-time
+        effectiveTo:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DepartmentPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Department'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    CreateRoomRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - departmentId
+        - code
+        - name
+      properties:
+        departmentId:
+          type: string
+          format: uuid
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+    UpdateRoomRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - name
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+    Room:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - departmentId
+        - code
+        - name
+        - active
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        departmentId:
+          type: string
+          format: uuid
+        code:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          maxLength: 200
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RoomPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Room'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    CreateServiceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - name
+        - serviceType
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        serviceType:
+          $ref: '#/components/schemas/CatalogServiceType'
+    UpdateServiceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - name
+        - serviceType
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        serviceType:
+          $ref: '#/components/schemas/CatalogServiceType'
+    Service:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - code
+        - name
+        - serviceType
+        - active
+        - allowsCritical
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        code:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          maxLength: 200
+        serviceType:
+          $ref: '#/components/schemas/CatalogServiceType'
+        active:
+          type: boolean
+        allowsCritical:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ServicePage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Service'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    CreateServicePriceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - amount
+        - effectiveFrom
+      properties:
+        amount:
+          type: number
+          minimum: 0
+          multipleOf: 0.01
+        effectiveFrom:
+          type: string
+          format: date-time
+    EndServicePriceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - effectiveTo
+      properties:
+        effectiveTo:
+          type: string
+          format: date-time
+    ServicePrice:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - serviceId
+        - amount
+        - currency
+        - effectiveFrom
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        serviceId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          minimum: 0
+          multipleOf: 0.01
+        currency:
+          type: string
+          const: VND
+        effectiveFrom:
+          type: string
+          format: date-time
+        effectiveTo:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ServicePricePage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServicePrice'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    CreatePractitionerRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - staffCode
+        - fullName
+      properties:
+        userAccountId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        staffCode:
+          type: string
+          minLength: 1
+          maxLength: 64
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 200
+    UpdatePractitionerRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - staffCode
+        - fullName
+      properties:
+        staffCode:
+          type: string
+          minLength: 1
+          maxLength: 64
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 200
+    Practitioner:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - staffCode
+        - fullName
+        - active
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        userAccountId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        staffCode:
+          type: string
+          maxLength: 64
+        fullName:
+          type: string
+          maxLength: 200
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PractitionerPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Practitioner'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    AssignPractitionerRoleRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - departmentId
+        - roleCode
+        - effectiveFrom
+      properties:
+        departmentId:
+          type: string
+          format: uuid
+        roleCode:
+          $ref: '#/components/schemas/PractitionerRoleCode'
+        effectiveFrom:
+          type: string
+          format: date-time
+        effectiveTo:
+          type:
+            - string
+            - 'null'
+          format: date-time
+    RevokePractitionerRoleRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    PractitionerRole:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - practitionerId
+        - departmentId
+        - roleCode
+        - effectiveFrom
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        practitionerId:
+          type: string
+          format: uuid
+        departmentId:
+          type: string
+          format: uuid
+        roleCode:
+          $ref: '#/components/schemas/PractitionerRoleCode'
+        effectiveFrom:
+          type: string
+          format: date-time
+        effectiveTo:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        status:
+          $ref: '#/components/schemas/PractitionerRoleStatus'
+        revokedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        revokedByAccountId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        revokeReason:
+          type:
+            - string
+            - 'null'
+          maxLength: 500
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PractitionerRolePage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PractitionerRole'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
   parameters:
     RequestId:
       name: X-Request-Id

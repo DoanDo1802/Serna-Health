@@ -65,12 +65,12 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
         if (active != null) {
             return jdbc.query("""
                     select id, code, name, active, effective_from, effective_to, version, created_at, updated_at
-                    from department where active = ? order by name limit ? offset ?
+                    from department where active = ? order by name, id limit ? offset ?
                     """, this::departmentView, active, limit, offset);
         }
         return jdbc.query("""
                 select id, code, name, active, effective_from, effective_to, version, created_at, updated_at
-                from department order by name limit ? offset ?
+                from department order by name, id limit ? offset ?
                 """, this::departmentView, limit, offset);
     }
 
@@ -124,24 +124,24 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
         if (departmentId != null && active != null) {
             return jdbc.query("""
                     select id, department_id, code, name, active, version, created_at, updated_at
-                    from room where department_id = ? and active = ? order by name limit ? offset ?
+                    from room where department_id = ? and active = ? order by name, id limit ? offset ?
                     """, this::roomView, departmentId, active, limit, offset);
         }
         if (departmentId != null) {
             return jdbc.query("""
                     select id, department_id, code, name, active, version, created_at, updated_at
-                    from room where department_id = ? order by name limit ? offset ?
+                    from room where department_id = ? order by name, id limit ? offset ?
                     """, this::roomView, departmentId, limit, offset);
         }
         if (active != null) {
             return jdbc.query("""
                     select id, department_id, code, name, active, version, created_at, updated_at
-                    from room where active = ? order by name limit ? offset ?
+                    from room where active = ? order by name, id limit ? offset ?
                     """, this::roomView, active, limit, offset);
         }
         return jdbc.query("""
                 select id, department_id, code, name, active, version, created_at, updated_at
-                from room order by name limit ? offset ?
+                from room order by name, id limit ? offset ?
                 """, this::roomView, limit, offset);
     }
 
@@ -194,24 +194,24 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
         if (serviceType != null && active != null) {
             return jdbc.query("""
                     select id, code, name, service_type, active, allows_critical, version, created_at, updated_at
-                    from service where service_type = ? and active = ? order by name limit ? offset ?
+                    from service where service_type = ? and active = ? order by name, id limit ? offset ?
                     """, this::serviceView, serviceType, active, limit, offset);
         }
         if (serviceType != null) {
             return jdbc.query("""
                     select id, code, name, service_type, active, allows_critical, version, created_at, updated_at
-                    from service where service_type = ? order by name limit ? offset ?
+                    from service where service_type = ? order by name, id limit ? offset ?
                     """, this::serviceView, serviceType, limit, offset);
         }
         if (active != null) {
             return jdbc.query("""
                     select id, code, name, service_type, active, allows_critical, version, created_at, updated_at
-                    from service where active = ? order by name limit ? offset ?
+                    from service where active = ? order by name, id limit ? offset ?
                     """, this::serviceView, active, limit, offset);
         }
         return jdbc.query("""
                 select id, code, name, service_type, active, allows_critical, version, created_at, updated_at
-                from service order by name limit ? offset ?
+                from service order by name, id limit ? offset ?
                 """, this::serviceView, limit, offset);
     }
 
@@ -245,16 +245,16 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     @Override
     public List<ServicePriceView> listPrices(UUID serviceId, int limit, int offset) {
         return jdbc.query("""
-                select id, service_id, amount, currency, effective_from, effective_to, created_at
+                select id, service_id, amount, currency, effective_from, effective_to, version, created_at, updated_at
                 from service_price where service_id = ?
-                order by effective_from desc limit ? offset ?
+                order by effective_from desc, id limit ? offset ?
                 """, this::servicePriceView, serviceId, limit, offset);
     }
 
     @Override
     public Optional<ServicePriceView> priceById(UUID id) {
         return queryOne("""
-                select id, service_id, amount, currency, effective_from, effective_to, created_at
+                select id, service_id, amount, currency, effective_from, effective_to, version, created_at, updated_at
                 from service_price where id = ?
                 """, this::servicePriceView, id);
     }
@@ -262,11 +262,11 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     @Override
     public Optional<ServicePriceView> currentPrice(UUID serviceId, Instant at) {
         return queryOne("""
-                select id, service_id, amount, currency, effective_from, effective_to, created_at
+                select id, service_id, amount, currency, effective_from, effective_to, version, created_at, updated_at
                 from service_price
                 where service_id = ? and effective_from <= ?
                   and (effective_to is null or effective_to > ?)
-                order by effective_from desc limit 1
+                order by effective_from desc, id limit 1
                 """, this::servicePriceView, serviceId, ts(at), ts(at));
     }
 
@@ -316,16 +316,16 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     }
 
     @Override
-    public List<PractitionerView> listPractitioners(Boolean active, String cursor, int limit, int offset) {
+    public List<PractitionerView> listPractitioners(Boolean active, int limit, int offset) {
         if (active != null) {
             return jdbc.query("""
                     select id, user_account_id, staff_code, full_name, active, version, created_at, updated_at
-                    from practitioner where active = ? order by full_name limit ? offset ?
+                    from practitioner where active = ? order by full_name, id limit ? offset ?
                     """, this::practitionerView, active, limit, offset);
         }
         return jdbc.query("""
                 select id, user_account_id, staff_code, full_name, active, version, created_at, updated_at
-                from practitioner order by full_name limit ? offset ?
+                from practitioner order by full_name, id limit ? offset ?
                 """, this::practitionerView, limit, offset);
     }
 
@@ -362,7 +362,8 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     public Optional<PractitionerRoleView> practitionerRoleById(UUID id) {
         return queryOne("""
                 select id, practitioner_id, department_id, role_code,
-                       effective_from, effective_to, status, version, created_at, updated_at
+                       effective_from, effective_to, status, revoked_at, revoked_by_account_id, revoke_reason,
+                       version, created_at, updated_at
                 from practitioner_role where id = ?
                 """, this::practitionerRoleView, id);
     }
@@ -371,7 +372,8 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     public Optional<PractitionerRoleView> practitionerRoleByIdForUpdate(UUID id) {
         return queryOne("""
                 select id, practitioner_id, department_id, role_code,
-                       effective_from, effective_to, status, version, created_at, updated_at
+                       effective_from, effective_to, status, revoked_at, revoked_by_account_id, revoke_reason,
+                       version, created_at, updated_at
                 from practitioner_role where id = ? for update
                 """, this::practitionerRoleView, id);
     }
@@ -381,26 +383,35 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
         // Simple multi-filter: build SQL dynamically via parameterised args pattern
         StringBuilder sql = new StringBuilder("""
                 select id, practitioner_id, department_id, role_code,
-                       effective_from, effective_to, status, version, created_at, updated_at
+                       effective_from, effective_to, status, revoked_at, revoked_by_account_id, revoke_reason,
+                       version, created_at, updated_at
                 from practitioner_role where 1=1
                 """);
         java.util.List<Object> params = new java.util.ArrayList<>();
         if (practitionerId != null) { sql.append(" and practitioner_id = ?"); params.add(practitionerId); }
         if (departmentId != null)   { sql.append(" and department_id = ?");   params.add(departmentId); }
         if (status != null)         { sql.append(" and status = ?");           params.add(status); }
-        sql.append(" order by effective_from desc limit ? offset ?");
+        sql.append(" order by effective_from desc, id limit ? offset ?");
         params.add(limit);
         params.add(offset);
         return jdbc.query(sql.toString(), this::practitionerRoleView, params.toArray());
     }
 
     @Override
-    public int revokePractitionerRole(UUID id, long expectedVersion, Instant now) {
+    public int revokePractitionerRole(
+            UUID id,
+            long expectedVersion,
+            Instant now,
+            UUID revokedByAccountId,
+            String revokeReason) {
         int updated = update("""
                 update practitioner_role
-                set status = 'REVOKED', effective_to = ?, version = version + 1, updated_at = ?
+                set status = 'REVOKED',
+                    effective_to = case when effective_from < ? then ? else effective_to end,
+                    revoked_at = ?, revoked_by_account_id = ?, revoke_reason = ?,
+                    version = version + 1, updated_at = ?
                 where id = ? and version = ? and status = 'ACTIVE'
-                """, ts(now), ts(now), id, expectedVersion);
+                """, ts(now), ts(now), ts(now), revokedByAccountId, revokeReason, ts(now), id, expectedVersion);
         if (updated != 1) throw new StaleVersionException();
         return updated;
     }
@@ -450,12 +461,14 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     private ServicePriceView servicePriceView(ResultSet rs, int row) throws SQLException {
         return new ServicePriceView(
                 uuid(rs, "id"),
+                rs.getLong("version"),
                 uuid(rs, "service_id"),
                 rs.getBigDecimal("amount"),
                 rs.getString("currency"),
                 instant(rs, "effective_from"),
                 instantNullable(rs, "effective_to"),
-                instant(rs, "created_at"));
+                instant(rs, "created_at"),
+                instant(rs, "updated_at"));
     }
 
     private PractitionerView practitionerView(ResultSet rs, int row) throws SQLException {
@@ -480,6 +493,9 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
                 instant(rs, "effective_from"),
                 instantNullable(rs, "effective_to"),
                 rs.getString("status"),
+                instantNullable(rs, "revoked_at"),
+                uuidNullable(rs, "revoked_by_account_id"),
+                rs.getString("revoke_reason"),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
     }

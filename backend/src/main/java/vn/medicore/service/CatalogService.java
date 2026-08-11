@@ -3,6 +3,7 @@ package vn.medicore.service;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
+import vn.medicore.dto.CatalogAuditContext;
 import vn.medicore.dto.CatalogModels.DepartmentView;
 import vn.medicore.dto.CatalogModels.Page;
 import vn.medicore.dto.CatalogModels.PractitionerRoleView;
@@ -18,60 +19,60 @@ public interface CatalogService {
 
     DepartmentView getDepartment(UUID id);
 
-    DepartmentView createDepartment(String code, String name, Instant effectiveFrom, Instant effectiveTo, UUID actorId);
+    DepartmentView createDepartment(String code, String name, Instant effectiveFrom, Instant effectiveTo, CatalogAuditContext audit);
 
-    DepartmentView updateDepartment(UUID id, String code, String name, Instant effectiveFrom, Instant effectiveTo, long version, UUID actorId);
+    DepartmentView updateDepartment(UUID id, String code, String name, Instant effectiveFrom, Instant effectiveTo, long version, CatalogAuditContext audit);
 
-    DepartmentView deactivateDepartment(UUID id, long version, UUID actorId);
+    DepartmentView deactivateDepartment(UUID id, long version, CatalogAuditContext audit);
 
     // ---- Room ----
     Page<RoomView> listRooms(UUID departmentId, Boolean active, String cursor, int limit);
 
     RoomView getRoom(UUID id);
 
-    RoomView createRoom(UUID departmentId, String code, String name, UUID actorId);
+    RoomView createRoom(UUID departmentId, String code, String name, CatalogAuditContext audit);
 
-    RoomView updateRoom(UUID id, String code, String name, long version, UUID actorId);
+    RoomView updateRoom(UUID id, String code, String name, long version, CatalogAuditContext audit);
 
-    RoomView deactivateRoom(UUID id, long version, UUID actorId);
+    RoomView deactivateRoom(UUID id, long version, CatalogAuditContext audit);
 
     // ---- Service ----
     Page<ServiceView> listServices(String serviceType, Boolean active, String cursor, int limit);
 
     ServiceView getService(UUID id);
 
-    ServiceView createService(String code, String name, String serviceType, UUID actorId);
+    ServiceView createService(String code, String name, String serviceType, CatalogAuditContext audit);
 
-    ServiceView updateService(UUID id, String code, String name, String serviceType, long version, UUID actorId);
+    ServiceView updateService(UUID id, String code, String name, String serviceType, long version, CatalogAuditContext audit);
 
-    ServiceView deactivateService(UUID id, long version, UUID actorId);
+    ServiceView deactivateService(UUID id, long version, CatalogAuditContext audit);
 
     // ---- ServicePrice ----
     Page<ServicePriceView> listServicePrices(UUID serviceId, String cursor, int limit);
 
     ServicePriceView getServicePrice(UUID id);
 
-    ServicePriceView createServicePrice(UUID serviceId, BigDecimal amount, Instant effectiveFrom, UUID actorId);
+    ServicePriceView createServicePrice(UUID serviceId, BigDecimal amount, Instant effectiveFrom, CatalogAuditContext audit);
 
-    ServicePriceView endServicePrice(UUID id, Instant effectiveTo, long version, UUID actorId);
+    ServicePriceView endServicePrice(UUID id, Instant effectiveTo, long version, CatalogAuditContext audit);
 
     // ---- Practitioner ----
     Page<PractitionerView> listPractitioners(Boolean active, String cursor, int limit);
 
     PractitionerView getPractitioner(UUID id);
 
-    PractitionerView createPractitioner(UUID userAccountId, String staffCode, String fullName, UUID actorId);
+    PractitionerView createPractitioner(UUID userAccountId, String staffCode, String fullName, CatalogAuditContext audit);
 
-    PractitionerView updatePractitioner(UUID id, String staffCode, String fullName, long version, UUID actorId);
+    PractitionerView updatePractitioner(UUID id, String staffCode, String fullName, long version, CatalogAuditContext audit);
 
-    PractitionerView deactivatePractitioner(UUID id, long version, UUID actorId);
+    PractitionerView deactivatePractitioner(UUID id, long version, CatalogAuditContext audit);
 
     // ---- PractitionerRole ----
     Page<PractitionerRoleView> listPractitionerRoles(UUID practitionerId, UUID departmentId, String status, String cursor, int limit);
 
     PractitionerRoleView getPractitionerRole(UUID id);
 
-    PractitionerRoleView assignPractitionerRole(UUID practitionerId, UUID departmentId, String roleCode, Instant effectiveFrom, Instant effectiveTo, UUID actorId);
+    PractitionerRoleView assignPractitionerRole(UUID practitionerId, UUID departmentId, String roleCode, Instant effectiveFrom, Instant effectiveTo, CatalogAuditContext audit);
 
-    PractitionerRoleView revokePractitionerRole(UUID id, long version, UUID actorId);
+    PractitionerRoleView revokePractitionerRole(UUID id, long version, String reason, CatalogAuditContext audit);
 }

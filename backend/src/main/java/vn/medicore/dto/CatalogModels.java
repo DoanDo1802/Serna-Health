@@ -47,12 +47,14 @@ public final class CatalogModels {
 
     public record ServicePriceView(
             UUID id,
+            long version,
             UUID serviceId,
             BigDecimal amount,
             String currency,
             Instant effectiveFrom,
             Instant effectiveTo,
-            Instant createdAt) {
+            Instant createdAt,
+            Instant updatedAt) {
     }
 
     public record PractitionerView(
@@ -75,6 +77,9 @@ public final class CatalogModels {
             Instant effectiveFrom,
             Instant effectiveTo,
             String status,
+            Instant revokedAt,
+            UUID revokedByAccountId,
+            String revokeReason,
             Instant createdAt,
             Instant updatedAt) {
     }

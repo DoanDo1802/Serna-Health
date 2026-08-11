@@ -21,8 +21,8 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.boot.autoconfigure.security.SecurityProperties;
 import org.springframework.core.annotation.Order;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.UnexpectedRollbackException;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.filter.OncePerRequestFilter;
 import vn.medicore.common.exception.ProblemResponseWriter;
@@ -41,7 +41,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             "DELETE /api/v1/auth/sessions", "POST /api/v1/auth/password-resets",
             "POST /api/v1/admin/accounts/{id}/actions/change-status", "POST /api/v1/admin/roles",
             "POST /api/v1/admin/accounts/{id}/role-assignments", "POST /api/v1/patients/{id}/break-glass-grants",
-            "POST /api/v1/departments", "POST /api/v1/departments/{id}/rooms", "POST /api/v1/services",
+            "POST /api/v1/departments", "POST /api/v1/rooms", "POST /api/v1/services",
             "POST /api/v1/services/{id}/prices", "POST /api/v1/practitioners", "POST /api/v1/practitioners/{id}/roles",
             "POST /api/v1/patients", "POST /api/v1/patients/{id}/identifiers", "POST /api/v1/patients/{id}/account-links",
             "POST /api/v1/appointment-slots", "POST /api/v1/appointment-slots/{id}/actions/cancel",
@@ -79,6 +79,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
                     "IDEMPOTENCY_KEY_REQUIRED", "Idempotency key required");
             return;
         }
+        CapturingResponse[] capturedResponse = new CapturingResponse[1];
         try {
             CapturingResponse captured = transactions.execute(status -> {
                 Reservation reservation;
@@ -96,6 +97,10 @@ public class IdempotencyFilter extends OncePerRequestFilter {
                 CapturingResponse pending = new CapturingResponse(response);
                 try {
                     chain.doFilter(new CachedBodyRequest(request, body), pending);
+                    if (status.isRollbackOnly()) {
+                        capturedResponse[0] = pending;
+                        return null;
+                    }
                     int responseStatus = pending.getStatus();
                     idempotency.complete(
                             reservation.id(),
@@ -113,6 +118,13 @@ public class IdempotencyFilter extends OncePerRequestFilter {
                 }
             });
             if (captured != null) captured.commit();
+            else if (capturedResponse[0] != null) capturedResponse[0].commit();
+        } catch (UnexpectedRollbackException exception) {
+            if (capturedResponse[0] != null) {
+                capturedResponse[0].commit();
+                return;
+            }
+            throw exception;
         } catch (IdempotencyConflictFilterException exception) {
             problems.write(request, response, org.springframework.http.HttpStatus.CONFLICT,
                     "IDEMPOTENCY_KEY_REUSED", "Idempotency conflict");

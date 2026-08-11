@@ -346,3 +346,245 @@ schemas:
       provider: { type: string, enum: [CASH, MOCK] }
       transactionId: { type: string, maxLength: 128 }
       amount: { $ref: './common.yaml#/schemas/Money' }
+
+  CatalogServiceType:
+    type: string
+    enum: [CONSULTATION, PROCEDURE, DIAGNOSTIC, LAB, IMAGING, THERAPY, OTHER]
+  PractitionerRoleCode:
+    type: string
+    enum: [DOCTOR, TECHNICIAN, LAB_APPROVER, RADIOLOGIST, CARE_COORDINATOR]
+  PractitionerRoleStatus:
+    type: string
+    enum: [ACTIVE, REVOKED]
+
+  CreateDepartmentRequest:
+    type: object
+    additionalProperties: false
+    required: [code, name, effectiveFrom]
+    properties:
+      code: { type: string, minLength: 1, maxLength: 64 }
+      name: { type: string, minLength: 1, maxLength: 200 }
+      effectiveFrom: { type: string, format: date-time }
+      effectiveTo: { type: [string, 'null'], format: date-time }
+  UpdateDepartmentRequest:
+    type: object
+    additionalProperties: false
+    required: [code, name, effectiveFrom]
+    properties:
+      code: { type: string, minLength: 1, maxLength: 64 }
+      name: { type: string, minLength: 1, maxLength: 200 }
+      effectiveFrom: { type: string, format: date-time }
+      effectiveTo: { type: [string, 'null'], format: date-time }
+  Department:
+    type: object
+    additionalProperties: false
+    required: [id, version, code, name, active, effectiveFrom, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      code: { type: string, maxLength: 64 }
+      name: { type: string, maxLength: 200 }
+      active: { type: boolean }
+      effectiveFrom: { type: string, format: date-time }
+      effectiveTo: { type: [string, 'null'], format: date-time }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+  DepartmentPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/Department' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  CreateRoomRequest:
+    type: object
+    additionalProperties: false
+    required: [departmentId, code, name]
+    properties:
+      departmentId: { type: string, format: uuid }
+      code: { type: string, minLength: 1, maxLength: 64 }
+      name: { type: string, minLength: 1, maxLength: 200 }
+  UpdateRoomRequest:
+    type: object
+    additionalProperties: false
+    required: [code, name]
+    properties:
+      code: { type: string, minLength: 1, maxLength: 64 }
+      name: { type: string, minLength: 1, maxLength: 200 }
+  Room:
+    type: object
+    additionalProperties: false
+    required: [id, version, departmentId, code, name, active, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      departmentId: { type: string, format: uuid }
+      code: { type: string, maxLength: 64 }
+      name: { type: string, maxLength: 200 }
+      active: { type: boolean }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+  RoomPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/Room' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  CreateServiceRequest:
+    type: object
+    additionalProperties: false
+    required: [code, name, serviceType]
+    properties:
+      code: { type: string, minLength: 1, maxLength: 64 }
+      name: { type: string, minLength: 1, maxLength: 200 }
+      serviceType: { $ref: '#/schemas/CatalogServiceType' }
+  UpdateServiceRequest:
+    type: object
+    additionalProperties: false
+    required: [code, name, serviceType]
+    properties:
+      code: { type: string, minLength: 1, maxLength: 64 }
+      name: { type: string, minLength: 1, maxLength: 200 }
+      serviceType: { $ref: '#/schemas/CatalogServiceType' }
+  Service:
+    type: object
+    additionalProperties: false
+    required: [id, version, code, name, serviceType, active, allowsCritical, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      code: { type: string, maxLength: 64 }
+      name: { type: string, maxLength: 200 }
+      serviceType: { $ref: '#/schemas/CatalogServiceType' }
+      active: { type: boolean }
+      allowsCritical: { type: boolean }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+  ServicePage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/Service' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  CreateServicePriceRequest:
+    type: object
+    additionalProperties: false
+    required: [amount, effectiveFrom]
+    properties:
+      amount: { type: number, minimum: 0, multipleOf: 0.01 }
+      effectiveFrom: { type: string, format: date-time }
+  EndServicePriceRequest:
+    type: object
+    additionalProperties: false
+    required: [effectiveTo]
+    properties:
+      effectiveTo: { type: string, format: date-time }
+  ServicePrice:
+    type: object
+    additionalProperties: false
+    required: [id, version, serviceId, amount, currency, effectiveFrom, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      serviceId: { type: string, format: uuid }
+      amount: { type: number, minimum: 0, multipleOf: 0.01 }
+      currency: { type: string, const: VND }
+      effectiveFrom: { type: string, format: date-time }
+      effectiveTo: { type: [string, 'null'], format: date-time }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+  ServicePricePage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/ServicePrice' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  CreatePractitionerRequest:
+    type: object
+    additionalProperties: false
+    required: [staffCode, fullName]
+    properties:
+      userAccountId: { type: [string, 'null'], format: uuid }
+      staffCode: { type: string, minLength: 1, maxLength: 64 }
+      fullName: { type: string, minLength: 1, maxLength: 200 }
+  UpdatePractitionerRequest:
+    type: object
+    additionalProperties: false
+    required: [staffCode, fullName]
+    properties:
+      staffCode: { type: string, minLength: 1, maxLength: 64 }
+      fullName: { type: string, minLength: 1, maxLength: 200 }
+  Practitioner:
+    type: object
+    additionalProperties: false
+    required: [id, version, staffCode, fullName, active, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      userAccountId: { type: [string, 'null'], format: uuid }
+      staffCode: { type: string, maxLength: 64 }
+      fullName: { type: string, maxLength: 200 }
+      active: { type: boolean }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+  PractitionerPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/Practitioner' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  AssignPractitionerRoleRequest:
+    type: object
+    additionalProperties: false
+    required: [departmentId, roleCode, effectiveFrom]
+    properties:
+      departmentId: { type: string, format: uuid }
+      roleCode: { $ref: '#/schemas/PractitionerRoleCode' }
+      effectiveFrom: { type: string, format: date-time }
+      effectiveTo: { type: [string, 'null'], format: date-time }
+  RevokePractitionerRoleRequest:
+    type: object
+    additionalProperties: false
+    required: [reason]
+    properties:
+      reason: { type: string, minLength: 1, maxLength: 500 }
+  PractitionerRole:
+    type: object
+    additionalProperties: false
+    required: [id, version, practitionerId, departmentId, roleCode, effectiveFrom, status, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      practitionerId: { type: string, format: uuid }
+      departmentId: { type: string, format: uuid }
+      roleCode: { $ref: '#/schemas/PractitionerRoleCode' }
+      effectiveFrom: { type: string, format: date-time }
+      effectiveTo: { type: [string, 'null'], format: date-time }
+      status: { $ref: '#/schemas/PractitionerRoleStatus' }
+      revokedAt: { type: [string, 'null'], format: date-time }
+      revokedByAccountId: { type: [string, 'null'], format: uuid }
+      revokeReason: { type: [string, 'null'], maxLength: 500 }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+  PractitionerRolePage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/PractitionerRole' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }

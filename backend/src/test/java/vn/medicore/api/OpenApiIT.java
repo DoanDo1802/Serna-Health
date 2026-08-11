@@ -74,7 +74,8 @@ class OpenApiIT {
         assertThat(document.at("/info/version").asText()).isEqualTo("v1");
         assertThat(document.at("/servers/0/url").asText()).isEqualTo("/api/v1");
 
-        Set<String> operationIds = operationIds(document.path("paths"));
+        JsonNode paths = document.path("paths");
+        Set<String> operationIds = operationIds(paths);
         assertThat(operationIds).hasSize(EXPECTED_OPERATION_COUNT)
                 .contains(
                         "registerAccount",
@@ -84,9 +85,15 @@ class OpenApiIT {
                         "checkInAppointment",
                         "finalizeClinicalNoteVersion",
                         "closeBillingAccount",
-                        "listMyNotifications");
+                        "listMyNotifications",
+                        "createRoom",
+                        "listPractitionerRoles",
+                        "endServicePrice",
+                        "revokePractitionerRole");
+        assertThat(paths.path("/rooms").has("post")).isTrue();
+        assertThat(paths.path("/practitioners/{practitionerId}/roles").has("get")).isTrue();
+        assertThat(paths.path("/departments/{departmentId}/rooms").isMissingNode()).isTrue();
 
-        JsonNode paths = document.path("paths");
         assertThat(paths.path("/appointments").has("post")).isFalse();
         assertThat(paths.path("/charge-items").has("post")).isFalse();
         assertThat(operationIds).noneMatch(id -> id.toLowerCase().startsWith("sign")

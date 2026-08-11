@@ -72,7 +72,7 @@ public interface CatalogRepository {
 
     Optional<PractitionerView> practitionerByIdForUpdate(UUID id);
 
-    List<PractitionerView> listPractitioners(Boolean active, String cursor, int limit, int offset);
+    List<PractitionerView> listPractitioners(Boolean active, int limit, int offset);
 
     int updatePractitioner(PractitionerRow row, long expectedVersion);
 
@@ -86,7 +86,7 @@ public interface CatalogRepository {
 
     List<PractitionerRoleView> listPractitionerRoles(UUID practitionerId, UUID departmentId, String status, int limit, int offset);
 
-    int revokePractitionerRole(UUID id, long expectedVersion, Instant now);
+    int revokePractitionerRole(UUID id, long expectedVersion, Instant now, UUID revokedByAccountId, String revokeReason);
 
     // ---- Projection records ----
 
