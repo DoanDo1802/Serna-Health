@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.dto.AuditModels.AuditEventView;
@@ -42,6 +43,7 @@ public class SecurityAuditServiceImpl implements SecurityAuditRecorder {
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(
             UUID actorAccountId,
             Map<String, Object> roleSnapshot,

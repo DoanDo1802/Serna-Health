@@ -355,8 +355,10 @@ public class PatientServiceImpl implements PatientService {
 
     private static void validatePermissionScope(Map<String, Object> scope) {
         if (scope == null || !Integer.valueOf(1).equals(scope.get("version"))
-                || !scope.keySet().stream().allMatch(key -> "version".equals(key) || "patient.read".equals(key))
-                || (scope.containsKey("patient.read") && !(scope.get("patient.read") instanceof Boolean))) {
+                || !scope.keySet().stream().allMatch(key -> "version".equals(key) || "patient.read".equals(key)
+                || "slot_hold.create".equals(key) || "slot_hold.read".equals(key) || "slot_hold.cancel".equals(key))
+                || scope.entrySet().stream().filter(entry -> !"version".equals(entry.getKey()))
+                .anyMatch(entry -> !(entry.getValue() instanceof Boolean))) {
             throw new IllegalArgumentException("Patient permission scope is invalid");
         }
     }

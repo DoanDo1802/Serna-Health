@@ -95,6 +95,52 @@ class OpenApiIT {
         assertThat(paths.path("/patients/{patientId}/identifiers").path("get")
                 .at("/responses/200/content/application~1json/schema/$ref").asText())
                 .endsWith("/PatientIdentifierPage");
+        assertThat(paths.path("/appointment-slots").path("get")
+                .at("/responses/200/content/application~1json/schema/$ref").asText())
+                .endsWith("/AppointmentSlotPage");
+        assertThat(paths.path("/appointment-slots/{slotId}").path("get").path("security").isArray()).isTrue();
+        assertThat(paths.path("/appointment-slots/{slotId}").path("get").path("security")).isEmpty();
+        assertThat(paths.path("/slot-holds").path("post")
+                .at("/requestBody/content/application~1json/schema/$ref").asText())
+                .endsWith("/SlotHoldRequest");
+        assertThat(paths.path("/slot-holds/{holdId}").path("delete")
+                .at("/responses/200/content/application~1json/schema/$ref").asText())
+                .endsWith("/SlotHold");
+        assertThat(document.at("/components/schemas/SlotHoldStatus/enum")).extracting(JsonNode::asText)
+                .containsExactly("ACTIVE", "CONSUMED", "EXPIRED", "RELEASED");
+        assertThat(document.at("/components/schemas/SlotHold/properties/idempotencyKey").isMissingNode()).isTrue();
+        assertThat(document.at("/components/schemas/SlotHold/properties/requestHash").isMissingNode()).isTrue();
+        assertThat(document.at("/components/schemas/SlotHold/properties/idempotencyScope").isMissingNode()).isTrue();
+        assertThat(document.at("/components/schemas/SlotHold/properties/patientId/type").asText()).isEqualTo("string");
+        assertThat(document.at("/components/schemas/SlotHold/properties/currency/const").asText()).isEqualTo("VND");
+        assertThat(document.at("/components/schemas/SlotHold/properties/depositAmount/multipleOf").decimalValue())
+                .isEqualByComparingTo("0.01");
+        assertThat(document.at("/components/schemas/AppointmentSlotPage/properties/nextCursor/type").isArray()).isTrue();
+        assertThat(document.at("/components/schemas/AppointmentSlotPage/properties/hasMore/type").asText()).isEqualTo("boolean");
+        assertThat(document.at("/components/schemas/AppointmentSlot/properties/version/type").asText()).isEqualTo("integer");
+        assertThat(document.at("/components/schemas/AppointmentSlot/properties/status/$ref").asText())
+                .endsWith("/AppointmentSlotStatus");
+        assertThat(document.at("/components/schemas/CreateAppointmentSlotRequest/additionalProperties").asBoolean()).isFalse();
+        assertThat(document.at("/components/schemas/SlotHoldRequest/additionalProperties").asBoolean()).isFalse();
+        assertThat(document.at("/components/schemas/SlotHold/properties/patientId/writeOnly").isMissingNode()).isTrue();
+        assertThat(document.at("/components/schemas/SlotHold/properties/patientId").isMissingNode()).isFalse();
+        assertThat(document.at("/components/schemas/SlotHold/properties/expiresAt/format").asText()).isEqualTo("date-time");
+        assertThat(document.at("/components/schemas/SlotHold/properties/status/$ref").asText()).endsWith("/SlotHoldStatus");
+        assertThat(document.at("/components/schemas/AppointmentSlotPage/properties/items/items/$ref").asText())
+                .endsWith("/AppointmentSlot");
+        assertThat(document.at("/components/schemas/SlotHoldRequest/required")).extracting(JsonNode::asText)
+                .containsExactly("slotId", "patientId");
+        assertThat(document.at("/components/schemas/AppointmentSlotSession/enum")).extracting(JsonNode::asText)
+                .containsExactly("MORNING", "AFTERNOON");
+        assertThat(document.at("/components/schemas/AppointmentSlotStatus/enum")).extracting(JsonNode::asText)
+                .containsExactly("ACTIVE", "CANCELLED", "REPLACED");
+        assertThat(document.at("/components/schemas/AppointmentSlotPage/additionalProperties").asBoolean()).isFalse();
+        assertThat(document.at("/components/schemas/SlotHold/additionalProperties").asBoolean()).isFalse();
+        assertThat(document.at("/components/schemas/SlotHold/properties/currency/type").asText()).isEqualTo("string");
+        assertThat(document.at("/components/schemas/SlotHold/properties/depositAmount/type").asText()).isEqualTo("number");
+        assertThat(document.at("/components/schemas/SlotHold/properties/expiresAt/type").asText()).isEqualTo("string");
+        assertThat(document.at("/components/schemas/SlotHold/properties/version/minimum").asInt()).isZero();
+        assertThat(document.at("/components/schemas/AppointmentSlot/properties/capacity/minimum").asInt()).isEqualTo(1);
         assertThat(paths.path("/patient-duplicate-candidates/{candidateId}/actions/review").path("post")
                 .at("/requestBody/content/application~1json/schema/$ref").asText())
                 .endsWith("/ReviewPatientDuplicateCandidateRequest");

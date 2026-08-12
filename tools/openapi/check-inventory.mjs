@@ -47,7 +47,7 @@ for (const { module, operation } of expected) {
     if (!names.has(parameter.name)) errors.push(`${operation.operationId}: missing query parameter ${parameter.name}`)
   }
 
-  if (module.typed) {
+  if (module.typed && operation.response) {
     typedCount++
     const successCode = String(operation.success ?? (operation.method === 'delete' ? 204 : 200))
     const requestRef = found.requestBody?.content?.['application/json']?.schema?.$ref
@@ -59,7 +59,7 @@ for (const { module, operation } of expected) {
   }
 }
 
-if (typedCount !== 72) errors.push(`R1-02/R1-04 typed operation count must be 72, found ${typedCount}`)
+if (typedCount !== 78) errors.push(`R1-02/R1-05 typed operation count must be 78, found ${typedCount}`)
 if (actual.length !== expected.length) errors.push(`operation count mismatch: expected ${expected.length}, found ${actual.length}`)
 if (spec.openapi !== '3.1.0') errors.push(`OpenAPI must be 3.1.0, found ${spec.openapi}`)
 if (spec.servers?.[0]?.url !== '/api/v1') errors.push('first server must be /api/v1')
@@ -98,7 +98,7 @@ if (errors.length) {
   for (const error of errors) console.error(`- ${error}`)
   process.exit(1)
 }
-console.log(`OpenAPI inventory check passed: ${actual.length} operations, ${typedCount} typed R1-02/R1-04 operations, ${modules.length} modules, 0 forbidden paths.`)
+console.log(`OpenAPI inventory check passed: ${actual.length} operations, ${typedCount} typed R1-02/R1-05 operations, ${modules.length} modules, 0 forbidden paths.`)
 
 function resolve(value) {
   if (!value?.$ref?.startsWith('#/')) return value

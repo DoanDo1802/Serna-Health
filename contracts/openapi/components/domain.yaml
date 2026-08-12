@@ -299,6 +299,60 @@ schemas:
       nextCursor: { type: [string, 'null'], maxLength: 1024 }
       hasMore: { type: boolean }
 
+  AppointmentSlotSession:
+    type: string
+    enum: [MORNING, AFTERNOON]
+  AppointmentSlotStatus:
+    type: string
+    enum: [ACTIVE, CANCELLED, REPLACED]
+  SlotHoldStatus:
+    type: string
+    enum: [ACTIVE, CONSUMED, EXPIRED, RELEASED]
+  CreateAppointmentSlotRequest:
+    type: object
+    additionalProperties: false
+    required: [practitionerRoleId, departmentId, roomId, serviceId, session, startAt, endAt, capacity]
+    properties:
+      practitionerRoleId: { type: string, format: uuid }
+      departmentId: { type: string, format: uuid }
+      roomId: { type: string, format: uuid }
+      serviceId: { type: string, format: uuid }
+      session: { $ref: '#/schemas/AppointmentSlotSession' }
+      startAt: { type: string, format: date-time }
+      endAt: { type: string, format: date-time }
+      capacity: { type: integer, minimum: 1, maximum: 100 }
+  UpdateAppointmentSlotRequest:
+    type: object
+    additionalProperties: false
+    required: [capacity]
+    properties:
+      capacity: { type: integer, minimum: 1, maximum: 100 }
+  AppointmentSlot:
+    type: object
+    additionalProperties: false
+    required: [id, version, practitionerRoleId, departmentId, roomId, serviceId, session, startAt, endAt, capacity, status, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      practitionerRoleId: { type: string, format: uuid }
+      departmentId: { type: string, format: uuid }
+      roomId: { type: string, format: uuid }
+      serviceId: { type: string, format: uuid }
+      session: { $ref: '#/schemas/AppointmentSlotSession' }
+      startAt: { type: string, format: date-time }
+      endAt: { type: string, format: date-time }
+      capacity: { type: integer, minimum: 1 }
+      status: { $ref: '#/schemas/AppointmentSlotStatus' }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+  AppointmentSlotPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/AppointmentSlot' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
   SlotHoldRequest:
     type: object
     additionalProperties: false
@@ -306,6 +360,22 @@ schemas:
     properties:
       slotId: { type: string, format: uuid }
       patientId: { type: string, format: uuid }
+  SlotHold:
+    type: object
+    additionalProperties: false
+    required: [id, version, slotId, patientId, expiresAt, depositAmount, currency, status, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      slotId: { type: string, format: uuid }
+      patientId: { type: string, format: uuid }
+      expiresAt: { type: string, format: date-time }
+      depositAmount: { type: number, minimum: 0, multipleOf: 0.01 }
+      currency: { type: string, const: VND }
+      status: { $ref: '#/schemas/SlotHoldStatus' }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+
   PaymentWebhookEvent:
     type: object
     additionalProperties: true
@@ -733,6 +803,9 @@ schemas:
     properties:
       version: { type: integer, const: 1 }
       patient.read: { type: boolean }
+      slot_hold.create: { type: boolean }
+      slot_hold.read: { type: boolean }
+      slot_hold.cancel: { type: boolean }
   CreatePatientAccountLinkRequest:
     type: object
     additionalProperties: false

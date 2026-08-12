@@ -6075,7 +6075,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/AppointmentSlotPage"
         "400":
           description: Invalid request
           content:
@@ -6147,7 +6147,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/AppointmentSlot"
         "400":
           description: Invalid request
           content:
@@ -6197,7 +6197,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CreateAppointmentSlotRequest"
   /appointment-slots/{slotId}:
     get:
       tags:
@@ -6227,7 +6227,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/AppointmentSlot"
         "400":
           description: Invalid request
           content:
@@ -6297,7 +6297,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/AppointmentSlot"
         "400":
           description: Invalid request
           content:
@@ -6365,7 +6365,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/UpdateAppointmentSlotRequest"
   /appointment-slots/{slotId}/actions/cancel:
     post:
       tags:
@@ -6381,6 +6381,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -6398,7 +6399,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/AppointmentSlot"
         "400":
           description: Invalid request
           content:
@@ -6460,7 +6461,7 @@ paths:
         - R1-06
         - R1-07
       x-medicore-scenarios: *a5
-      x-medicore-idempotent: false
+      x-medicore-idempotent: true
       requestBody:
         required: true
         content:
@@ -6493,7 +6494,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/SlotHold"
         "400":
           description: Invalid request
           content:
@@ -6574,7 +6575,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/SlotHold"
         "400":
           description: Invalid request
           content:
@@ -6639,13 +6640,25 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
         - sessionCookie: []
       responses:
-        "204":
-          description: Command completed.
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlotHold"
         "400":
           description: Invalid request
           content:
@@ -6707,7 +6720,13 @@ paths:
         - R1-06
         - R1-07
       x-medicore-scenarios: *a5
-      x-medicore-idempotent: false
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Resource"
   /slot-holds/{holdId}/payment-intents:
     post:
       tags:
@@ -13498,8 +13517,24 @@ components:
       $ref: ./components/domain.yaml#/schemas/BreakGlassGrantPage
     AuditEventPage:
       $ref: ./components/domain.yaml#/schemas/AuditEventPage
+    AppointmentSlotSession:
+      $ref: ./components/domain.yaml#/schemas/AppointmentSlotSession
+    AppointmentSlotStatus:
+      $ref: ./components/domain.yaml#/schemas/AppointmentSlotStatus
+    SlotHoldStatus:
+      $ref: ./components/domain.yaml#/schemas/SlotHoldStatus
+    CreateAppointmentSlotRequest:
+      $ref: ./components/domain.yaml#/schemas/CreateAppointmentSlotRequest
+    UpdateAppointmentSlotRequest:
+      $ref: ./components/domain.yaml#/schemas/UpdateAppointmentSlotRequest
+    AppointmentSlot:
+      $ref: ./components/domain.yaml#/schemas/AppointmentSlot
+    AppointmentSlotPage:
+      $ref: ./components/domain.yaml#/schemas/AppointmentSlotPage
     SlotHoldRequest:
       $ref: ./components/domain.yaml#/schemas/SlotHoldRequest
+    SlotHold:
+      $ref: ./components/domain.yaml#/schemas/SlotHold
     PaymentWebhookEvent:
       $ref: ./components/domain.yaml#/schemas/PaymentWebhookEvent
     ClinicalDraftRequest:

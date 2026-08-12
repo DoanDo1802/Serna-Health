@@ -61,8 +61,8 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.BAD_REQUEST, "VALIDATION_INVALID_REQUEST", "Invalid request", request);
     }
 
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    ResponseEntity<ProblemDetail> conflict(DataIntegrityViolationException exception, HttpServletRequest request) {
+    @ExceptionHandler({DataIntegrityViolationException.class, IllegalStateException.class})
+    ResponseEntity<ProblemDetail> conflict(RuntimeException exception, HttpServletRequest request) {
         return problem(HttpStatus.CONFLICT, "STATE_CONFLICT", "Domain state conflict", request);
     }
 

@@ -172,8 +172,9 @@ public class IdempotencyFilter extends OncePerRequestFilter {
 
     private static byte[] fingerprint(HttpServletRequest request, byte[] body) {
         String query = request.getQueryString() == null ? "" : request.getQueryString();
-        byte[] prefix = ("v1\n" + request.getMethod() + "\n" + request.getRequestURI() + "\n" + query + "\n")
-                .getBytes(StandardCharsets.UTF_8);
+        String ifMatch = request.getHeader("If-Match") == null ? "" : request.getHeader("If-Match");
+        byte[] prefix = ("v1\n" + request.getMethod() + "\n" + request.getRequestURI() + "\n" + query + "\n"
+                + ifMatch + "\n").getBytes(StandardCharsets.UTF_8);
         return concat(prefix, body);
     }
 

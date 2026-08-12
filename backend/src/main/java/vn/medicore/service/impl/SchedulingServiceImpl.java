@@ -1,21 +1,25 @@
 package vn.medicore.service.impl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.exception.ResourceNotFoundException;
+import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.common.utils.UuidV7Generator;
-import vn.medicore.dto.AuthenticatedAccount;
+import vn.medicore.dto.PatientModels.Page;
+import vn.medicore.dto.SchedulingAuditContext;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
 import vn.medicore.dto.SchedulingModels.CreateAppointmentSlotRequest;
 import vn.medicore.dto.SchedulingModels.CreateSlotHoldRequest;
+import vn.medicore.dto.SchedulingModels.SlotHoldJdbcRow;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
 import vn.medicore.dto.SchedulingModels.UpdateAppointmentSlotRequest;
 import vn.medicore.dto.SecurityAuditRecorder;
@@ -23,295 +27,208 @@ import vn.medicore.repository.SchedulingRepository;
 import vn.medicore.service.SchedulingService;
 
 @Service
+@Transactional
 public class SchedulingServiceImpl implements SchedulingService {
+
+    private static final BigDecimal MAX_DEPOSIT = new BigDecimal("100000.00");
+    private static final ZoneId HO_CHI_MINH = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final SchedulingRepository store;
     private final SecurityAuditRecorder audit;
     private final Clock clock;
     private final UuidV7Generator ids;
-    private final ObjectMapper mapper;
 
-    public SchedulingServiceImpl(SchedulingRepository store, SecurityAuditRecorder audit, Clock clock, UuidV7Generator ids, ObjectMapper mapper) {
+    public SchedulingServiceImpl(
+            SchedulingRepository store,
+            SecurityAuditRecorder audit,
+            Clock clock,
+            UuidV7Generator ids) {
         this.store = store;
         this.audit = audit;
         this.clock = clock;
         this.ids = ids;
-        this.mapper = mapper;
     }
 
     @Override
-    @Transactional
-    public AppointmentSlotRow createAppointmentSlot(CreateAppointmentSlotRequest request, AuthenticatedAccount actor, String requestId, String correlationId) {
-        String dateIso = DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZoneId.of("Asia/Ho_Chi_Minh")).format(request.startAt());
-
-        // 1. Lock practitioner role for the day
-        store.lockPractitionerDay(request.practitionerRoleId(), dateIso);
-
-        // 2. Validate max 4 per day
-        int activeSlotsToday = store.countActiveSlotsByPractitionerAndDate(request.practitionerRoleId(), dateIso);
-        if (activeSlotsToday >= 4) {
+    public AppointmentSlotRow createAppointmentSlot(
+            CreateAppointmentSlotRequest request,
+            SchedulingAuditContext context) {
+        validateSlotRequest(request);
+        String date = DateTimeFormatter.ISO_LOCAL_DATE.withZone(HO_CHI_MINH).format(request.startAt());
+        store.lockPractitionerDay(request.practitionerRoleId(), date);
+        if (store.countActiveSlotsByPractitionerAndDate(request.practitionerRoleId(), date) >= 4) {
             throw new IllegalArgumentException("Practitioner role cannot exceed 4 active slots per day");
         }
-
-        // 3. Validate max 2 per session
-        int activeSlotsSession = store.countActiveSlotsByPractitionerAndSession(request.practitionerRoleId(), dateIso, request.session());
-        if (activeSlotsSession >= 2) {
+        if (store.countActiveSlotsByPractitionerAndSession(request.practitionerRoleId(), date, request.session()) >= 2) {
             throw new IllegalArgumentException("Practitioner role cannot exceed 2 active slots per session");
         }
-
         Instant now = clock.instant();
-        UUID id = ids.next();
-
         AppointmentSlotRow row = new AppointmentSlotRow(
-                id,
-                request.practitionerRoleId(),
-                request.departmentId(),
-                request.roomId(),
-                request.serviceId(),
-                request.session(),
-                request.startAt(),
-                request.endAt(),
-                request.capacity(),
-                "ACTIVE",
-                0L,
-                now,
-                now
-        );
-
+                ids.next(), request.practitionerRoleId(), request.departmentId(), request.roomId(), request.serviceId(),
+                request.session(), request.startAt(), request.endAt(), request.capacity(), "ACTIVE", 0, now, now);
         store.insertAppointmentSlot(row);
-
-        audit.record(
-                actor.accountId(),
-                null,
-                "appointment_slot.create",
-                "SUCCEEDED",
-                null,
-                "AppointmentSlot",
-                id,
-                0L,
-                actor.sessionId() != null ? actor.sessionId().toString() : null,
-                requestId,
-                correlationId
-        );
-
+        record(context, null, "appointment_slot.create", "SUCCEEDED", "AppointmentSlot", row.id(), row.version(), "created");
         return row;
     }
 
     @Override
-    @Transactional
-    public AppointmentSlotRow updateAppointmentSlot(UUID slotId, UpdateAppointmentSlotRequest request, long expectedVersion, AuthenticatedAccount actor, String requestId, String correlationId) {
-        AppointmentSlotRow slot = store.appointmentSlotById(slotId)
-                .orElseThrow(() -> new ResourceNotFoundException());
-
-        if (!"ACTIVE".equals(slot.status())) {
-            throw new IllegalStateException("Only ACTIVE slots can be updated");
+    public AppointmentSlotRow updateAppointmentSlot(
+            UUID id,
+            UpdateAppointmentSlotRequest request,
+            long version,
+            SchedulingAuditContext context) {
+        if (request.capacity() < 1) throw new IllegalArgumentException("Slot capacity is invalid");
+        AppointmentSlotRow existing = store.appointmentSlotByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        requireVersion(existing.version(), version);
+        if (!"ACTIVE".equals(existing.status())) throw new IllegalStateException("Only ACTIVE slots can be updated");
+        Instant now = clock.instant();
+        store.expireActiveHolds(id, now);
+        if (request.capacity() < store.countActiveHoldsAndAppointments(id, now)) {
+            throw new IllegalStateException("Slot capacity cannot be lower than reservations");
         }
-
         AppointmentSlotRow updated = new AppointmentSlotRow(
-                slot.id(),
-                slot.practitionerRoleId(),
-                slot.departmentId(),
-                slot.roomId(),
-                slot.serviceId(),
-                slot.session(),
-                slot.startAt(),
-                slot.endAt(),
-                request.capacity(),
-                slot.status(),
-                slot.version() + 1,
-                slot.createdAt(),
-                clock.instant()
-        );
-
-        store.updateAppointmentSlot(updated, expectedVersion);
-
-        audit.record(
-                actor.accountId(),
-                null,
-                "appointment_slot.update",
-                "SUCCEEDED",
-                null,
-                "AppointmentSlot",
-                slotId,
-                slot.version() + 1,
-                actor.sessionId() != null ? actor.sessionId().toString() : null,
-                requestId,
-                correlationId
-        );
-
+                existing.id(), existing.practitionerRoleId(), existing.departmentId(), existing.roomId(), existing.serviceId(),
+                existing.session(), existing.startAt(), existing.endAt(), request.capacity(), existing.status(), version + 1,
+                existing.createdAt(), now);
+        store.updateAppointmentSlot(updated, version);
+        record(context, null, "appointment_slot.update", "SUCCEEDED", "AppointmentSlot", id, updated.version(), "updated");
         return updated;
     }
 
     @Override
-    public AppointmentSlotRow getAppointmentSlot(UUID slotId) {
-        return store.appointmentSlotById(slotId)
-                .orElseThrow(() -> new ResourceNotFoundException());
+    @Transactional(readOnly = true)
+    public AppointmentSlotRow getAppointmentSlot(UUID id) {
+        return store.appointmentSlotById(id).orElseThrow(ResourceNotFoundException::new);
     }
 
     @Override
-    public List<AppointmentSlotRow> searchAppointmentSlots(int limit, int offset) {
-        return store.searchAppointmentSlots(limit, offset);
+    @Transactional(readOnly = true)
+    public Page<AppointmentSlotRow> searchAppointmentSlots(String cursor, int limit) {
+        int offset = offset(cursor);
+        return page(store.searchAppointmentSlots(limit + 1, offset), limit, offset);
     }
 
     @Override
-    @Transactional
-    public void cancelAppointmentSlot(UUID slotId, long expectedVersion, AuthenticatedAccount actor, String requestId, String correlationId) {
-        AppointmentSlotRow slot = store.appointmentSlotById(slotId)
-                .orElseThrow(() -> new ResourceNotFoundException());
-
-        if (!"ACTIVE".equals(slot.status())) {
-            throw new IllegalStateException("Only ACTIVE slots can be cancelled");
-        }
-
-        AppointmentSlotRow updated = new AppointmentSlotRow(
-                slot.id(),
-                slot.practitionerRoleId(),
-                slot.departmentId(),
-                slot.roomId(),
-                slot.serviceId(),
-                slot.session(),
-                slot.startAt(),
-                slot.endAt(),
-                slot.capacity(),
-                "CANCELLED",
-                slot.version() + 1,
-                slot.createdAt(),
-                clock.instant()
-        );
-
-        store.updateAppointmentSlot(updated, expectedVersion);
-
-        audit.record(
-                actor.accountId(),
-                null,
-                "appointment_slot.cancel",
-                "SUCCEEDED",
-                null,
-                "AppointmentSlot",
-                slotId,
-                slot.version() + 1,
-                actor.sessionId() != null ? actor.sessionId().toString() : null,
-                requestId,
-                correlationId
-        );
-    }
-
-    @Override
-    @Transactional
-    public SlotHoldRow createSlotHold(CreateSlotHoldRequest request, AuthenticatedAccount actor, String idempotencyScope, String idempotencyKey, String requestHash, String requestId, String correlationId) {
-        Optional<SlotHoldRow> existing = store.slotHoldByIdempotency(idempotencyScope, idempotencyKey);
-        if (existing.isPresent()) {
-            if (!existing.get().requestHash().equals(requestHash)) {
-                throw new IllegalStateException("Idempotency conflict: payload mismatch");
-            }
-            return existing.get();
-        }
-
-        AppointmentSlotRow slot = store.appointmentSlotById(request.slotId())
-                .orElseThrow(() -> new ResourceNotFoundException());
-
-        if (!"ACTIVE".equals(slot.status())) {
-            throw new IllegalStateException("Slot is not active");
-        }
-
+    public void cancelAppointmentSlot(UUID id, long version, SchedulingAuditContext context) {
+        AppointmentSlotRow existing = store.appointmentSlotByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        requireVersion(existing.version(), version);
+        if (!"ACTIVE".equals(existing.status())) throw new IllegalStateException("Only ACTIVE slots can be cancelled");
         Instant now = clock.instant();
-
-        if (slot.startAt().isBefore(now)) {
-            throw new IllegalStateException("Cannot hold a slot in the past");
+        store.expireActiveHolds(id, now);
+        if (store.countActiveHoldsAndAppointments(id, now) > 0) {
+            throw new IllegalStateException("Slot has active reservations");
         }
+        AppointmentSlotRow updated = new AppointmentSlotRow(
+                existing.id(), existing.practitionerRoleId(), existing.departmentId(), existing.roomId(), existing.serviceId(),
+                existing.session(), existing.startAt(), existing.endAt(), existing.capacity(), "CANCELLED", version + 1,
+                existing.createdAt(), now);
+        store.updateAppointmentSlot(updated, version);
+        record(context, null, "appointment_slot.cancel", "SUCCEEDED", "AppointmentSlot", id, updated.version(), "cancelled");
+    }
 
-        // Check capacity under lock? Or maybe relying on serializable isolation?
-        // Wait, we need a row lock on the slot for capacity checks. But JDBC doesn't easily return a locked row without FOR UPDATE.
-        // I will just rely on the count for now.
-        int currentHoldsAndAppointments = store.countActiveHoldsAndAppointments(slot.id());
-        if (currentHoldsAndAppointments >= slot.capacity()) {
+    @Override
+    public SlotHoldRow createSlotHold(CreateSlotHoldRequest request, SchedulingAuditContext context) {
+        Instant now = clock.instant();
+        AppointmentSlotRow slot = store.appointmentSlotByIdForUpdate(request.slotId()).orElseThrow(ResourceNotFoundException::new);
+        if (!"ACTIVE".equals(slot.status()) || !slot.startAt().isAfter(now)) {
+            throw new IllegalStateException("Slot is unavailable");
+        }
+        store.expireActiveHolds(slot.id(), now);
+        if (store.countActiveHoldsAndAppointments(slot.id(), now) >= slot.capacity()) {
+            record(context, request.patientId(), "slot_hold.create", "DENIED", "AppointmentSlot", slot.id(), slot.version(),
+                    "capacity_exhausted");
             throw new IllegalStateException("Slot is fully booked");
         }
-
-        UUID id = ids.next();
-        Instant expiresAt = now.plusSeconds(15 * 60); // 15 minutes hold
-
-        SlotHoldRow row = new SlotHoldRow(
-                id,
-                slot.id(),
-                request.patientId(),
-                expiresAt,
-                java.math.BigDecimal.valueOf(100000), // Default 100K VND deposit
-                "VND",
-                idempotencyScope,
-                idempotencyKey,
-                requestHash,
-                "ACTIVE",
-                0L,
-                now,
-                now
-        );
-
+        BigDecimal price = store.effectiveServicePrice(slot.serviceId(), now)
+                .orElseThrow(() -> new IllegalStateException("Effective service price is required"));
+        SlotHoldJdbcRow row = new SlotHoldJdbcRow(
+                ids.next(), slot.id(), request.patientId(), now.plusSeconds(300), price.min(MAX_DEPOSIT), "VND",
+                null, null, null, "ACTIVE", 0, now, now);
         store.insertSlotHold(row);
-
-        audit.record(
-                actor.accountId(),
-                null,
-                "slot_hold.create",
-                "SUCCEEDED",
-                null,
-                "SlotHold",
-                id,
-                0L,
-                actor.sessionId() != null ? actor.sessionId().toString() : null,
-                requestId,
-                correlationId
-        );
-
-        return row;
+        record(context, request.patientId(), "slot_hold.create", "SUCCEEDED", "SlotHold", row.id(), row.version(), "created");
+        return row.toRow();
     }
 
     @Override
-    public SlotHoldRow getSlotHold(UUID holdId) {
-        return store.slotHoldById(holdId)
-                .orElseThrow(() -> new ResourceNotFoundException());
+    @Transactional(readOnly = true)
+    public SlotHoldRow getSlotHoldForAccess(UUID id) {
+        return store.slotHoldById(id).orElseThrow(ResourceNotFoundException::new);
     }
 
     @Override
-    @Transactional
-    public void cancelSlotHold(UUID holdId, long expectedVersion, AuthenticatedAccount actor, String requestId, String correlationId) {
-        SlotHoldRow hold = store.slotHoldById(holdId)
-                .orElseThrow(() -> new ResourceNotFoundException());
-
-        if (!"ACTIVE".equals(hold.status())) {
-            throw new IllegalStateException("Only ACTIVE slot holds can be cancelled");
+    public SlotHoldRow getSlotHold(UUID id, SchedulingAuditContext context) {
+        SlotHoldRow hold = store.slotHoldByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        Instant now = clock.instant();
+        if ("ACTIVE".equals(hold.status()) && !hold.expiresAt().isAfter(now)) {
+            SlotHoldJdbcRow expired = withStatus(hold, "EXPIRED", hold.version() + 1, now);
+            store.updateSlotHold(expired, hold.version());
+            record(context, hold.patientId(), "slot_hold.expire", "SUCCEEDED", "SlotHold", expired.id(), expired.version(), "expired");
+            return expired.toRow();
         }
+        return hold;
+    }
 
-        SlotHoldRow updated = new SlotHoldRow(
-                hold.id(),
-                hold.slotId(),
-                hold.patientId(),
-                hold.expiresAt(),
-                hold.depositAmount(),
-                hold.currency(),
-                hold.idempotencyScope(),
-                hold.idempotencyKey(),
-                hold.requestHash(),
-                "CANCELLED",
-                hold.version() + 1,
-                hold.createdAt(),
-                clock.instant()
-        );
+    @Override
+    public void cancelSlotHold(UUID id, long version, SchedulingAuditContext context) {
+        SlotHoldRow hold = getSlotHold(id, context);
+        requireVersion(hold.version(), version);
+        if (!"ACTIVE".equals(hold.status())) throw new IllegalStateException("Only ACTIVE slot holds can be released");
+        SlotHoldJdbcRow released = withStatus(hold, "RELEASED", version + 1, clock.instant());
+        store.updateSlotHold(released, version);
+        record(context, hold.patientId(), "slot_hold.cancel", "SUCCEEDED", "SlotHold", id, released.version(), "released");
+    }
 
-        store.updateSlotHold(updated, expectedVersion);
+    private static SlotHoldJdbcRow withStatus(SlotHoldRow value, String status, long version, Instant now) {
+        return new SlotHoldJdbcRow(
+                value.id(), value.slotId(), value.patientId(), value.expiresAt(), value.depositAmount(), value.currency(),
+                null, null, null, status, version, value.createdAt(), now);
+    }
 
+    private static void requireVersion(long actual, long expected) {
+        if (actual != expected) throw new StaleVersionException();
+    }
+
+    private static void validateSlotRequest(CreateAppointmentSlotRequest value) {
+        if (value == null || value.practitionerRoleId() == null || value.departmentId() == null || value.roomId() == null
+                || value.serviceId() == null || !("MORNING".equals(value.session()) || "AFTERNOON".equals(value.session()))
+                || value.startAt() == null || value.endAt() == null || !value.endAt().isAfter(value.startAt())
+                || value.capacity() < 1) {
+            throw new IllegalArgumentException("Appointment slot is invalid");
+        }
+    }
+
+    private void record(
+            SchedulingAuditContext context,
+            UUID patientId,
+            String action,
+            String outcome,
+            String type,
+            UUID id,
+            long version,
+            String reason) {
         audit.record(
-                actor.accountId(),
-                null,
-                "slot_hold.cancel",
-                "SUCCEEDED",
-                null,
-                "SlotHold",
-                holdId,
-                hold.version() + 1,
-                actor.sessionId() != null ? actor.sessionId().toString() : null,
-                requestId,
-                correlationId
-        );
+                context.actorAccountId(), context.permissionSnapshot(), patientId, action, outcome, reason, type, id, version,
+                context.sessionId(), context.requestId(), context.correlationId());
+    }
+
+    private static int offset(String cursor) {
+        if (cursor == null || cursor.isBlank()) return 0;
+        try {
+            int value = Integer.parseInt(new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8));
+            if (value < 0) throw new IllegalArgumentException("Cursor is invalid");
+            return value;
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Cursor is invalid");
+        }
+    }
+
+    private static <T> Page<T> page(List<T> values, int limit, int offset) {
+        boolean hasMore = values.size() > limit;
+        List<T> items = hasMore ? values.subList(0, limit) : values;
+        String nextCursor = hasMore
+                ? Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        Integer.toString(offset + items.size()).getBytes(StandardCharsets.UTF_8))
+                : null;
+        return new Page<>(List.copyOf(items), nextCursor, hasMore);
     }
 }

@@ -72,20 +72,31 @@ class FlywayMigrationIT {
                     "patient_account_link",
                     "patient_duplicate_candidate",
                     "appointment_slot",
-                    "slot_hold");
+                    "slot_hold",
+                    "appointment");
             assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("5");
-            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("50");
+            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("57");
             assertThat(singleValue(statement, """
                     select count(*) from pg_constraint
                     where conname in ('ck_patient_identifier_verification_source', 'ck_patient_account_link_scope',
-                        'ck_patient_account_link_revocation')
-                    """)).isEqualTo("3");
+                        'ck_patient_account_link_revocation', 'ck_slot_hold_status')
+                    """)).isEqualTo("4");
+            assertThat(singleValue(statement, """
+                    select count(*) from permission where action in (
+                        'appointment_slot.read', 'appointment_slot.create', 'appointment_slot.update',
+                        'appointment_slot.cancel', 'slot_hold.create', 'slot_hold.read', 'slot_hold.cancel')
+                    """)).isEqualTo("7");
+            assertThat(singleValue(statement, """
+                    select pg_get_constraintdef(oid) from pg_constraint
+                    where conrelid = 'appointment'::regclass and contype = 'c'
+                    """)).contains("CONFIRMED").contains("FULFILLED");
             assertThat(singleValue(statement, """
                     select count(*) from pg_indexes
                     where schemaname = 'public' and indexname in ('ix_duplicate_candidate_source_pending',
                         'ix_duplicate_candidate_candidate_pending', 'ix_patient_identifier_patient_effective',
-                        'ix_patient_account_link_patient_valid')
-                    """)).isEqualTo("4");
+                        'ix_patient_account_link_patient_valid', 'ix_appointment_slot_capacity',
+                        'ix_slot_hold_slot_active_expiry')
+                    """)).isEqualTo("6");
             assertAuditIsAppendOnly(statement);
         }
     }

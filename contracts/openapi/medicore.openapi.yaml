@@ -6232,7 +6232,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/AppointmentSlotPage'
         '400':
           description: Invalid request
           content:
@@ -6304,7 +6304,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/AppointmentSlot'
         '400':
           description: Invalid request
           content:
@@ -6362,7 +6362,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CreateAppointmentSlotRequest'
   /appointment-slots/{slotId}:
     get:
       tags:
@@ -6392,7 +6392,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/AppointmentSlot'
         '400':
           description: Invalid request
           content:
@@ -6470,7 +6470,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/AppointmentSlot'
         '400':
           description: Invalid request
           content:
@@ -6546,7 +6546,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/UpdateAppointmentSlotRequest'
   /appointment-slots/{slotId}/actions/cancel:
     post:
       tags:
@@ -6562,6 +6562,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/CsrfToken'
         - $ref: '#/components/parameters/IfMatch'
       security:
@@ -6579,7 +6580,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/AppointmentSlot'
         '400':
           description: Invalid request
           content:
@@ -6649,7 +6650,7 @@ paths:
         - SC-R1-PAY-02
         - SC-R1-RESCHEDULE-01
         - SC-R1-RESCHEDULE-02
-      x-medicore-idempotent: false
+      x-medicore-idempotent: true
       requestBody:
         required: true
         content:
@@ -6682,7 +6683,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/SlotHold'
         '400':
           description: Invalid request
           content:
@@ -6771,7 +6772,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/SlotHold'
         '400':
           description: Invalid request
           content:
@@ -6844,13 +6845,25 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/CsrfToken'
         - $ref: '#/components/parameters/IfMatch'
       security:
         - sessionCookie: []
       responses:
-        '204':
-          description: Command completed.
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlotHold'
         '400':
           description: Invalid request
           content:
@@ -6920,7 +6933,13 @@ paths:
         - SC-R1-PAY-02
         - SC-R1-RESCHEDULE-01
         - SC-R1-RESCHEDULE-02
-      x-medicore-idempotent: false
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Resource'
   /slot-holds/{holdId}/payment-intents:
     post:
       tags:
@@ -14832,6 +14851,145 @@ components:
           maxLength: 1024
         hasMore:
           type: boolean
+    AppointmentSlotSession:
+      type: string
+      enum:
+        - MORNING
+        - AFTERNOON
+    AppointmentSlotStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - CANCELLED
+        - REPLACED
+    SlotHoldStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - CONSUMED
+        - EXPIRED
+        - RELEASED
+    CreateAppointmentSlotRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - practitionerRoleId
+        - departmentId
+        - roomId
+        - serviceId
+        - session
+        - startAt
+        - endAt
+        - capacity
+      properties:
+        practitionerRoleId:
+          type: string
+          format: uuid
+        departmentId:
+          type: string
+          format: uuid
+        roomId:
+          type: string
+          format: uuid
+        serviceId:
+          type: string
+          format: uuid
+        session:
+          $ref: '#/components/schemas/AppointmentSlotSession'
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 100
+    UpdateAppointmentSlotRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - capacity
+      properties:
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 100
+    AppointmentSlot:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - practitionerRoleId
+        - departmentId
+        - roomId
+        - serviceId
+        - session
+        - startAt
+        - endAt
+        - capacity
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        practitionerRoleId:
+          type: string
+          format: uuid
+        departmentId:
+          type: string
+          format: uuid
+        roomId:
+          type: string
+          format: uuid
+        serviceId:
+          type: string
+          format: uuid
+        session:
+          $ref: '#/components/schemas/AppointmentSlotSession'
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        capacity:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/AppointmentSlotStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AppointmentSlotPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppointmentSlot'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
     SlotHoldRequest:
       type: object
       additionalProperties: false
@@ -14845,6 +15003,52 @@ components:
         patientId:
           type: string
           format: uuid
+    SlotHold:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - slotId
+        - patientId
+        - expiresAt
+        - depositAmount
+        - currency
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        slotId:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+        depositAmount:
+          type: number
+          minimum: 0
+          multipleOf: 0.01
+        currency:
+          type: string
+          const: VND
+        status:
+          $ref: '#/components/schemas/SlotHoldStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     PaymentWebhookEvent:
       type: object
       additionalProperties: true
@@ -15898,6 +16102,12 @@ components:
           type: integer
           const: 1
         patient.read:
+          type: boolean
+        slot_hold.create:
+          type: boolean
+        slot_hold.read:
+          type: boolean
+        slot_hold.cancel:
           type: boolean
     CreatePatientAccountLinkRequest:
       type: object

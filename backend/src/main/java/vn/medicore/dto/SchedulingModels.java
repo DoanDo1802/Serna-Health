@@ -31,6 +31,20 @@ public interface SchedulingModels {
             Instant expiresAt,
             BigDecimal depositAmount,
             String currency,
+            String status,
+            long version,
+            Instant createdAt,
+            Instant updatedAt
+    ) {}
+
+    /** Internal-only row carrying DB-persisted idempotency columns; never serialized to API response. */
+    record SlotHoldJdbcRow(
+            UUID id,
+            UUID slotId,
+            UUID patientId,
+            Instant expiresAt,
+            BigDecimal depositAmount,
+            String currency,
             String idempotencyScope,
             String idempotencyKey,
             String requestHash,
@@ -38,7 +52,11 @@ public interface SchedulingModels {
             long version,
             Instant createdAt,
             Instant updatedAt
-    ) {}
+    ) {
+        public SlotHoldRow toRow() {
+            return new SlotHoldRow(id, slotId, patientId, expiresAt, depositAmount, currency, status, version, createdAt, updatedAt);
+        }
+    }
 
     // --- API Requests ---
 

@@ -1,8 +1,8 @@
 package vn.medicore.service;
 
-import java.util.List;
 import java.util.UUID;
-import vn.medicore.dto.AuthenticatedAccount;
+import vn.medicore.dto.PatientModels.Page;
+import vn.medicore.dto.SchedulingAuditContext;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
 import vn.medicore.dto.SchedulingModels.CreateAppointmentSlotRequest;
 import vn.medicore.dto.SchedulingModels.CreateSlotHoldRequest;
@@ -11,19 +11,25 @@ import vn.medicore.dto.SchedulingModels.UpdateAppointmentSlotRequest;
 
 public interface SchedulingService {
 
-    AppointmentSlotRow createAppointmentSlot(CreateAppointmentSlotRequest request, AuthenticatedAccount actor, String requestId, String correlationId);
+    AppointmentSlotRow createAppointmentSlot(CreateAppointmentSlotRequest request, SchedulingAuditContext context);
 
-    AppointmentSlotRow updateAppointmentSlot(UUID slotId, UpdateAppointmentSlotRequest request, long expectedVersion, AuthenticatedAccount actor, String requestId, String correlationId);
+    AppointmentSlotRow updateAppointmentSlot(
+            UUID slotId,
+            UpdateAppointmentSlotRequest request,
+            long expectedVersion,
+            SchedulingAuditContext context);
 
     AppointmentSlotRow getAppointmentSlot(UUID slotId);
 
-    List<AppointmentSlotRow> searchAppointmentSlots(int limit, int offset);
+    Page<AppointmentSlotRow> searchAppointmentSlots(String cursor, int limit);
 
-    void cancelAppointmentSlot(UUID slotId, long expectedVersion, AuthenticatedAccount actor, String requestId, String correlationId);
+    void cancelAppointmentSlot(UUID slotId, long expectedVersion, SchedulingAuditContext context);
 
-    SlotHoldRow createSlotHold(CreateSlotHoldRequest request, AuthenticatedAccount actor, String idempotencyScope, String idempotencyKey, String requestHash, String requestId, String correlationId);
+    SlotHoldRow createSlotHold(CreateSlotHoldRequest request, SchedulingAuditContext context);
 
-    SlotHoldRow getSlotHold(UUID holdId);
+    SlotHoldRow getSlotHoldForAccess(UUID holdId);
 
-    void cancelSlotHold(UUID holdId, long expectedVersion, AuthenticatedAccount actor, String requestId, String correlationId);
+    SlotHoldRow getSlotHold(UUID holdId, SchedulingAuditContext context);
+
+    void cancelSlotHold(UUID holdId, long expectedVersion, SchedulingAuditContext context);
 }
