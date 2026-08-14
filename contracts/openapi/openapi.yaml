@@ -7274,7 +7274,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/RescheduleAppointmentResponse"
         "400":
           description: Invalid request
           content:
@@ -7342,7 +7342,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/RescheduleAppointmentRequest"
   /appointments/{appointmentId}/actions/cancel:
     post:
       tags:
@@ -13545,6 +13545,18 @@ components:
       $ref: ./components/domain.yaml#/schemas/SimulatePaymentOutcomeRequest
     Payment:
       $ref: ./components/domain.yaml#/schemas/Payment
+    AppointmentStatus:
+      $ref: ./components/domain.yaml#/schemas/AppointmentStatus
+    Appointment:
+      $ref: ./components/domain.yaml#/schemas/Appointment
+    RescheduleAppointmentRequest:
+      $ref: ./components/domain.yaml#/schemas/RescheduleAppointmentRequest
+    RescheduleAppointmentResponse:
+      $ref: ./components/domain.yaml#/schemas/RescheduleAppointmentResponse
+    DepositAllocation:
+      $ref: ./components/domain.yaml#/schemas/DepositAllocation
+    DepositTransfer:
+      $ref: ./components/domain.yaml#/schemas/DepositTransfer
     ClinicalDraftRequest:
       $ref: ./components/domain.yaml#/schemas/ClinicalDraftRequest
     DiagnosisDraftRequest:

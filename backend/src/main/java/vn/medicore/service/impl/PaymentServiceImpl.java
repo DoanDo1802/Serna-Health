@@ -21,6 +21,7 @@ import vn.medicore.common.exception.ResourceNotFoundException;
 import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.config.PaymentProperties;
 import vn.medicore.dto.AuditModels.AuditEventView;
+import vn.medicore.dto.PaymentModels.DepositAllocationRow;
 import vn.medicore.dto.PaymentModels.NormalizedWebhookEvent;
 import vn.medicore.dto.PaymentModels.OutboxEventRow;
 import vn.medicore.dto.PaymentModels.PaymentIntentRow;
@@ -167,6 +168,51 @@ public class PaymentServiceImpl implements PaymentService {
         paymentRepository.insertPaymentIntent(intentRow);
         recordAudit(context, hold.patientId(), "payment_intent.create", "SUCCEEDED", "PaymentIntent",
                 intentRow.id(), intentRow.version(), "created", now);
+
+        return intentRow;
+    }
+
+    @Override
+    public PaymentIntentRow createRescheduleTopUpIntent(UUID targetSlotHoldId, BigDecimal topUpAmount, SchedulingAuditContext context) {
+        Instant now = clock.instant();
+
+        SlotHoldRow initialHold = schedulingRepository.slotHoldById(targetSlotHoldId)
+                .orElseThrow(ResourceNotFoundException::new);
+
+        schedulingRepository.appointmentSlotByIdForUpdate(initialHold.slotId())
+                .orElseThrow(ResourceNotFoundException::new);
+        SlotHoldRow hold = schedulingRepository.slotHoldByIdForUpdate(targetSlotHoldId)
+                .orElseThrow(ResourceNotFoundException::new);
+
+        if (!"ACTIVE".equals(hold.status())) {
+            throw new IllegalStateException("Target slot hold is not active");
+        }
+        if (!hold.expiresAt().isAfter(now)) {
+            SlotHoldJdbcRow expired = new SlotHoldJdbcRow(
+                    hold.id(), hold.slotId(), hold.patientId(), hold.expiresAt(), hold.depositAmount(),
+                    hold.currency(), null, null, null, "EXPIRED", hold.version() + 1, hold.createdAt(), now);
+            schedulingRepository.updateSlotHold(expired, hold.version());
+            throw new IllegalStateException("Target slot hold is expired");
+        }
+
+        UUID intentId = ids.next();
+        String providerReference = "mock_topup_" + intentId;
+        PaymentIntentRow intentRow = new PaymentIntentRow(
+                intentId,
+                hold.id(),
+                providerAdapter.providerName(),
+                providerReference,
+                topUpAmount,
+                hold.currency(),
+                "REQUIRES_PAYMENT_METHOD",
+                null,
+                0,
+                now,
+                now);
+
+        paymentRepository.insertPaymentIntent(intentRow);
+        recordAudit(context, hold.patientId(), "payment_intent.create", "SUCCEEDED", "PaymentIntent",
+                intentRow.id(), intentRow.version(), "reschedule_top_up_created", now);
 
         return intentRow;
     }
@@ -506,7 +552,7 @@ public class PaymentServiceImpl implements PaymentService {
             return;
         }
 
-        // Happy Path: Atomic Payment Capture + Intent SUCCEEDED + Hold CONSUMED + Appointment CONFIRMED + Outbox + Audit
+        // Happy Path: Atomic Payment Capture + Intent SUCCEEDED + Hold CONSUMED + Appointment CONFIRMED + Allocation + Outbox + Audit
         UUID paymentId = ids.next();
         PaymentRow payment = new PaymentRow(
                 paymentId,
@@ -529,6 +575,26 @@ public class PaymentServiceImpl implements PaymentService {
                 intent.version() + 1, intent.createdAt(), now);
         paymentRepository.updatePaymentIntent(updatedIntent, intent.version());
 
+        paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
+
+        boolean isTopUp = intent.providerReference() != null
+                && (intent.providerReference().startsWith("mock_topup_") || intent.providerReference().startsWith("topup_"));
+        if (isTopUp) {
+            Map<String, Object> outboxPayload = new LinkedHashMap<>();
+            outboxPayload.put("paymentId", paymentId.toString());
+            outboxPayload.put("paymentIntentId", intent.id().toString());
+            outboxPayload.put("slotHoldId", hold.id().toString());
+            outboxPayload.put("patientId", hold.patientId().toString());
+            outboxPayload.put("amount", intent.amount().toPlainString());
+            outboxPayload.put("currency", "VND");
+            outboxPayload.put("capturedAt", now.toString());
+
+            recordOutbox(paymentId, "PAYMENT", "payment.top_up_captured.v1", outboxPayload, effectiveCorrelationId, now);
+            recordAuditDirect(null, hold.patientId(), "payment.capture", "SUCCEEDED",
+                    "Payment", paymentId, 0L, "top_up_captured", effectiveCorrelationId, now);
+            return;
+        }
+
         SlotHoldJdbcRow updatedHold = new SlotHoldJdbcRow(
                 hold.id(), hold.slotId(), hold.patientId(), hold.expiresAt(), hold.depositAmount(),
                 hold.currency(), null, null, null, "CONSUMED", hold.version() + 1, hold.createdAt(), now);
@@ -540,7 +606,19 @@ public class PaymentServiceImpl implements PaymentService {
                 "CONFIRMED", 0, now, now);
         schedulingRepository.insertAppointment(appointment);
 
-        paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
+        UUID allocationId = ids.next();
+        DepositAllocationRow allocation = new DepositAllocationRow(
+                allocationId,
+                paymentId,
+                appointmentId,
+                intent.amount(),
+                "VND",
+                "ORIGINAL",
+                null,
+                "ACTIVE",
+                now,
+                effectiveCorrelationId);
+        schedulingRepository.insertDepositAllocation(allocation);
 
         Map<String, Object> outboxPayload = new LinkedHashMap<>();
         outboxPayload.put("paymentId", paymentId.toString());

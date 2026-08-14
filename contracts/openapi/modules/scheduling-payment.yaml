@@ -1223,7 +1223,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/RescheduleAppointmentResponse"
         "400":
           description: Invalid request
           content:
@@ -1291,7 +1291,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/RescheduleAppointmentRequest"
   /appointments/{appointmentId}/actions/cancel:
     post:
       tags:

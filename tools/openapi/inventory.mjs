@@ -92,7 +92,7 @@ export const modules = [
       op('post', '/webhooks/payments/{provider}', 'receivePaymentWebhook', { webhook: true, body: 'PaymentWebhookEvent', response: 'CommandAccepted', success: 202, permission: 'payment.webhook.receive' }),
       op('post', '/mock-payment-intents/{paymentIntentId}/actions/simulate', 'simulateMockPaymentOutcome', { body: 'SimulatePaymentOutcomeRequest', response: 'CommandAccepted', success: 202, permission: 'payment.mock.simulate', idempotent: true, environments: ['local', 'test'] }),
       list('/appointments', 'listAppointments', 'appointment.read'), get('/appointments/{appointmentId}', 'getAppointment', 'appointment.read'),
-      action('/appointments/{appointmentId}/actions/reschedule', 'rescheduleAppointment', 'appointment.reschedule', { idempotent: true }),
+      action('/appointments/{appointmentId}/actions/reschedule', 'rescheduleAppointment', 'appointment.reschedule', { idempotent: true, body: 'RescheduleAppointmentRequest', response: 'RescheduleAppointmentResponse' }),
       action('/appointments/{appointmentId}/actions/cancel', 'cancelAppointment', 'appointment.cancel', { idempotent: true }),
       action('/appointments/{appointmentId}/actions/mark-no-show', 'markAppointmentNoShow', 'appointment.no_show'),
     ],

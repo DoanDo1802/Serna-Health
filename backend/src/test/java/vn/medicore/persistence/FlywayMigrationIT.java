@@ -77,9 +77,12 @@ class FlywayMigrationIT {
                     // R1-06 Payment
                     "payment_intent",
                     "webhook_inbox",
-                    "payment");
+                    "payment",
+                    // R1-07 Reschedule & Deposit
+                    "deposit_allocation",
+                    "deposit_transfer");
             assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("5");
-            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("60");
+            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("61");
             assertThat(singleValue(statement, """
                     select count(*) from pg_constraint
                     where conname in ('ck_patient_identifier_verification_source', 'ck_patient_account_link_scope',
@@ -90,12 +93,13 @@ class FlywayMigrationIT {
                     select count(*) from permission where action in (
                         'appointment_slot.read', 'appointment_slot.create', 'appointment_slot.update',
                         'appointment_slot.cancel', 'slot_hold.create', 'slot_hold.read', 'slot_hold.cancel',
-                        'payment_intent.create', 'payment_intent.read', 'payment.mock.simulate')
-                    """)).isEqualTo("10");
+                        'payment_intent.create', 'payment_intent.read', 'payment.mock.simulate',
+                        'appointment.reschedule')
+                    """)).isEqualTo("11");
             assertThat(singleValue(statement, """
                     select pg_get_constraintdef(oid) from pg_constraint
-                    where conrelid = 'appointment'::regclass and contype = 'c'
-                    """)).contains("CONFIRMED").contains("FULFILLED");
+                    where conrelid = 'appointment'::regclass and contype = 'c' and conname = 'ck_appointment_status'
+                    """)).contains("CONFIRMED").contains("RESCHEDULED").contains("FULFILLED");
             assertThat(singleValue(statement, """
                     select count(*) from pg_indexes
                     where schemaname = 'public' and indexname in ('ix_duplicate_candidate_source_pending',
@@ -103,11 +107,20 @@ class FlywayMigrationIT {
                         'ix_patient_account_link_patient_valid', 'ix_appointment_slot_capacity',
                         'ix_slot_hold_slot_active_expiry', 'uq_payment_intent_provider_reference',
                         'ix_payment_intent_status_updated', 'ix_webhook_inbox_status_next',
-                        'ix_payment_captured_status')
-                    """)).isEqualTo("10");
+                        'ix_payment_captured_status', 'uq_appointment_rescheduled_from',
+                        'uq_appointment_rescheduled_to', 'ix_deposit_allocation_appointment',
+                        'uq_deposit_transfer_old_appointment')
+                    """)).isEqualTo("14");
             assertAuditIsAppendOnly(statement);
             assertPaymentIsAppendOnly(statement);
+            assertDepositTransferIsAppendOnly(statement);
         }
+    }
+
+    private void assertDepositTransferIsAppendOnly(Statement statement) throws SQLException {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.executeUpdate("truncate deposit_transfer"))
+                .isInstanceOf(SQLException.class)
+                .hasMessageContaining("deposit_transfer rows are append-only");
     }
 
     private void assertPaymentIsAppendOnly(Statement statement) throws SQLException {
@@ -123,7 +136,7 @@ class FlywayMigrationIT {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.executeUpdate("delete from payment"))
                 .isInstanceOf(SQLException.class)
                 .hasMessageContaining("payment is append-only");
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.executeUpdate("truncate payment"))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.executeUpdate("truncate payment cascade"))
                 .isInstanceOf(SQLException.class)
                 .hasMessageContaining("payment is append-only");
     }

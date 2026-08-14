@@ -61,6 +61,35 @@ public interface PaymentModels {
             Instant createdAt
     ) {}
 
+    record DepositAllocationRow(
+            UUID id,
+            UUID paymentId,
+            UUID appointmentId,
+            BigDecimal amount,
+            String currency,
+            String allocationType,
+            UUID sourceAllocationId,
+            String status,
+            Instant createdAt,
+            String correlationId
+    ) {}
+
+    record DepositTransferRow(
+            UUID id,
+            UUID oldAppointmentId,
+            UUID newAppointmentId,
+            UUID sourceAllocationId,
+            UUID targetAllocationId,
+            BigDecimal amount,
+            String currency,
+            BigDecimal differenceAmount,
+            String differenceDisposition,
+            UUID actorAccountId,
+            String reason,
+            String correlationId,
+            Instant createdAt
+    ) {}
+
     record OutboxEventRow(
             UUID id,
             String aggregateType,

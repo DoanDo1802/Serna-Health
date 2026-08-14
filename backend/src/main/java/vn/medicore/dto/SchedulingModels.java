@@ -63,13 +63,28 @@ public interface SchedulingModels {
             UUID patientId,
             UUID slotHoldId,
             UUID slotId,
+            UUID rescheduledFromId,
+            UUID rescheduledToId,
             String status,
             long version,
             Instant createdAt,
             Instant updatedAt
-    ) {}
+    ) {
+        public AppointmentRow(
+                UUID id,
+                UUID patientId,
+                UUID slotHoldId,
+                UUID slotId,
+                String status,
+                long version,
+                Instant createdAt,
+                Instant updatedAt
+        ) {
+            this(id, patientId, slotHoldId, slotId, null, null, status, version, createdAt, updatedAt);
+        }
+    }
 
-    // --- API Requests ---
+    // --- API Requests & Responses ---
 
     record CreateAppointmentSlotRequest(
             UUID practitionerRoleId,
@@ -89,5 +104,27 @@ public interface SchedulingModels {
     record CreateSlotHoldRequest(
             UUID slotId,
             UUID patientId
+    ) {}
+
+    record RescheduleAppointmentRequest(
+            UUID targetSlotHoldId,
+            String reason,
+            UUID topUpPaymentIntentId
+    ) {}
+
+    record RescheduleAppointmentResponse(
+            UUID oldAppointmentId,
+            UUID newAppointmentId,
+            long oldAppointmentVersion,
+            long newAppointmentVersion,
+            UUID depositTransferId,
+            UUID sourceAllocationId,
+            UUID targetAllocationId,
+            BigDecimal transferredAmount,
+            BigDecimal differenceAmount,
+            String differenceDisposition,
+            UUID refundPendingAllocationId,
+            String currency,
+            Instant rescheduledAt
     ) {}
 }

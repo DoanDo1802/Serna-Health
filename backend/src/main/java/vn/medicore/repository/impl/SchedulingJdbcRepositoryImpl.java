@@ -151,17 +151,48 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
     @Override
     public void insertAppointment(vn.medicore.dto.SchedulingModels.AppointmentRow row) {
         jdbc.update("""
-                insert into appointment (id, patient_id, slot_hold_id, slot_id, status, version, created_at, updated_at)
-                values (:id, :patientId, :slotHoldId, :slotId, :status, :version, :createdAt, :updatedAt)
+                insert into appointment (id, patient_id, slot_hold_id, slot_id, rescheduled_from_id, rescheduled_to_id, status, version, created_at, updated_at)
+                values (:id, :patientId, :slotHoldId, :slotId, :rescheduledFromId, :rescheduledToId, :status, :version, :createdAt, :updatedAt)
                 """, new MapSqlParameterSource()
                 .addValue("id", row.id())
                 .addValue("patientId", row.patientId())
                 .addValue("slotHoldId", row.slotHoldId())
                 .addValue("slotId", row.slotId())
+                .addValue("rescheduledFromId", row.rescheduledFromId())
+                .addValue("rescheduledToId", row.rescheduledToId())
                 .addValue("status", row.status())
                 .addValue("version", row.version())
                 .addValue("createdAt", ts(row.createdAt()))
                 .addValue("updatedAt", ts(row.updatedAt())));
+    }
+
+    @Override
+    public void updateAppointment(vn.medicore.dto.SchedulingModels.AppointmentRow row, long expectedVersion) {
+        int updated = jdbc.update("""
+                update appointment set
+                    patient_id = :patientId,
+                    slot_hold_id = :slotHoldId,
+                    slot_id = :slotId,
+                    rescheduled_from_id = :rescheduledFromId,
+                    rescheduled_to_id = :rescheduledToId,
+                    status = :status,
+                    version = :version,
+                    updated_at = :updatedAt
+                where id = :id and version = :expectedVersion
+                """, new MapSqlParameterSource()
+                .addValue("id", row.id())
+                .addValue("patientId", row.patientId())
+                .addValue("slotHoldId", row.slotHoldId())
+                .addValue("slotId", row.slotId())
+                .addValue("rescheduledFromId", row.rescheduledFromId())
+                .addValue("rescheduledToId", row.rescheduledToId())
+                .addValue("status", row.status())
+                .addValue("version", row.version())
+                .addValue("updatedAt", ts(row.updatedAt()))
+                .addValue("expectedVersion", expectedVersion));
+        if (updated == 0) {
+            throw new StaleVersionException();
+        }
     }
 
     @Override
@@ -170,8 +201,101 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
     }
 
     @Override
+    public Optional<vn.medicore.dto.SchedulingModels.AppointmentRow> appointmentByIdForUpdate(UUID id) {
+        return queryOne("select * from appointment where id = :id for update", new MapSqlParameterSource("id", id), this::mapAppointment);
+    }
+
+    @Override
     public Optional<vn.medicore.dto.SchedulingModels.AppointmentRow> appointmentBySlotHoldId(UUID slotHoldId) {
         return queryOne("select * from appointment where slot_hold_id = :slotHoldId", new MapSqlParameterSource("slotHoldId", slotHoldId), this::mapAppointment);
+    }
+
+    @Override
+    public void insertDepositAllocation(vn.medicore.dto.PaymentModels.DepositAllocationRow row) {
+        jdbc.update("""
+                insert into deposit_allocation (
+                    id, payment_id, appointment_id, amount, currency, allocation_type,
+                    source_allocation_id, status, created_at, correlation_id
+                ) values (
+                    :id, :paymentId, :appointmentId, :amount, :currency, :allocationType,
+                    :sourceAllocationId, :status, :createdAt, :correlationId
+                )
+                """, new MapSqlParameterSource()
+                .addValue("id", row.id())
+                .addValue("paymentId", row.paymentId())
+                .addValue("appointmentId", row.appointmentId())
+                .addValue("amount", row.amount())
+                .addValue("currency", row.currency())
+                .addValue("allocationType", row.allocationType())
+                .addValue("sourceAllocationId", row.sourceAllocationId())
+                .addValue("status", row.status())
+                .addValue("createdAt", ts(row.createdAt()))
+                .addValue("correlationId", row.correlationId()));
+    }
+
+    @Override
+    public void updateDepositAllocationStatus(UUID id, String newStatus, String expectedStatus) {
+        int updated = jdbc.update("""
+                update deposit_allocation set status = :newStatus
+                where id = :id and status = :expectedStatus
+                """, new MapSqlParameterSource()
+                .addValue("id", id)
+                .addValue("newStatus", newStatus)
+                .addValue("expectedStatus", expectedStatus));
+        if (updated == 0) {
+            throw new StaleVersionException();
+        }
+    }
+
+    @Override
+    public List<vn.medicore.dto.PaymentModels.DepositAllocationRow> depositAllocationsByAppointmentId(UUID appointmentId) {
+        return jdbc.query("select * from deposit_allocation where appointment_id = :appointmentId order by created_at asc",
+                new MapSqlParameterSource("appointmentId", appointmentId), this::mapDepositAllocation);
+    }
+
+    @Override
+    public Optional<vn.medicore.dto.PaymentModels.DepositAllocationRow> activeDepositAllocationByAppointmentId(UUID appointmentId) {
+        return queryOne("select * from deposit_allocation where appointment_id = :appointmentId and status = 'ACTIVE' order by created_at desc limit 1",
+                new MapSqlParameterSource("appointmentId", appointmentId), this::mapDepositAllocation);
+    }
+
+    @Override
+    public Optional<vn.medicore.dto.PaymentModels.DepositAllocationRow> depositAllocationById(UUID id) {
+        return queryOne("select * from deposit_allocation where id = :id", new MapSqlParameterSource("id", id), this::mapDepositAllocation);
+    }
+
+    @Override
+    public void insertDepositTransfer(vn.medicore.dto.PaymentModels.DepositTransferRow row) {
+        jdbc.update("""
+                insert into deposit_transfer (
+                    id, old_appointment_id, new_appointment_id, source_allocation_id, target_allocation_id,
+                    amount, currency, difference_amount, difference_disposition, actor_account_id,
+                    reason, correlation_id, created_at
+                ) values (
+                    :id, :oldAppointmentId, :newAppointmentId, :sourceAllocationId, :targetAllocationId,
+                    :amount, :currency, :differenceAmount, :differenceDisposition, :actorAccountId,
+                    :reason, :correlationId, :createdAt
+                )
+                """, new MapSqlParameterSource()
+                .addValue("id", row.id())
+                .addValue("oldAppointmentId", row.oldAppointmentId())
+                .addValue("newAppointmentId", row.newAppointmentId())
+                .addValue("sourceAllocationId", row.sourceAllocationId())
+                .addValue("targetAllocationId", row.targetAllocationId())
+                .addValue("amount", row.amount())
+                .addValue("currency", row.currency())
+                .addValue("differenceAmount", row.differenceAmount())
+                .addValue("differenceDisposition", row.differenceDisposition())
+                .addValue("actorAccountId", row.actorAccountId())
+                .addValue("reason", row.reason())
+                .addValue("correlationId", row.correlationId())
+                .addValue("createdAt", ts(row.createdAt())));
+    }
+
+    @Override
+    public Optional<vn.medicore.dto.PaymentModels.DepositTransferRow> depositTransferByOldAppointmentId(UUID oldAppointmentId) {
+        return queryOne("select * from deposit_transfer where old_appointment_id = :oldAppointmentId",
+                new MapSqlParameterSource("oldAppointmentId", oldAppointmentId), this::mapDepositTransfer);
     }
 
     private vn.medicore.dto.SchedulingModels.AppointmentRow mapAppointment(ResultSet rs, int rowNum) throws SQLException {
@@ -180,10 +304,43 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 rs.getObject("patient_id", UUID.class),
                 rs.getObject("slot_hold_id", UUID.class),
                 rs.getObject("slot_id", UUID.class),
+                rs.getObject("rescheduled_from_id", UUID.class),
+                rs.getObject("rescheduled_to_id", UUID.class),
                 rs.getString("status"),
                 rs.getLong("version"),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
+    }
+
+    private vn.medicore.dto.PaymentModels.DepositAllocationRow mapDepositAllocation(ResultSet rs, int rowNum) throws SQLException {
+        return new vn.medicore.dto.PaymentModels.DepositAllocationRow(
+                rs.getObject("id", UUID.class),
+                rs.getObject("payment_id", UUID.class),
+                rs.getObject("appointment_id", UUID.class),
+                rs.getBigDecimal("amount"),
+                rs.getString("currency"),
+                rs.getString("allocation_type"),
+                rs.getObject("source_allocation_id", UUID.class),
+                rs.getString("status"),
+                instant(rs, "created_at"),
+                rs.getString("correlation_id"));
+    }
+
+    private vn.medicore.dto.PaymentModels.DepositTransferRow mapDepositTransfer(ResultSet rs, int rowNum) throws SQLException {
+        return new vn.medicore.dto.PaymentModels.DepositTransferRow(
+                rs.getObject("id", UUID.class),
+                rs.getObject("old_appointment_id", UUID.class),
+                rs.getObject("new_appointment_id", UUID.class),
+                rs.getObject("source_allocation_id", UUID.class),
+                rs.getObject("target_allocation_id", UUID.class),
+                rs.getBigDecimal("amount"),
+                rs.getString("currency"),
+                rs.getBigDecimal("difference_amount"),
+                rs.getString("difference_disposition"),
+                rs.getObject("actor_account_id", UUID.class),
+                rs.getString("reason"),
+                rs.getString("correlation_id"),
+                instant(rs, "created_at"));
     }
 
     private int count(String sql, MapSqlParameterSource params) {

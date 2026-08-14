@@ -46,7 +46,8 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             "POST /api/v1/patients", "POST /api/v1/patients/self", "POST /api/v1/patients/{id}/identifiers", "POST /api/v1/patients/{id}/account-links",
             "POST /api/v1/appointment-slots", "POST /api/v1/appointment-slots/{id}/actions/cancel",
             "POST /api/v1/slot-holds", "DELETE /api/v1/slot-holds/{id}",
-            "POST /api/v1/slot-holds/{id}/payment-intents", "POST /api/v1/mock-payment-intents/{id}/actions/simulate");
+            "POST /api/v1/slot-holds/{id}/payment-intents", "POST /api/v1/mock-payment-intents/{id}/actions/simulate",
+            "POST /api/v1/appointments/{id}/actions/reschedule");
 
     private final IdempotencyServiceImpl idempotency;
     private final AuthProperties properties;

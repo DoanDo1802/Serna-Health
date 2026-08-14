@@ -59,7 +59,7 @@ for (const { module, operation } of expected) {
   }
 }
 
-if (typedCount !== 82) errors.push(`R1-02/R1-06 typed operation count must be 82, found ${typedCount}`)
+if (typedCount !== 83) errors.push(`R1-02/R1-07 typed operation count must be 83, found ${typedCount}`)
 if (actual.length !== expected.length) errors.push(`operation count mismatch: expected ${expected.length}, found ${actual.length}`)
 if (spec.openapi !== '3.1.0') errors.push(`OpenAPI must be 3.1.0, found ${spec.openapi}`)
 if (spec.servers?.[0]?.url !== '/api/v1') errors.push('first server must be /api/v1')

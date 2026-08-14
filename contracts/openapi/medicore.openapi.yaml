@@ -7535,7 +7535,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/RescheduleAppointmentResponse'
         '400':
           description: Invalid request
           content:
@@ -7611,7 +7611,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/RescheduleAppointmentRequest'
   /appointments/{appointmentId}/actions/cancel:
     post:
       tags:
@@ -15215,6 +15215,235 @@ components:
         capturedAt:
           type: string
           format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    AppointmentStatus:
+      type: string
+      enum:
+        - CONFIRMED
+        - RESCHEDULED
+        - CANCELLED
+        - FULFILLED
+        - NO_SHOW
+    Appointment:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - patientId
+        - slotId
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        patientId:
+          type: string
+          format: uuid
+        slotHoldId:
+          type: string
+          format: uuid
+        slotId:
+          type: string
+          format: uuid
+        rescheduledFromId:
+          type: string
+          format: uuid
+        rescheduledToId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/AppointmentStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RescheduleAppointmentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - targetSlotHoldId
+      properties:
+        targetSlotHoldId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          maxLength: 500
+        topUpPaymentIntentId:
+          type: string
+          format: uuid
+    RescheduleAppointmentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - oldAppointmentId
+        - newAppointmentId
+        - oldAppointmentVersion
+        - newAppointmentVersion
+        - depositTransferId
+        - transferredAmount
+        - differenceAmount
+        - differenceDisposition
+        - currency
+        - rescheduledAt
+      properties:
+        oldAppointmentId:
+          type: string
+          format: uuid
+        newAppointmentId:
+          type: string
+          format: uuid
+        oldAppointmentVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        newAppointmentVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        depositTransferId:
+          type: string
+          format: uuid
+        sourceAllocationId:
+          type: string
+          format: uuid
+        targetAllocationId:
+          type: string
+          format: uuid
+        transferredAmount:
+          type: number
+          minimum: 0
+          multipleOf: 0.01
+        differenceAmount:
+          type: number
+          minimum: 0
+          multipleOf: 0.01
+        differenceDisposition:
+          type: string
+          enum:
+            - NONE
+            - ADDITIONAL_CAPTURE
+            - REFUND_PENDING
+        refundPendingAllocationId:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          const: VND
+        rescheduledAt:
+          type: string
+          format: date-time
+    DepositAllocation:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - paymentId
+        - appointmentId
+        - amount
+        - currency
+        - allocationType
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        paymentId:
+          type: string
+          format: uuid
+        appointmentId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          minimum: 0.01
+          multipleOf: 0.01
+        currency:
+          type: string
+          const: VND
+        allocationType:
+          type: string
+          enum:
+            - ORIGINAL
+            - TRANSFER_IN
+        sourceAllocationId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - TRANSFERRED
+            - REFUND_PENDING
+            - REFUNDED
+            - ENTERED_IN_ERROR
+        createdAt:
+          type: string
+          format: date-time
+    DepositTransfer:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - oldAppointmentId
+        - newAppointmentId
+        - sourceAllocationId
+        - targetAllocationId
+        - amount
+        - currency
+        - differenceAmount
+        - differenceDisposition
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        oldAppointmentId:
+          type: string
+          format: uuid
+        newAppointmentId:
+          type: string
+          format: uuid
+        sourceAllocationId:
+          type: string
+          format: uuid
+        targetAllocationId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          minimum: 0.01
+          multipleOf: 0.01
+        currency:
+          type: string
+          const: VND
+        differenceAmount:
+          type: number
+          minimum: 0
+          multipleOf: 0.01
+        differenceDisposition:
+          type: string
+          enum:
+            - NONE
+            - ADDITIONAL_CAPTURE
+            - REFUND_PENDING
+        actorAccountId:
+          type: string
+          format: uuid
+        reason:
+          type: string
         createdAt:
           type: string
           format: date-time
