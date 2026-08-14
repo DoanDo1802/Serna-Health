@@ -20,8 +20,8 @@ public final class PasswordPolicy {
     }
 
     public void validate(String password) {
-        if (password == null || password.length() < 12 || password.length() > 128) {
-            throw new IllegalArgumentException("Password must contain 12 to 128 characters");
+        if (password == null || password.length() < 6 || password.length() > 128) {
+            throw new IllegalArgumentException("Password must contain 6 to 128 characters");
         }
         if (COMMON_PASSWORDS.contains(password.toLowerCase(Locale.ROOT))) {
             throw new IllegalArgumentException("Password is too common");

@@ -57,7 +57,48 @@ Contracts: [[schema/scheduling-payment-r1|Payment/deposit R1]] và [[schema/bill
 | `REGULATORY-PRODUCTION` | Chỉ migrate/activate sau legal/clinical/security gate và ADR liên quan ACCEPTED |
 | `DEFERRED` | Không migrate trong MVP ngoại trú |
 
-### Active R1 resources
+## Trạng thái triển khai schema
+
+Flyway là nguồn chuẩn cho bảng đã tồn tại trong runtime. Contract R1 bên dưới là đích đã ACCEPTED cho feature story tương ứng, **không đồng nghĩa mọi bảng đã migrate**.
+
+| Trạng thái | Count | Ý nghĩa |
+|---|---:|---|
+| Migrated và có code path | 24 | DDL trong `V1`–`V14`; repository/service/controller hoặc integration test đang dùng. |
+| Migrated nhưng chưa hoàn chỉnh | 2 | `appointment` là staging schema cho booking/reschedule; `outbox_event` chờ R1-14 dispatcher. |
+| Target R1 forward-only | 21 | Contract đã ACCEPTED, nhưng chưa có Flyway migration. Chỉ tạo cùng feature story, owner code và acceptance test. |
+| Tổng target R1 | 47 | 26 bảng hiện có + 21 bảng forward-only. |
+
+### Migrated runtime schema — 26 tables
+
+| Module owner | Migration | Tables |
+|---|---|---|
+| `platform-audit` | `V1` | `audit_event`, `idempotency_record`, `outbox_event` *(dormant; R1-14)* |
+| `identity-access` | `V2` | `user_account`, `password_credential`, `authentication_challenge`, `account_token`, `account_session`, `role`, `permission`, `role_permission`, `account_role_assignment`, `break_glass_grant` |
+| `catalog` | `V3` | `department`, `room`, `service`, `service_price`, `practitioner`, `practitioner_role` |
+| `patient` | `V4` | `patient`, `patient_duplicate_candidate`, `patient_account_link`, `patient_identifier` |
+| `scheduling` | `V5`, `V13` | `appointment_slot`, `slot_hold`, `appointment` *(dormant/incomplete booking lifecycle)* |
+
+`V0` không tạo domain table. `V6`–`V12` và `V14` là forward integrity/remediation/seed migrations, không tạo table.
+
+### Target R1 forward-only — 21 tables
+
+| Module owner | Tables |
+|---|---|
+| `platform-audit` | `webhook_inbox` |
+| `scheduling` | `payment_intent` |
+| `reception-queue` | `check_in`, `visit`, `encounter`, `encounter_participant`, `queue_policy`, `queue_entry`, `queue_adjustment` |
+| `clinical-care` | `clinical_note`, `clinical_note_version`, `diagnosis`, `diagnosis_version`, `service_delivery` |
+| `billing-payment` | `payment`, `deposit_allocation`, `deposit_transfer`, `billing_account`, `charge_item`, `payment_allocation` |
+| `notification` | `notification_delivery` |
+| `diagnostics` | Package boundary only; không active table trong R1 |
+
+`ServiceDelivery` do `clinical-care` sở hữu. `billing-payment` consume public event/API và không dùng JPA entity ClinicalCare.
+
+`outbox_event` không được gộp vào `audit_event`: audit là evidence append-only, còn outbox là worker state mutable. `appointment` không được gộp vào `slot_hold`: hold hết hạn và nhả capacity, appointment là reservation bền vững cho payment/confirmation/reschedule.
+
+### Active R1 contract inventory
+
+Bảng sau là ownership/contract inventory cho toàn R1; xem trạng thái migrate ở hai bảng trên.
 
 | Module owner | Tables |
 |---|---|
@@ -71,8 +112,6 @@ Contracts: [[schema/scheduling-payment-r1|Payment/deposit R1]] và [[schema/bill
 | `billing-payment` | `payment`, `deposit_allocation`, `deposit_transfer`, `billing_account`, `charge_item`, `payment_allocation` |
 | `notification` | `notification_delivery` |
 | `diagnostics` | Package boundary only; không active table trong R1 |
-
-`ServiceDelivery` do `clinical-care` sở hữu. `billing-payment` consume public event/API và không dùng JPA entity ClinicalCare.
 
 ### Outside active R1 migration
 

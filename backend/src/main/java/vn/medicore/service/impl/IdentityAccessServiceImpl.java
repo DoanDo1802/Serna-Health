@@ -93,7 +93,6 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
             store.insertAccount(new AccountRow(accountId, email.normalized(), email.display(), null,
                     AccountStatus.PENDING_VERIFICATION.name(), 0, null, null, 0, now, now));
             store.insertCredential(ids.next(), accountId, passwordEncoder.encode(password), now);
-            issueVerificationToken(email, accountId, requestId, now);
             issueChallenge(email, accountId, "VERIFY_EMAIL", requestId, sourceIp, now);
         } else {
             passwordEncoder.encode(password);
@@ -107,7 +106,6 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         Instant now = clock.instant();
         Optional<AccountRow> account = store.findAccountByEmailForUpdate(email.normalized());
         if (account.isPresent() && AccountStatus.PENDING_VERIFICATION.name().equals(account.get().status())) {
-            issueVerificationToken(email, account.get().id(), requestId, now);
             issueChallenge(email, account.get().id(), "VERIFY_EMAIL", requestId, sourceIp, now);
         }
         return new CommandAccepted(true, requestId);

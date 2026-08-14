@@ -18,7 +18,9 @@ Columns: `id uuid`, practitioner_role/department/room/service UUIDs, `session va
 
 ## `slot_hold`
 
-Columns: `id uuid`, slot/patient UUIDs, `expires_at timestamptz`, `deposit_amount numeric(19,2)`, `currency char(3)`, `idempotency_scope varchar(128)`, `idempotency_key varchar(128)`, `request_hash varchar(128)`, `status varchar(64)`, `version bigint`, timestamps. PK/FKs; currency VND; amount >=0; expires > created; unique `(scope,key)`; same key payload enforced request hash; status enum. Partial index active expiry; slot/status index. Capacity counts ACTIVE nonexpired holds + CONFIRMED/FULFILLED appointments under slot row lock.
+Columns: `id uuid`, slot/patient UUIDs, `expires_at timestamptz`, `deposit_amount numeric(19,2)`, `currency char(3)`, `status varchar(64)`, `version bigint`, timestamps. PK/FKs; currency VND; amount >=0; expires > created; status enum. Partial index active expiry; slot/status index. Capacity counts ACTIVE nonexpired holds + CONFIRMED/FULFILLED appointments under slot row lock.
+
+HTTP/API retry uses `platform-audit.idempotency_record` as source of truth. Legacy `slot_hold.idempotency_scope`, `slot_hold.idempotency_key`, and `slot_hold.request_hash` are nullable residue from `V5`, unused after `V13`, and must only be removed by a compatibility-checked forward migration; new code must not use them.
 
 ## `payment_intent`
 
@@ -26,7 +28,9 @@ Columns: `id uuid`, `slot_hold_id uuid`, `provider varchar(64)`, `provider_refer
 
 ## `appointment`
 
-Columns: `id uuid`, patient/slot_hold UUIDs, `rescheduled_from_id/rescheduled_to_id uuid null`, `status varchar(64)`, `version bigint`, `created_at/updated_at timestamptz`. PK/FKs RESTRICT including self-FKs; unique slot_hold; partial unique from/to non-null; no self lineage; reciprocal lineage and same Patient enforced command transaction; status check. Index patient/status/time, slot/status. Reservation-consuming states CONFIRMED/FULFILLED.
+Target contract columns: `id uuid`, patient/slot_hold UUIDs, `rescheduled_from_id/rescheduled_to_id uuid null`, `status varchar(64)`, `version bigint`, `created_at/updated_at timestamptz`. PK/FKs RESTRICT including self-FKs; unique slot_hold; partial unique from/to non-null; no self lineage; reciprocal lineage and same Patient enforced command transaction; status check. Index patient/status/time, slot/status. Reservation-consuming states CONFIRMED/FULFILLED.
+
+Current `V13__scheduling_r1_05_completion.sql` provides only staging schema: patient, optional slot hold, slot, status, version and timestamps. It is used by capacity counting but has no booking/confirmation/reschedule command path yet; add target lineage/uniqueness constraints only with R1-06/R1-07 implementation through forward migration.
 
 ## `webhook_inbox`
 
@@ -71,7 +75,9 @@ Columns: `id uuid`, payment/appointment UUIDs, `amount numeric(19,2)`, `currency
 
 ## `deposit_transfer`
 
-Columns: `id uuid`, old/new appointment UUIDs, source/target allocation UUIDs, `amount numeric(19,2)`, currency, `difference_amount numeric(19,2)`, `difference_disposition varchar(64)`, `idempotency_scope/key/request_hash`, actor/reason/correlation, `created_at`. All not null except reason only optional outside 24h; disposition `NONE/ADDITIONAL_CAPTURE/REFUND_PENDING`; amount >0, difference >=0, old != new; unique old appointment (one replacement); unique `(scope,key)`; target source lineage matches source allocation and appointments enforced transaction. Immutable. Index new appointment, correlation.
+Columns: `id uuid`, old/new appointment UUIDs, source/target allocation UUIDs, `amount numeric(19,2)`, currency, `difference_amount numeric(19,2)`, `difference_disposition varchar(64)`, actor/reason/correlation, `created_at`. All not null except reason only optional outside 24h; disposition `NONE/ADDITIONAL_CAPTURE/REFUND_PENDING`; amount >0, difference >=0, old != new; unique old appointment (one replacement); target source lineage matches source allocation and appointments enforced transaction. Immutable. Index new appointment, correlation.
+
+HTTP/API replay remains owned by `platform-audit.idempotency_record`; do not duplicate `idempotency_scope/key/request_hash` in this table. The business unique key on old appointment remains required.
 
 ## States and transitions
 

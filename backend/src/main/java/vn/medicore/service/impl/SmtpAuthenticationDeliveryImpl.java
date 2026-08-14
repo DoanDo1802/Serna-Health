@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import vn.medicore.service.AuthenticationDeliveryService;
 
 @Component
-@Profile("!local & !test")
+@Profile("!test")
 public class SmtpAuthenticationDeliveryImpl implements AuthenticationDeliveryService {
 
     private final JavaMailSender mailSender;

@@ -1,12 +1,29 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
   datasource:
     url: ${MEDICORE_DB_URL:jdbc:postgresql://localhost:5432/medicore}
     username: ${MEDICORE_DB_USERNAME:medicore}
     password: ${MEDICORE_DB_PASSWORD:medicore-local-only}
+  mail:
+    host: ${MEDICORE_MAIL_HOST:smtp.gmail.com}
+    port: ${MEDICORE_MAIL_PORT:587}
+    username: ${MEDICORE_MAIL_USERNAME}
+    password: ${MEDICORE_MAIL_PASSWORD}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.starttls.required: true
 
 medicore:
+  crypto:
+    encryption-key: ${MEDICORE_CRYPTO_ENCRYPTION_KEY:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+    comparison-key: ${MEDICORE_CRYPTO_COMPARISON_KEY:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210}
   auth:
-    secret-hash-key: ${MEDICORE_AUTH_SECRET_HASH_KEY:local-only-key-at-least-thirty-two-bytes}
+    otp:
+      resend-cooldown: 0s
+      max-issues-per-hour: 10000
+    secret-hash-key: ${MEDICORE_AUTH_SECRET_HASH_KEY}
     session:
       secure-cookie: false
 

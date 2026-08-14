@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import vn.medicore.service.AuthenticationDeliveryService;
 
 @Component
-@Profile("local | test")
+@Profile("test")
 public class LoggingAuthenticationDeliveryImpl implements AuthenticationDeliveryService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggingAuthenticationDeliveryImpl.class);

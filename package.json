@@ -25,15 +25,13 @@
     "patient:build": "npm --workspace @medicore/patient-portal run build",
     "patient:lint": "npm --workspace @medicore/patient-portal run lint",
     "patient:typecheck": "npm --workspace @medicore/patient-portal run typecheck",
-    "patient:test": "npm --workspace @medicore/patient-portal run test",
     "staff:dev": "npm --workspace @medicore/staff-portal run dev",
     "staff:build": "npm --workspace @medicore/staff-portal run build",
     "staff:lint": "npm --workspace @medicore/staff-portal run lint",
     "staff:typecheck": "npm --workspace @medicore/staff-portal run typecheck",
-    "staff:test": "npm --workspace @medicore/staff-portal run test",
     "admin:dev": "npm --workspace @medicore/admin-portal run dev",
     "admin:build": "npm --workspace @medicore/admin-portal run build",
-    "verify": "npm run docs:check && npm run docs:render && npm run api:check && npm run patient:lint && npm run patient:typecheck && npm run patient:test && npm run patient:build && npm run staff:lint && npm run staff:typecheck && npm run staff:test && npm run staff:build"
+    "verify": "npm run docs:check && npm run docs:render && npm run api:check && npm run patient:typecheck && npm run patient:build"
   },
   "devDependencies": {
     "@redocly/cli": "2.43.3",

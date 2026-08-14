@@ -313,9 +313,9 @@ public class IdentityAccessController {
     record OtpLoginRequest(@NotBlank @Size(max = 320) String email,
                            @NotBlank @Size(min = 6, max = 12) String code) {}
     record PasswordResetRequest(@NotBlank @Size(min = 32, max = 512) String token,
-                                @NotBlank @Size(min = 12, max = 128) String newPassword) {}
+                                @NotBlank @Size(min = 6, max = 128) String newPassword) {}
     record PasswordChangeRequest(@NotBlank @Size(max = 128) String currentPassword,
-                                 @NotBlank @Size(min = 12, max = 128) String newPassword) {}
+                                 @NotBlank @Size(min = 6, max = 128) String newPassword) {}
     record ChangeAccountStatusRequest(@NotBlank String status,
                                       @NotBlank @Size(max = 500) String reason) {}
     record RoleCreateRequest(@NotBlank @Size(max = 64) @jakarta.validation.constraints.Pattern(regexp = "^[A-Z][A-Z0-9_]*$") String code,

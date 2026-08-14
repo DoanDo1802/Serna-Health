@@ -58,7 +58,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({IllegalArgumentException.class, MethodArgumentNotValidException.class})
     ResponseEntity<ProblemDetail> invalid(Exception exception, HttpServletRequest request) {
-        return problem(HttpStatus.BAD_REQUEST, "VALIDATION_INVALID_REQUEST", "Invalid request", request);
+        String detail = exception instanceof IllegalArgumentException && exception.getMessage() != null 
+                ? exception.getMessage() 
+                : "Invalid request";
+        return problem(HttpStatus.BAD_REQUEST, "VALIDATION_INVALID_REQUEST", detail, request);
     }
 
     @ExceptionHandler({DataIntegrityViolationException.class, IllegalStateException.class})
