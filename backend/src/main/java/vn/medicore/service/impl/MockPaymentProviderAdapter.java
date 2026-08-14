@@ -84,8 +84,6 @@ public class MockPaymentProviderAdapter implements PaymentProviderAdapter {
             Instant occurredAt = null;
             if (root.hasNonNull("providerOccurredAt")) {
                 occurredAt = parseInstant(root.path("providerOccurredAt").asText());
-            } else if (headerTimestamp != null && !headerTimestamp.isBlank()) {
-                occurredAt = parseInstant(headerTimestamp);
             }
 
             BigDecimal amount = null;

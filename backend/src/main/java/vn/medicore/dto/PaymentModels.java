@@ -30,6 +30,7 @@ public interface PaymentModels {
             String providerTransactionId,
             String signatureStatus,
             String payloadHash,
+            byte[] rawPayload,
             String payload,
             Instant providerOccurredAt,
             Instant receivedAt,

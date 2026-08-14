@@ -43,12 +43,13 @@ create table webhook_inbox (
     provider_transaction_id varchar(128),
     signature_status varchar(64) not null check (signature_status in ('VALID', 'INVALID', 'NOT_VERIFIED')),
     payload_hash varchar(128) not null,
-    payload jsonb not null,
+    raw_payload bytea not null,
+    payload jsonb,
     provider_occurred_at timestamptz,
     received_at timestamptz not null,
     provider_time_trust varchar(64) not null check (provider_time_trust in ('TRUSTED', 'UNTRUSTED', 'MISSING')),
     amount numeric(19,2) check (amount is null or amount >= 0),
-    currency char(3) check ((amount is null and currency is null) or (amount is not null and currency = 'VND')),
+    currency varchar(3) check (currency is null or currency ~ '^[A-Z]{3}$'),
     status varchar(64) not null check (status in ('RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED', 'DEAD_LETTER')),
     processed_at timestamptz,
     error_code varchar(128),
@@ -83,7 +84,7 @@ create table payment (
     provider varchar(64) not null,
     provider_transaction_id varchar(128) not null,
     amount numeric(19,2) not null check (amount > 0),
-    currency char(3) not null check (currency = 'VND'),
+    currency varchar(3) not null check (currency ~ '^[A-Z]{3}$'),
     status varchar(64) not null check (status in ('CAPTURED', 'FAILED')),
     provider_occurred_at timestamptz,
     provider_time_trust varchar(64) not null check (provider_time_trust in ('TRUSTED', 'UNTRUSTED', 'MISSING', 'SERVER_OCCURRED')),
@@ -98,6 +99,7 @@ create table payment (
 );
 
 create index ix_payment_intent on payment (payment_intent_id) where payment_intent_id is not null;
+create unique index uq_payment_intent_unique_capture on payment (payment_intent_id) where payment_intent_id is not null;
 create index ix_payment_captured_status on payment (captured_at, status);
 
 create function reject_payment_mutation() returns trigger

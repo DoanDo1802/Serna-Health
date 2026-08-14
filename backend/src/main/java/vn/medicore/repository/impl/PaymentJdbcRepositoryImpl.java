@@ -88,14 +88,51 @@ public class PaymentJdbcRepositoryImpl implements PaymentRepository {
     }
 
     @Override
-    public void insertWebhookInbox(WebhookInboxRow row) {
-        jdbc.update("""
+    public boolean insertWebhookInboxAtomic(WebhookInboxRow row) {
+        int rows = jdbc.update("""
                 insert into webhook_inbox (id, provider, event_id, event_type, provider_transaction_id,
-                    signature_status, payload_hash, payload, provider_occurred_at, received_at,
+                    signature_status, payload_hash, raw_payload, payload, provider_occurred_at, received_at,
                     provider_time_trust, amount, currency, status, processed_at, error_code,
                     attempts, next_attempt_at, correlation_id, version)
                 values (:id, :provider, :eventId, :eventType, :providerTransactionId,
-                    :signatureStatus, :payloadHash, cast(:payload as jsonb), :providerOccurredAt, :receivedAt,
+                    :signatureStatus, :payloadHash, :rawPayload, cast(:payload as jsonb), :providerOccurredAt, :receivedAt,
+                    :providerTimeTrust, :amount, :currency, :status, :processedAt, :errorCode,
+                    :attempts, :nextAttemptAt, :correlationId, :version)
+                on conflict (provider, event_id) do nothing
+                """, new MapSqlParameterSource()
+                .addValue("id", row.id())
+                .addValue("provider", row.provider())
+                .addValue("eventId", row.eventId())
+                .addValue("eventType", row.eventType())
+                .addValue("providerTransactionId", row.providerTransactionId())
+                .addValue("signatureStatus", row.signatureStatus())
+                .addValue("payloadHash", row.payloadHash())
+                .addValue("rawPayload", row.rawPayload())
+                .addValue("payload", row.payload())
+                .addValue("providerOccurredAt", ts(row.providerOccurredAt()))
+                .addValue("receivedAt", ts(row.receivedAt()))
+                .addValue("providerTimeTrust", row.providerTimeTrust())
+                .addValue("amount", row.amount())
+                .addValue("currency", row.currency())
+                .addValue("status", row.status())
+                .addValue("processedAt", ts(row.processedAt()))
+                .addValue("errorCode", row.errorCode())
+                .addValue("attempts", row.attempts())
+                .addValue("nextAttemptAt", ts(row.nextAttemptAt()))
+                .addValue("correlationId", row.correlationId())
+                .addValue("version", row.version()));
+        return rows > 0;
+    }
+
+    @Override
+    public void insertWebhookInbox(WebhookInboxRow row) {
+        jdbc.update("""
+                insert into webhook_inbox (id, provider, event_id, event_type, provider_transaction_id,
+                    signature_status, payload_hash, raw_payload, payload, provider_occurred_at, received_at,
+                    provider_time_trust, amount, currency, status, processed_at, error_code,
+                    attempts, next_attempt_at, correlation_id, version)
+                values (:id, :provider, :eventId, :eventType, :providerTransactionId,
+                    :signatureStatus, :payloadHash, :rawPayload, cast(:payload as jsonb), :providerOccurredAt, :receivedAt,
                     :providerTimeTrust, :amount, :currency, :status, :processedAt, :errorCode,
                     :attempts, :nextAttemptAt, :correlationId, :version)
                 """, new MapSqlParameterSource()
@@ -106,6 +143,7 @@ public class PaymentJdbcRepositoryImpl implements PaymentRepository {
                 .addValue("providerTransactionId", row.providerTransactionId())
                 .addValue("signatureStatus", row.signatureStatus())
                 .addValue("payloadHash", row.payloadHash())
+                .addValue("rawPayload", row.rawPayload())
                 .addValue("payload", row.payload())
                 .addValue("providerOccurredAt", ts(row.providerOccurredAt()))
                 .addValue("receivedAt", ts(row.receivedAt()))
@@ -172,6 +210,11 @@ public class PaymentJdbcRepositoryImpl implements PaymentRepository {
     @Override
     public Optional<PaymentRow> paymentById(UUID id) {
         return queryOne("select * from payment where id = :id", new MapSqlParameterSource("id", id), this::mapPayment);
+    }
+
+    @Override
+    public Optional<PaymentRow> paymentByIntentId(UUID paymentIntentId) {
+        return queryOne("select * from payment where payment_intent_id = :intentId", new MapSqlParameterSource("intentId", paymentIntentId), this::mapPayment);
     }
 
     @Override
@@ -245,6 +288,7 @@ public class PaymentJdbcRepositoryImpl implements PaymentRepository {
                 rs.getString("provider_transaction_id"),
                 rs.getString("signature_status"),
                 rs.getString("payload_hash"),
+                rs.getBytes("raw_payload"),
                 rs.getString("payload"),
                 instant(rs, "provider_occurred_at"),
                 instant(rs, "received_at"),

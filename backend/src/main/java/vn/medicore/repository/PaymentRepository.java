@@ -21,6 +21,8 @@ public interface PaymentRepository {
 
     Optional<PaymentIntentRow> paymentIntentByProviderReferenceForUpdate(String provider, String providerReference);
 
+    boolean insertWebhookInboxAtomic(WebhookInboxRow row);
+
     void insertWebhookInbox(WebhookInboxRow row);
 
     void updateWebhookInbox(WebhookInboxRow row, long expectedVersion);
@@ -30,6 +32,8 @@ public interface PaymentRepository {
     void insertPayment(PaymentRow row);
 
     Optional<PaymentRow> paymentById(UUID id);
+
+    Optional<PaymentRow> paymentByIntentId(UUID paymentIntentId);
 
     Optional<PaymentRow> paymentByProviderTransactionId(String provider, String providerTransactionId);
 

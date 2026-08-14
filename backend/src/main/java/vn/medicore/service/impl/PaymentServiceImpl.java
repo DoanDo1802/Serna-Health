@@ -1,5 +1,6 @@
 package vn.medicore.service.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -17,7 +18,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.exception.ResourceNotFoundException;
-import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.config.PaymentProperties;
 import vn.medicore.dto.AuditModels.AuditEventView;
@@ -73,6 +73,14 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public PaymentIntentRow createPaymentIntent(UUID slotHoldId, SchedulingAuditContext context) {
         Instant now = clock.instant();
+
+        // 1. Initial hold lookup
+        SlotHoldRow initialHold = schedulingRepository.slotHoldById(slotHoldId)
+                .orElseThrow(ResourceNotFoundException::new);
+
+        // 2. Strict lock order: AppointmentSlot -> SlotHold
+        schedulingRepository.appointmentSlotByIdForUpdate(initialHold.slotId())
+                .orElseThrow(ResourceNotFoundException::new);
         SlotHoldRow hold = schedulingRepository.slotHoldByIdForUpdate(slotHoldId)
                 .orElseThrow(ResourceNotFoundException::new);
 
@@ -90,12 +98,57 @@ public class PaymentServiceImpl implements PaymentService {
         Optional<PaymentIntentRow> existing = paymentRepository.paymentIntentBySlotHoldId(slotHoldId);
         if (existing.isPresent()) {
             PaymentIntentRow row = existing.get();
-            if ("REQUIRES_PAYMENT_METHOD".equals(row.status()) || "PROCESSING".equals(row.status())) {
+            if ("REQUIRES_PAYMENT_METHOD".equals(row.status()) || "PROCESSING".equals(row.status()) || "SUCCEEDED".equals(row.status())) {
                 return row;
             }
             throw new IllegalStateException("Payment intent already exists with status: " + row.status());
         }
 
+        // 3. Zero-price / Zero-deposit direct-confirmation flow
+        if (hold.depositAmount().compareTo(BigDecimal.ZERO) == 0) {
+            UUID intentId = ids.next();
+            PaymentIntentRow intentRow = new PaymentIntentRow(
+                    intentId,
+                    hold.id(),
+                    "ZERO_PRICE",
+                    "zero_" + intentId,
+                    BigDecimal.ZERO.setScale(2),
+                    hold.currency(),
+                    "SUCCEEDED",
+                    null,
+                    0,
+                    now,
+                    now);
+            paymentRepository.insertPaymentIntent(intentRow);
+
+            SlotHoldJdbcRow consumedHold = new SlotHoldJdbcRow(
+                    hold.id(), hold.slotId(), hold.patientId(), hold.expiresAt(), hold.depositAmount(),
+                    hold.currency(), null, null, null, "CONSUMED", hold.version() + 1, hold.createdAt(), now);
+            schedulingRepository.updateSlotHold(consumedHold, hold.version());
+
+            UUID appointmentId = ids.next();
+            AppointmentRow appointment = new AppointmentRow(
+                    appointmentId, hold.patientId(), hold.id(), hold.slotId(),
+                    "CONFIRMED", 0, now, now);
+            schedulingRepository.insertAppointment(appointment);
+
+            Map<String, Object> outboxPayload = new LinkedHashMap<>();
+            outboxPayload.put("appointmentId", appointmentId.toString());
+            outboxPayload.put("slotHoldId", hold.id().toString());
+            outboxPayload.put("patientId", hold.patientId().toString());
+            outboxPayload.put("slotId", hold.slotId().toString());
+            outboxPayload.put("confirmedAt", now.toString());
+            recordOutbox(appointmentId, "APPOINTMENT", "appointment.confirmed.v1", outboxPayload, context.correlationId(), now);
+
+            recordAudit(context, hold.patientId(), "appointment.confirm", "SUCCEEDED", "Appointment",
+                    appointmentId, 0L, "zero_price_direct_confirm", now);
+            recordAudit(context, hold.patientId(), "payment_intent.create", "SUCCEEDED", "PaymentIntent",
+                    intentRow.id(), intentRow.version(), "zero_price_auto_succeeded", now);
+
+            return intentRow;
+        }
+
+        // 4. Standard PaymentIntent creation
         UUID intentId = ids.next();
         String providerReference = providerAdapter.generateProviderReference(intentId.toString());
         PaymentIntentRow intentRow = new PaymentIntentRow(
@@ -141,33 +194,55 @@ public class PaymentServiceImpl implements PaymentService {
             String signatureHeader,
             String correlationId) {
         Instant now = clock.instant();
-        String payloadHash = computeSha256(rawPayload);
+        byte[] payloadBytes = rawPayload != null ? rawPayload : new byte[0];
+        String payloadHash = computeSha256(payloadBytes);
+        String effectiveEventId = eventId != null && !eventId.isBlank() ? eventId : ids.next().toString();
+        String effectiveCorrelationId = correlationId != null && !correlationId.isBlank() ? correlationId : ids.next().toString();
 
-        if (!providerAdapter.providerName().equalsIgnoreCase(provider)) {
-            paymentRepository.insertWebhookInbox(new WebhookInboxRow(
+        // Safe JSON parsing for payload
+        String payloadJson = null;
+        boolean malformedJson = false;
+        try {
+            JsonNode parsed = objectMapper.readTree(payloadBytes);
+            if (parsed != null && parsed.isObject()) {
+                payloadJson = objectMapper.writeValueAsString(parsed);
+            } else {
+                malformedJson = true;
+            }
+        } catch (Exception ex) {
+            malformedJson = true;
+        }
+
+        // Mock profile gate
+        if ("MOCK_PAY".equalsIgnoreCase(provider) && !paymentProperties.mockEnabled()) {
+            WebhookInboxRow gateInbox = new WebhookInboxRow(
                     ids.next(), provider != null ? provider : "UNKNOWN",
-                    eventId != null ? eventId : ids.next().toString(),
-                    "UNKNOWN", null, "NOT_VERIFIED", payloadHash,
-                    new String(rawPayload != null ? rawPayload : new byte[0], StandardCharsets.UTF_8),
-                    null, now, "UNTRUSTED", null, null, "FAILED", now,
-                    "UNSUPPORTED_PROVIDER", 1, null, correlationId, 0));
+                    effectiveEventId, "UNKNOWN", null, "NOT_VERIFIED", payloadHash,
+                    payloadBytes, payloadJson, null, now, "UNTRUSTED", null, null, "FAILED", now,
+                    "MOCK_PAYMENT_DISABLED", 1, null, effectiveCorrelationId, 0);
+            paymentRepository.insertWebhookInboxAtomic(gateInbox);
+            recordAuditDirect(null, null, "payment.webhook.receive", "DENIED",
+                    "WebhookInbox", gateInbox.id(), 0L, "mock_payment_disabled", effectiveCorrelationId, now);
             return;
         }
 
-        if (eventId == null || eventId.isBlank()) {
-            eventId = ids.next().toString();
-        }
-
-        Optional<WebhookInboxRow> existingInbox = paymentRepository.webhookInboxByProviderAndEventId(provider, eventId);
-        if (existingInbox.isPresent()) {
-            // Webhook idempotency boundary: already received / processed
+        // Provider validation
+        if (!providerAdapter.providerName().equalsIgnoreCase(provider)) {
+            WebhookInboxRow unsupportedInbox = new WebhookInboxRow(
+                    ids.next(), provider != null ? provider : "UNKNOWN",
+                    effectiveEventId, "UNKNOWN", null, "NOT_VERIFIED", payloadHash,
+                    payloadBytes, payloadJson, null, now, "UNTRUSTED", null, null, "FAILED", now,
+                    "UNSUPPORTED_PROVIDER", 1, null, effectiveCorrelationId, 0);
+            paymentRepository.insertWebhookInboxAtomic(unsupportedInbox);
+            recordAuditDirect(null, null, "payment.webhook.receive", "FAILED",
+                    "WebhookInbox", unsupportedInbox.id(), 0L, "unsupported_provider", effectiveCorrelationId, now);
             return;
         }
 
-        boolean signatureValid = providerAdapter.verifySignature(rawPayload, eventId, timestampHeader, signatureHeader);
+        boolean signatureValid = providerAdapter.verifySignature(payloadBytes, effectiveEventId, timestampHeader, signatureHeader);
         String signatureStatus = signatureValid ? "VALID" : "INVALID";
 
-        NormalizedWebhookEvent event = providerAdapter.parseAndNormalize(rawPayload, eventId, timestampHeader);
+        NormalizedWebhookEvent event = providerAdapter.parseAndNormalize(payloadBytes, effectiveEventId, timestampHeader);
 
         String providerTimeTrust;
         if (event.providerOccurredAt() == null) {
@@ -182,12 +257,13 @@ public class PaymentServiceImpl implements PaymentService {
         WebhookInboxRow inbox = new WebhookInboxRow(
                 inboxId,
                 provider,
-                eventId,
+                effectiveEventId,
                 event.eventType() != null ? event.eventType() : "UNKNOWN",
                 event.providerTransactionId(),
                 signatureStatus,
                 payloadHash,
-                new String(rawPayload != null ? rawPayload : new byte[0], StandardCharsets.UTF_8),
+                payloadBytes,
+                payloadJson,
                 event.providerOccurredAt(),
                 now,
                 providerTimeTrust,
@@ -198,12 +274,29 @@ public class PaymentServiceImpl implements PaymentService {
                 null,
                 1,
                 null,
-                correlationId,
+                effectiveCorrelationId,
                 0);
-        paymentRepository.insertWebhookInbox(inbox);
 
-        if (event.malformed()) {
+        // Atomic inbox insert: deduplicates concurrent deliveries
+        boolean inserted = paymentRepository.insertWebhookInboxAtomic(inbox);
+        if (!inserted) {
+            // Webhook duplicate race: already received / recorded at inbox boundary
+            return;
+        }
+
+        // Branch 1: Invalid Signature Quarantined (DO NOT touch PaymentIntent or Appointment)
+        if (!signatureValid) {
+            paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "INVALID_SIGNATURE", now), 0);
+            recordAuditDirect(null, null, "payment.webhook.receive", "DENIED",
+                    "WebhookInbox", inbox.id(), 0L, "invalid_webhook_signature", effectiveCorrelationId, now);
+            return;
+        }
+
+        // Branch 2: Malformed payload
+        if (event.malformed() || malformedJson) {
             paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "MALFORMED_PAYLOAD", now), 0);
+            recordAuditDirect(null, null, "payment.webhook.receive", "FAILED",
+                    "WebhookInbox", inbox.id(), 0L, "malformed_webhook_payload", effectiveCorrelationId, now);
             return;
         }
 
@@ -221,36 +314,51 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (intentOpt.isEmpty()) {
             paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "PAYMENT_INTENT_NOT_FOUND", now), 0);
+            recordAuditDirect(null, null, "payment.webhook.receive", "FAILED",
+                    "WebhookInbox", inbox.id(), 0L, "payment_intent_not_found", effectiveCorrelationId, now);
             return;
         }
 
-        PaymentIntentRow intent = intentOpt.get();
-        SlotHoldRow hold = schedulingRepository.slotHoldByIdForUpdate(intent.slotHoldId()).orElse(null);
-        if (hold == null) {
+        PaymentIntentRow initialIntent = intentOpt.get();
+
+        // Strict unified lock order: AppointmentSlot -> SlotHold -> PaymentIntent -> WebhookInbox -> Payment
+        SlotHoldRow initialHold = schedulingRepository.slotHoldById(initialIntent.slotHoldId()).orElse(null);
+        if (initialHold == null) {
             paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "SLOT_HOLD_NOT_FOUND", now), 0);
             return;
         }
-        AppointmentSlotRow slot = schedulingRepository.appointmentSlotByIdForUpdate(hold.slotId()).orElse(null);
+
+        AppointmentSlotRow slot = schedulingRepository.appointmentSlotByIdForUpdate(initialHold.slotId()).orElse(null);
         if (slot == null) {
             paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "SLOT_NOT_FOUND", now), 0);
             return;
         }
 
-        // Branch 1: Invalid Signature
-        if (!signatureValid) {
-            paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "INVALID_SIGNATURE", now), 0);
-            paymentRepository.updatePaymentIntent(new PaymentIntentRow(
-                    intent.id(), intent.slotHoldId(), intent.provider(), intent.providerReference(),
-                    intent.amount(), intent.currency(), "RECONCILIATION_REQUIRED", "INVALID_SIGNATURE",
-                    intent.version() + 1, intent.createdAt(), now), intent.version());
-            recordOutbox(intent.id(), "PAYMENT_INTENT", "payment.reconciliation_required.v1",
-                    Map.of("intentId", intent.id().toString(), "reason", "INVALID_SIGNATURE"), correlationId, now);
-            recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
-                    "PaymentIntent", intent.id(), intent.version() + 1, "INVALID_SIGNATURE", correlationId, now);
+        SlotHoldRow hold = schedulingRepository.slotHoldByIdForUpdate(initialHold.id()).orElse(null);
+        if (hold == null) {
+            paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "SLOT_HOLD_NOT_FOUND", now), 0);
             return;
         }
 
-        // Branch 2: Provider Failure Event
+        PaymentIntentRow intent = paymentRepository.paymentIntentByIdForUpdate(initialIntent.id()).orElse(null);
+        if (intent == null) {
+            paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "PAYMENT_INTENT_NOT_FOUND", now), 0);
+            return;
+        }
+
+        // Out-of-order & State Machine Invariant Protection
+        if ("SUCCEEDED".equals(intent.status())) {
+            // Already captured and confirmed. Subsequent duplicate or failure events must not revert state.
+            paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
+            return;
+        }
+
+        if ("FAILED".equals(intent.status()) || "CANCELLED".equals(intent.status()) || "RECONCILIATION_REQUIRED".equals(intent.status())) {
+            paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
+            return;
+        }
+
+        // Provider Failure Event
         boolean isSuccess = "payment.succeeded".equalsIgnoreCase(event.eventType())
                 || "payment.captured".equalsIgnoreCase(event.eventType())
                 || "SUCCEEDED".equalsIgnoreCase(event.eventType());
@@ -262,38 +370,49 @@ public class PaymentServiceImpl implements PaymentService {
                     intent.amount(), intent.currency(), "FAILED", null,
                     intent.version() + 1, intent.createdAt(), now), intent.version());
             recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
-                    "PaymentIntent", intent.id(), intent.version() + 1, "PROVIDER_PAYMENT_FAILED", correlationId, now);
+                    "PaymentIntent", intent.id(), intent.version() + 1, "PROVIDER_PAYMENT_FAILED", effectiveCorrelationId, now);
             return;
         }
 
-        // Branch 3: Success Event Validation
-
-        // Check duplicate provider transaction ID
-        if (event.providerTransactionId() != null) {
-            Optional<PaymentRow> existingPayment = paymentRepository.paymentByProviderTransactionId(provider, event.providerTransactionId());
-            if (existingPayment.isPresent()) {
-                paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "DUPLICATE_PROVIDER_TRANSACTION", now), 0);
-                paymentRepository.updatePaymentIntent(new PaymentIntentRow(
-                        intent.id(), intent.slotHoldId(), intent.provider(), intent.providerReference(),
-                        intent.amount(), intent.currency(), "RECONCILIATION_REQUIRED", "DUPLICATE_PROVIDER_TRANSACTION",
-                        intent.version() + 1, intent.createdAt(), now), intent.version());
-                recordOutbox(intent.id(), "PAYMENT_INTENT", "payment.reconciliation_required.v1",
-                        Map.of("intentId", intent.id().toString(), "reason", "DUPLICATE_PROVIDER_TRANSACTION"), correlationId, now);
-                recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
-                        "PaymentIntent", intent.id(), intent.version() + 1, "DUPLICATE_PROVIDER_TRANSACTION", correlationId, now);
-                return;
-            }
+        // Validate Provider Transaction ID: never fabricate identity
+        if (event.providerTransactionId() == null || event.providerTransactionId().isBlank()) {
+            paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
+            paymentRepository.updatePaymentIntent(new PaymentIntentRow(
+                    intent.id(), intent.slotHoldId(), intent.provider(), intent.providerReference(),
+                    intent.amount(), intent.currency(), "RECONCILIATION_REQUIRED", "MISSING_PROVIDER_TRANSACTION_ID",
+                    intent.version() + 1, intent.createdAt(), now), intent.version());
+            recordOutbox(intent.id(), "PAYMENT_INTENT", "payment.reconciliation_required.v1",
+                    Map.of("intentId", intent.id().toString(), "reason", "MISSING_PROVIDER_TRANSACTION_ID"), effectiveCorrelationId, now);
+            recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
+                    "PaymentIntent", intent.id(), intent.version() + 1, "MISSING_PROVIDER_TRANSACTION_ID", effectiveCorrelationId, now);
+            return;
         }
 
-        // Check amount and currency
+        // Duplicate Provider Transaction ID check across payments
+        Optional<PaymentRow> existingPayment = paymentRepository.paymentByProviderTransactionId(provider, event.providerTransactionId());
+        if (existingPayment.isPresent()) {
+            paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "DUPLICATE_PROVIDER_TRANSACTION", now), 0);
+            paymentRepository.updatePaymentIntent(new PaymentIntentRow(
+                    intent.id(), intent.slotHoldId(), intent.provider(), intent.providerReference(),
+                    intent.amount(), intent.currency(), "RECONCILIATION_REQUIRED", "DUPLICATE_PROVIDER_TRANSACTION",
+                    intent.version() + 1, intent.createdAt(), now), intent.version());
+            recordOutbox(intent.id(), "PAYMENT_INTENT", "payment.reconciliation_required.v1",
+                    Map.of("intentId", intent.id().toString(), "reason", "DUPLICATE_PROVIDER_TRANSACTION"), effectiveCorrelationId, now);
+            recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
+                    "PaymentIntent", intent.id(), intent.version() + 1, "DUPLICATE_PROVIDER_TRANSACTION", effectiveCorrelationId, now);
+            return;
+        }
+
+        // Amount & Currency mismatch reconciliation
         boolean amountMismatch = event.amount() == null || event.amount().compareTo(intent.amount()) != 0;
         boolean currencyMismatch = !"VND".equalsIgnoreCase(event.currency());
         if (amountMismatch || currencyMismatch) {
             String reason = amountMismatch ? "AMOUNT_MISMATCH" : "CURRENCY_MISMATCH";
-            if (event.amount() != null && event.amount().compareTo(BigDecimal.ZERO) > 0 && event.providerTransactionId() != null) {
+            if (event.amount() != null && event.amount().compareTo(BigDecimal.ZERO) > 0) {
+                String captureCurrency = event.currency() != null && event.currency().matches("^[A-Z]{3}$") ? event.currency() : "VND";
                 paymentRepository.insertPayment(new PaymentRow(
                         ids.next(), intent.id(), provider, event.providerTransactionId(),
-                        event.amount(), "VND".equalsIgnoreCase(event.currency()) ? "VND" : event.currency(),
+                        event.amount(), captureCurrency,
                         "CAPTURED", event.providerOccurredAt(), providerTimeTrust, inbox.id(), now, now));
             }
             paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
@@ -302,41 +421,37 @@ public class PaymentServiceImpl implements PaymentService {
                     intent.amount(), intent.currency(), "RECONCILIATION_REQUIRED", reason,
                     intent.version() + 1, intent.createdAt(), now), intent.version());
             recordOutbox(intent.id(), "PAYMENT_INTENT", "payment.reconciliation_required.v1",
-                    Map.of("intentId", intent.id().toString(), "reason", reason), correlationId, now);
+                    Map.of("intentId", intent.id().toString(), "reason", reason), effectiveCorrelationId, now);
             recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
-                    "PaymentIntent", intent.id(), intent.version() + 1, reason, correlationId, now);
+                    "PaymentIntent", intent.id(), intent.version() + 1, reason, effectiveCorrelationId, now);
             return;
         }
 
-        // Check provider time trust
+        // Provider Time Trust verification
         if (!"TRUSTED".equals(providerTimeTrust)) {
             String reason = "MISSING".equals(providerTimeTrust) ? "MISSING_PROVIDER_TIME" : "UNTRUSTED_PROVIDER_TIME";
-            if (event.providerTransactionId() != null) {
-                paymentRepository.insertPayment(new PaymentRow(
-                        ids.next(), intent.id(), provider, event.providerTransactionId(),
-                        intent.amount(), "VND", "CAPTURED", event.providerOccurredAt(),
-                        providerTimeTrust, inbox.id(), now, now));
-            }
+            paymentRepository.insertPayment(new PaymentRow(
+                    ids.next(), intent.id(), provider, event.providerTransactionId(),
+                    intent.amount(), "VND", "CAPTURED", event.providerOccurredAt(),
+                    providerTimeTrust, inbox.id(), now, now));
             paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
             paymentRepository.updatePaymentIntent(new PaymentIntentRow(
                     intent.id(), intent.slotHoldId(), intent.provider(), intent.providerReference(),
                     intent.amount(), intent.currency(), "RECONCILIATION_REQUIRED", reason,
                     intent.version() + 1, intent.createdAt(), now), intent.version());
             recordOutbox(intent.id(), "PAYMENT_INTENT", "payment.reconciliation_required.v1",
-                    Map.of("intentId", intent.id().toString(), "reason", reason), correlationId, now);
+                    Map.of("intentId", intent.id().toString(), "reason", reason), effectiveCorrelationId, now);
             recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
-                    "PaymentIntent", intent.id(), intent.version() + 1, reason, correlationId, now);
+                    "PaymentIntent", intent.id(), intent.version() + 1, reason, effectiveCorrelationId, now);
             return;
         }
 
-        // Check late payment (occurred after hold expiry)
+        // Late Payment: occurred after hold expiry
         if (!event.providerOccurredAt().isBefore(hold.expiresAt())) {
-            if (event.providerTransactionId() != null) {
-                paymentRepository.insertPayment(new PaymentRow(
-                        ids.next(), intent.id(), provider, event.providerTransactionId(),
-                        intent.amount(), "VND", "CAPTURED", event.providerOccurredAt(),
-                        "TRUSTED", inbox.id(), now, now));
-            }
+            paymentRepository.insertPayment(new PaymentRow(
+                    ids.next(), intent.id(), provider, event.providerTransactionId(),
+                    intent.amount(), "VND", "CAPTURED", event.providerOccurredAt(),
+                    "TRUSTED", inbox.id(), now, now));
             if ("ACTIVE".equals(hold.status())) {
                 schedulingRepository.updateSlotHold(new SlotHoldJdbcRow(
                         hold.id(), hold.slotId(), hold.patientId(), hold.expiresAt(), hold.depositAmount(),
@@ -348,62 +463,56 @@ public class PaymentServiceImpl implements PaymentService {
                     intent.amount(), intent.currency(), "RECONCILIATION_REQUIRED", "LATE_PAYMENT_AFTER_HOLD_EXPIRY",
                     intent.version() + 1, intent.createdAt(), now), intent.version());
             recordOutbox(intent.id(), "PAYMENT_INTENT", "payment.reconciliation_required.v1",
-                    Map.of("intentId", intent.id().toString(), "reason", "LATE_PAYMENT_AFTER_HOLD_EXPIRY"), correlationId, now);
+                    Map.of("intentId", intent.id().toString(), "reason", "LATE_PAYMENT_AFTER_HOLD_EXPIRY"), effectiveCorrelationId, now);
             recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
-                    "PaymentIntent", intent.id(), intent.version() + 1, "LATE_PAYMENT_AFTER_HOLD_EXPIRY", correlationId, now);
+                    "PaymentIntent", intent.id(), intent.version() + 1, "LATE_PAYMENT_AFTER_HOLD_EXPIRY", effectiveCorrelationId, now);
             return;
         }
 
-        // Check hold status
+        // Hold Status check
         if (!"ACTIVE".equals(hold.status())) {
-            if (event.providerTransactionId() != null) {
-                paymentRepository.insertPayment(new PaymentRow(
-                        ids.next(), intent.id(), provider, event.providerTransactionId(),
-                        intent.amount(), "VND", "CAPTURED", event.providerOccurredAt(),
-                        "TRUSTED", inbox.id(), now, now));
-            }
+            paymentRepository.insertPayment(new PaymentRow(
+                    ids.next(), intent.id(), provider, event.providerTransactionId(),
+                    intent.amount(), "VND", "CAPTURED", event.providerOccurredAt(),
+                    "TRUSTED", inbox.id(), now, now));
             paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
             paymentRepository.updatePaymentIntent(new PaymentIntentRow(
                     intent.id(), intent.slotHoldId(), intent.provider(), intent.providerReference(),
                     intent.amount(), intent.currency(), "RECONCILIATION_REQUIRED", "HOLD_NOT_ACTIVE",
                     intent.version() + 1, intent.createdAt(), now), intent.version());
             recordOutbox(intent.id(), "PAYMENT_INTENT", "payment.reconciliation_required.v1",
-                    Map.of("intentId", intent.id().toString(), "reason", "HOLD_NOT_ACTIVE"), correlationId, now);
+                    Map.of("intentId", intent.id().toString(), "reason", "HOLD_NOT_ACTIVE"), effectiveCorrelationId, now);
             recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
-                    "PaymentIntent", intent.id(), intent.version() + 1, "HOLD_NOT_ACTIVE", correlationId, now);
+                    "PaymentIntent", intent.id(), intent.version() + 1, "HOLD_NOT_ACTIVE", effectiveCorrelationId, now);
             return;
         }
 
-        // Check slot capacity
-        schedulingRepository.expireActiveHolds(slot.id(), now);
+        // Capacity check
         int activeCount = schedulingRepository.countActiveHoldsAndAppointments(slot.id(), now);
         if (activeCount > slot.capacity()) {
-            if (event.providerTransactionId() != null) {
-                paymentRepository.insertPayment(new PaymentRow(
-                        ids.next(), intent.id(), provider, event.providerTransactionId(),
-                        intent.amount(), "VND", "CAPTURED", event.providerOccurredAt(),
-                        "TRUSTED", inbox.id(), now, now));
-            }
+            paymentRepository.insertPayment(new PaymentRow(
+                    ids.next(), intent.id(), provider, event.providerTransactionId(),
+                    intent.amount(), "VND", "CAPTURED", event.providerOccurredAt(),
+                    "TRUSTED", inbox.id(), now, now));
             paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
             paymentRepository.updatePaymentIntent(new PaymentIntentRow(
                     intent.id(), intent.slotHoldId(), intent.provider(), intent.providerReference(),
                     intent.amount(), intent.currency(), "RECONCILIATION_REQUIRED", "CAPACITY_EXHAUSTED",
                     intent.version() + 1, intent.createdAt(), now), intent.version());
             recordOutbox(intent.id(), "PAYMENT_INTENT", "payment.reconciliation_required.v1",
-                    Map.of("intentId", intent.id().toString(), "reason", "CAPACITY_EXHAUSTED"), correlationId, now);
+                    Map.of("intentId", intent.id().toString(), "reason", "CAPACITY_EXHAUSTED"), effectiveCorrelationId, now);
             recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
-                    "PaymentIntent", intent.id(), intent.version() + 1, "CAPACITY_EXHAUSTED", correlationId, now);
+                    "PaymentIntent", intent.id(), intent.version() + 1, "CAPACITY_EXHAUSTED", effectiveCorrelationId, now);
             return;
         }
 
-        // --- Happy Path (Atomic: Payment + Intent SUCCEEDED + Hold CONSUMED + Appointment CONFIRMED + Audit + Outbox) ---
+        // Happy Path: Atomic Payment Capture + Intent SUCCEEDED + Hold CONSUMED + Appointment CONFIRMED + Outbox + Audit
         UUID paymentId = ids.next();
-        String txId = event.providerTransactionId() != null ? event.providerTransactionId() : "mock_tx_" + ids.next();
         PaymentRow payment = new PaymentRow(
                 paymentId,
                 intent.id(),
                 provider,
-                txId,
+                event.providerTransactionId(),
                 intent.amount(),
                 "VND",
                 "CAPTURED",
@@ -444,10 +553,10 @@ public class PaymentServiceImpl implements PaymentService {
         outboxPayload.put("currency", "VND");
         outboxPayload.put("capturedAt", now.toString());
 
-        recordOutbox(paymentId, "PAYMENT", "payment.captured.v1", outboxPayload, correlationId, now);
+        recordOutbox(paymentId, "PAYMENT", "payment.captured.v1", outboxPayload, effectiveCorrelationId, now);
 
         recordAuditDirect(null, hold.patientId(), "payment.capture", "SUCCEEDED",
-                "Payment", paymentId, 0L, "captured", correlationId, now);
+                "Payment", paymentId, 0L, "captured", effectiveCorrelationId, now);
     }
 
     @Override
@@ -478,44 +587,59 @@ public class PaymentServiceImpl implements PaymentService {
         payloadMap.put("eventId", eventId);
         payloadMap.put("eventType", eventType);
         payloadMap.put("providerTransactionId", providerTxId);
-        if (request.providerOccurredAt() != null || !"MISSING".equalsIgnoreCase(outcome)) {
-            payloadMap.put("providerOccurredAt", occurredAt.toString());
-        }
+        payloadMap.put("providerOccurredAt", occurredAt.toString());
         payloadMap.put("providerReference", intent.providerReference());
-        payloadMap.put("amount", amount.setScale(2).toPlainString());
+        payloadMap.put("amount", amount.toPlainString());
         payloadMap.put("currency", currency);
 
-        byte[] payloadBytes;
+        byte[] rawPayload;
         try {
-            payloadBytes = objectMapper.writeValueAsBytes(payloadMap);
+            rawPayload = objectMapper.writeValueAsBytes(payloadMap);
         } catch (Exception exception) {
-            throw new IllegalStateException("Failed to serialize mock event", exception);
+            throw new IllegalStateException("Failed to serialize mock webhook payload", exception);
         }
 
-        String signature = providerAdapter.sign(payloadBytes, eventId, occurredAt.toString());
+        String timestamp = occurredAt.toString();
+        String signature = providerAdapter.sign(rawPayload, eventId, timestamp);
         if (Boolean.TRUE.equals(request.corruptSignature())) {
-            signature = "v1=invalid_corrupted_signature_hex_value";
+            signature = "v1=0000000000000000000000000000000000000000000000000000000000000000";
         }
 
         processPaymentWebhook(
                 providerAdapter.providerName(),
-                payloadBytes,
+                rawPayload,
                 eventId,
-                occurredAt.toString(),
+                timestamp,
                 signature,
                 context.correlationId());
     }
 
-    private static WebhookInboxRow withInboxTerminal(WebhookInboxRow inbox, String status, String errorCode, Instant now) {
+    private static WebhookInboxRow withInboxTerminal(WebhookInboxRow source, String status, String errorCode, Instant processedAt) {
         return new WebhookInboxRow(
-                inbox.id(), inbox.provider(), inbox.eventId(), inbox.eventType(),
-                inbox.providerTransactionId(), inbox.signatureStatus(), inbox.payloadHash(), inbox.payload(),
-                inbox.providerOccurredAt(), inbox.receivedAt(), inbox.providerTimeTrust(), inbox.amount(),
-                inbox.currency(), status, now, errorCode, inbox.attempts(), inbox.nextAttemptAt(),
-                inbox.correlationId(), inbox.version() + 1);
+                source.id(),
+                source.provider(),
+                source.eventId(),
+                source.eventType(),
+                source.providerTransactionId(),
+                source.signatureStatus(),
+                source.payloadHash(),
+                source.rawPayload(),
+                source.payload(),
+                source.providerOccurredAt(),
+                source.receivedAt(),
+                source.providerTimeTrust(),
+                source.amount(),
+                source.currency(),
+                status,
+                processedAt,
+                errorCode,
+                source.attempts(),
+                source.nextAttemptAt(),
+                source.correlationId(),
+                source.version() + 1);
     }
 
-    private void recordOutbox(UUID aggregateId, String aggregateType, String eventType, Map<String, Object> payload, String correlationId, Instant now) {
+    private void recordOutbox(UUID aggregateId, String aggregateType, String eventType, Object payload, String correlationId, Instant now) {
         try {
             String json = objectMapper.writeValueAsString(payload);
             paymentRepository.insertOutboxEvent(new OutboxEventRow(
