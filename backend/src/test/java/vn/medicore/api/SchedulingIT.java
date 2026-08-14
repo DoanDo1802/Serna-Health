@@ -13,6 +13,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.Set;
 import java.util.UUID;
@@ -446,7 +448,7 @@ class SchedulingIT {
     @Test
     void practitionerDailyMaxFourSlotsEnforced() throws Exception {
         AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
-        Instant base = Instant.now().plus(20, ChronoUnit.DAYS);
+        Instant base = LocalDate.now(ZoneOffset.UTC).plusDays(20).atTime(8, 0).toInstant(ZoneOffset.UTC);
 
         // Create 4 slots (2 MORNING + 2 AFTERNOON to avoid session limit)
         for (int i = 0; i < 2; i++) {

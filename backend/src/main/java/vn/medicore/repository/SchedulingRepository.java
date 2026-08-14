@@ -40,4 +40,10 @@ public interface SchedulingRepository {
     int countActiveHoldsAndAppointments(UUID slotId, Instant now);
 
     Optional<BigDecimal> effectiveServicePrice(UUID serviceId, Instant at);
+
+    void insertAppointment(vn.medicore.dto.SchedulingModels.AppointmentRow row);
+
+    Optional<vn.medicore.dto.SchedulingModels.AppointmentRow> appointmentById(UUID id);
+
+    Optional<vn.medicore.dto.SchedulingModels.AppointmentRow> appointmentBySlotHoldId(UUID slotHoldId);
 }

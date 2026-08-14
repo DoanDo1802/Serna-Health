@@ -148,6 +148,44 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 (rs, rowNum) -> rs.getBigDecimal("amount"));
     }
 
+    @Override
+    public void insertAppointment(vn.medicore.dto.SchedulingModels.AppointmentRow row) {
+        jdbc.update("""
+                insert into appointment (id, patient_id, slot_hold_id, slot_id, status, version, created_at, updated_at)
+                values (:id, :patientId, :slotHoldId, :slotId, :status, :version, :createdAt, :updatedAt)
+                """, new MapSqlParameterSource()
+                .addValue("id", row.id())
+                .addValue("patientId", row.patientId())
+                .addValue("slotHoldId", row.slotHoldId())
+                .addValue("slotId", row.slotId())
+                .addValue("status", row.status())
+                .addValue("version", row.version())
+                .addValue("createdAt", ts(row.createdAt()))
+                .addValue("updatedAt", ts(row.updatedAt())));
+    }
+
+    @Override
+    public Optional<vn.medicore.dto.SchedulingModels.AppointmentRow> appointmentById(UUID id) {
+        return queryOne("select * from appointment where id = :id", new MapSqlParameterSource("id", id), this::mapAppointment);
+    }
+
+    @Override
+    public Optional<vn.medicore.dto.SchedulingModels.AppointmentRow> appointmentBySlotHoldId(UUID slotHoldId) {
+        return queryOne("select * from appointment where slot_hold_id = :slotHoldId", new MapSqlParameterSource("slotHoldId", slotHoldId), this::mapAppointment);
+    }
+
+    private vn.medicore.dto.SchedulingModels.AppointmentRow mapAppointment(ResultSet rs, int rowNum) throws SQLException {
+        return new vn.medicore.dto.SchedulingModels.AppointmentRow(
+                rs.getObject("id", UUID.class),
+                rs.getObject("patient_id", UUID.class),
+                rs.getObject("slot_hold_id", UUID.class),
+                rs.getObject("slot_id", UUID.class),
+                rs.getString("status"),
+                rs.getLong("version"),
+                instant(rs, "created_at"),
+                instant(rs, "updated_at"));
+    }
+
     private int count(String sql, MapSqlParameterSource params) {
         Integer value = jdbc.queryForObject(sql, params, Integer.class);
         return value == null ? 0 : value;

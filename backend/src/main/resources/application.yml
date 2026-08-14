@@ -56,3 +56,10 @@ medicore:
     break-glass:
       max-ttl: 4h
       review-window: 24h
+  payment:
+    mock-enabled: false
+    allowed-provider: MOCK_PAY
+    webhook-secret: ${MEDICORE_PAYMENT_WEBHOOK_SECRET:}
+    signature-version: v1
+    signature-algorithm: HmacSHA256
+    max-clock-skew-seconds: 300

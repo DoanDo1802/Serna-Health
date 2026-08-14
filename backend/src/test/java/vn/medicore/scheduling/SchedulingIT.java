@@ -129,8 +129,13 @@ public class SchedulingIT {
     void confirmedAppointmentConsumesSlotCapacity() {
         AppointmentSlotRow slot = createSlot(Instant.now().plus(1, ChronoUnit.DAYS), 1);
         UUID patientId = insertPatient("Confirmed Patient");
-        jdbc.update("insert into appointment (id, patient_id, slot_id, status, version, created_at, updated_at) values (?, ?, ?, 'CONFIRMED', 0, now(), now())",
-                ids.next(), patientId, slot.id());
+        UUID holdId = ids.next();
+        jdbc.update("""
+                insert into slot_hold (id, slot_id, patient_id, expires_at, deposit_amount, currency, status, version, created_at, updated_at)
+                values (?, ?, ?, now() + interval '5 minutes', 80000.00, 'VND', 'CONSUMED', 1, now(), now())
+                """, holdId, slot.id(), patientId);
+        jdbc.update("insert into appointment (id, patient_id, slot_hold_id, slot_id, status, version, created_at, updated_at) values (?, ?, ?, ?, 'CONFIRMED', 0, now(), now())",
+                ids.next(), patientId, holdId, slot.id());
 
         IllegalStateException exception = assertThrows(IllegalStateException.class,
                 () -> service.createSlotHold(new CreateSlotHoldRequest(slot.id(), patientId), auditContext));

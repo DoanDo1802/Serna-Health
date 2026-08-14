@@ -43,6 +43,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/appointment-slots", "/api/v1/appointment-slots/*")
                         .permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/payments/*")
+                        .permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) ->

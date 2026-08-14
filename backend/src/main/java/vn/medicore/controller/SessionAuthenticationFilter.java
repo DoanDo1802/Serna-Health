@@ -68,7 +68,9 @@ public final class SessionAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private static boolean isPublicAuthEndpoint(HttpServletRequest request) {
-        return switch (request.getRequestURI()) {
+        String uri = request.getRequestURI();
+        if (uri.startsWith("/api/v1/webhooks/payments/")) return true;
+        return switch (uri) {
             case "/api/v1/auth/registrations",
                  "/api/v1/auth/email-verification-challenges",
                  "/api/v1/auth/email-verifications",

@@ -26,6 +26,9 @@ medicore:
     secret-hash-key: ${MEDICORE_AUTH_SECRET_HASH_KEY}
     session:
       secure-cookie: false
+  payment:
+    mock-enabled: true
+    webhook-secret: local-mock-payment-webhook-secret-key-32bytes-min
 
 springdoc:
   api-docs:

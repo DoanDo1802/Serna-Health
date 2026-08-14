@@ -58,6 +58,17 @@ public interface SchedulingModels {
         }
     }
 
+    record AppointmentRow(
+            UUID id,
+            UUID patientId,
+            UUID slotHoldId,
+            UUID slotId,
+            String status,
+            long version,
+            Instant createdAt,
+            Instant updatedAt
+    ) {}
+
     // --- API Requests ---
 
     record CreateAppointmentSlotRequest(

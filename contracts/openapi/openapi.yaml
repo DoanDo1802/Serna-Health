@@ -6759,7 +6759,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PaymentIntent"
         "400":
           description: Invalid request
           content:
@@ -6815,7 +6815,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CreatePaymentIntentRequest"
   /payment-intents/{paymentIntentId}:
     get:
       tags:
@@ -6846,7 +6846,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PaymentIntent"
         "400":
           description: Invalid request
           content:
@@ -6937,7 +6937,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/CommandAccepted"
         "400":
           description: Invalid request
           content:
@@ -7013,19 +7013,17 @@ paths:
       security:
         - sessionCookie: []
       responses:
-        "200":
-          description: Successful response.
+        "202":
+          description: Request accepted without exposing resource existence.
           headers:
             X-Request-Id:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/CommandAccepted"
         "400":
           description: Invalid request
           content:
@@ -7084,7 +7082,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/SimulatePaymentOutcomeRequest"
   /appointments:
     get:
       tags:
@@ -13535,8 +13533,18 @@ components:
       $ref: ./components/domain.yaml#/schemas/SlotHoldRequest
     SlotHold:
       $ref: ./components/domain.yaml#/schemas/SlotHold
+    PaymentIntentStatus:
+      $ref: ./components/domain.yaml#/schemas/PaymentIntentStatus
+    CreatePaymentIntentRequest:
+      $ref: ./components/domain.yaml#/schemas/CreatePaymentIntentRequest
+    PaymentIntent:
+      $ref: ./components/domain.yaml#/schemas/PaymentIntent
     PaymentWebhookEvent:
       $ref: ./components/domain.yaml#/schemas/PaymentWebhookEvent
+    SimulatePaymentOutcomeRequest:
+      $ref: ./components/domain.yaml#/schemas/SimulatePaymentOutcomeRequest
+    Payment:
+      $ref: ./components/domain.yaml#/schemas/Payment
     ClinicalDraftRequest:
       $ref: ./components/domain.yaml#/schemas/ClinicalDraftRequest
     DiagnosisDraftRequest:

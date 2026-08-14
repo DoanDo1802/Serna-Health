@@ -6972,7 +6972,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PaymentIntent'
         '400':
           description: Invalid request
           content:
@@ -7036,7 +7036,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CreatePaymentIntentRequest'
   /payment-intents/{paymentIntentId}:
     get:
       tags:
@@ -7067,7 +7067,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PaymentIntent'
         '400':
           description: Invalid request
           content:
@@ -7166,7 +7166,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/CommandAccepted'
         '400':
           description: Invalid request
           content:
@@ -7250,19 +7250,17 @@ paths:
       security:
         - sessionCookie: []
       responses:
-        '200':
-          description: Successful response.
+        '202':
+          description: Request accepted without exposing resource existence.
           headers:
             X-Request-Id:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
-            ETag:
-              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/CommandAccepted'
         '400':
           description: Invalid request
           content:
@@ -7329,7 +7327,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/SimulatePaymentOutcomeRequest'
   /appointments:
     get:
       tags:
@@ -15049,6 +15047,66 @@ components:
         updatedAt:
           type: string
           format: date-time
+    PaymentIntentStatus:
+      type: string
+      enum:
+        - REQUIRES_PAYMENT_METHOD
+        - PROCESSING
+        - SUCCEEDED
+        - FAILED
+        - CANCELLED
+        - RECONCILIATION_REQUIRED
+    CreatePaymentIntentRequest:
+      type: object
+      additionalProperties: false
+    PaymentIntent:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - slotHoldId
+        - provider
+        - amount
+        - currency
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        slotHoldId:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          maxLength: 64
+        providerReference:
+          type: string
+          maxLength: 128
+        amount:
+          type: number
+          minimum: 0
+          multipleOf: 0.01
+        currency:
+          type: string
+          const: VND
+        status:
+          $ref: '#/components/schemas/PaymentIntentStatus'
+        reconciliationReason:
+          type: string
+          maxLength: 256
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     PaymentWebhookEvent:
       type: object
       additionalProperties: true
@@ -15056,7 +15114,6 @@ components:
         - eventId
         - eventType
         - providerTransactionId
-        - providerOccurredAt
         - amount
         - currency
       properties:
@@ -15072,12 +15129,95 @@ components:
         providerOccurredAt:
           type: string
           format: date-time
+        providerReference:
+          type: string
+          maxLength: 128
         amount:
           type: string
-          pattern: ^\d{1,17}\.\d{2}$
+          pattern: ^\d{1,17}(\.\d{2})?$
         currency:
           type: string
           const: VND
+    SimulatePaymentOutcomeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        outcome:
+          type: string
+          enum:
+            - SUCCEEDED
+            - FAILED
+        providerTransactionId:
+          type: string
+          maxLength: 128
+        providerOccurredAt:
+          type: string
+          format: date-time
+        amount:
+          type: number
+          minimum: 0
+          multipleOf: 0.01
+        currency:
+          type: string
+          const: VND
+        corruptSignature:
+          type: boolean
+    Payment:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - provider
+        - providerTransactionId
+        - amount
+        - currency
+        - status
+        - providerTimeTrust
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        paymentIntentId:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          maxLength: 64
+        providerTransactionId:
+          type: string
+          maxLength: 128
+        amount:
+          type: number
+          minimum: 0.01
+          multipleOf: 0.01
+        currency:
+          type: string
+          const: VND
+        status:
+          type: string
+          enum:
+            - CAPTURED
+            - FAILED
+        providerOccurredAt:
+          type: string
+          format: date-time
+        providerTimeTrust:
+          type: string
+          enum:
+            - TRUSTED
+            - UNTRUSTED
+            - MISSING
+            - SERVER_OCCURRED
+        webhookInboxId:
+          type: string
+          format: uuid
+        capturedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
     ClinicalDraftRequest:
       type: object
       additionalProperties: false

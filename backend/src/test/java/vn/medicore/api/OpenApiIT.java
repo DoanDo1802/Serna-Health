@@ -152,6 +152,28 @@ class OpenApiIT {
         assertThat(paths.path("/practitioners/{practitionerId}/roles").has("get")).isTrue();
         assertThat(paths.path("/departments/{departmentId}/rooms").isMissingNode()).isTrue();
 
+        // R1-06 Payment Intent and Webhook assertions
+        assertThat(paths.path("/slot-holds/{holdId}/payment-intents").path("post")
+                .at("/responses/200/content/application~1json/schema/$ref").asText())
+                .endsWith("/PaymentIntent");
+        assertThat(paths.path("/payment-intents/{paymentIntentId}").path("get")
+                .at("/responses/200/content/application~1json/schema/$ref").asText())
+                .endsWith("/PaymentIntent");
+        assertThat(paths.path("/webhooks/payments/{provider}").path("post")
+                .at("/responses/202/content/application~1json/schema/$ref").asText())
+                .endsWith("/CommandAccepted");
+        assertThat(paths.path("/webhooks/payments/{provider}").path("post").path("security").get(0).has("paymentWebhookSignature")).isTrue();
+        assertThat(paths.path("/mock-payment-intents/{paymentIntentId}/actions/simulate").path("post")
+                .at("/responses/202/content/application~1json/schema/$ref").asText())
+                .endsWith("/CommandAccepted");
+        assertThat(document.at("/components/schemas/PaymentIntentStatus/enum")).extracting(JsonNode::asText)
+                .containsExactly("REQUIRES_PAYMENT_METHOD", "PROCESSING", "SUCCEEDED", "FAILED", "CANCELLED", "RECONCILIATION_REQUIRED");
+        assertThat(document.at("/components/schemas/PaymentIntent/properties/currency/const").asText()).isEqualTo("VND");
+        assertThat(document.at("/components/schemas/PaymentIntent/properties/amount/multipleOf").decimalValue())
+                .isEqualByComparingTo("0.01");
+        assertThat(document.at("/components/schemas/PaymentWebhookEvent/properties/amount/pattern").asText())
+                .isEqualTo("^\\d{1,17}(\\.\\d{2})?$");
+
         assertThat(paths.path("/appointments").has("post")).isFalse();
         assertThat(paths.path("/charge-items").has("post")).isFalse();
         assertThat(operationIds).noneMatch(id -> id.toLowerCase().startsWith("sign")

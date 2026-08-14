@@ -37,8 +37,7 @@ status: ACCEPTED
 | `R1-12` | Cash/mock Payment + Allocation + ledger | P0 | R1-11 | BILL ledger | Billing/payment | READY |
 | `R1-13` | Complete Encounter/Visit/BillingAccount với guards | P0 | R1-09..12 | VISIT-01/02, BILL-08/09 | Reception/billing | READY |
 | `R1-14` | Outbox notification tối thiểu + observability | P1 | R1-02, R1-07/08/13 | REL/NFR | Reliability | READY |
-| `R1-15` | Security/load/restore/UAT evide
-nce theo workload baseline | P0 | R1-01..14 | NFR-06..11, DEL-02 | Cross-cutting | READY |
+| `R1-15` | Security/load/restore/UAT evidence theo workload baseline | P0 | R1-01..14 | NFR-06..11, DEL-02 | Cross-cutting | READY |
 
 API operation inventory và OpenAPI trace: [[25-api-inventory-r1|API inventory Release 1]].
 
