@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
-      - uses: actions/setup-node@e51e5fe84fc33b4c73ebe40526b2694712b5b858
+      - uses: actions/setup-node@3d7870f6218881292d183093179901ae8dc2ef85
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -48,7 +48,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
-      - uses: actions/setup-node@e51e5fe84fc33b4c73ebe40526b2694712b5b858
+      - uses: actions/setup-node@3d7870f6218881292d183093179901ae8dc2ef85
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@e51e5fe84fc33b4c73ebe40526b2694712b5b858
+      - uses: actions/setup-node@3d7870f6218881292d183093179901ae8dc2ef85
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
