@@ -62,6 +62,90 @@ class PatientIT {
     }
 
     @Test
+    void listsCurrentAccountsPatientLinksFromLiteralRoute() throws Exception {
+        AuthSession session = session(Set.of());
+        MvcResult created = mockMvc.perform(post("/api/v1/patients/self")
+                        .cookie(session.cookie())
+                        .header("X-CSRF-Token", session.csrfToken())
+                        .header("Idempotency-Key", "patient-self-link-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(patientBody("Own Patient", "1990-01-01", null, null)))
+                .andExpect(status().isOk())
+                .andReturn();
+        UUID patientId = UUID.fromString(objectMapper.readTree(created.getResponse().getContentAsString()).path("id").asText());
+
+        mockMvc.perform(get("/api/v1/patients/account-links").cookie(session.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].accountId").value(session.accountId().toString()))
+                .andExpect(jsonPath("$[0].patientId").value(patientId.toString()))
+                .andExpect(jsonPath("$[0].relationship").value("OWN"))
+                .andExpect(jsonPath("$[0].verificationTier").value("PENDING"))
+                .andExpect(jsonPath("$[0].status").value("ACTIVE"));
+
+        mockMvc.perform(get("/api/v1/patients/%s".formatted(patientId)).cookie(session.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(patientId.toString()));
+        mockMvc.perform(get("/api/v1/patients/%s/identifiers".formatted(patientId)).cookie(session.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isArray());
+
+        AuthSession unrelated = session(Set.of());
+        mockMvc.perform(get("/api/v1/patients/%s".formatted(patientId)).cookie(unrelated.cookie()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+        mockMvc.perform(get("/api/v1/patients/%s/identifiers".formatted(patientId)).cookie(unrelated.cookie()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        AuthSession administrator = patientAdministrator();
+        mockMvc.perform(get("/api/v1/patients/%s".formatted(patientId)).cookie(administrator.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(patientId.toString()));
+
+        mockMvc.perform(get("/api/v1/patients/account-links"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void createOwnPatientAcceptsVersionedEmergencyContactAndRejectsInvalidContact() throws Exception {
+        AuthSession validSession = session(Set.of());
+        MvcResult created = mockMvc.perform(post("/api/v1/patients/self")
+                        .cookie(validSession.cookie())
+                        .header("X-CSRF-Token", validSession.csrfToken())
+                        .header("Idempotency-Key", "patient-self-contact-valid")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fullName":"Own Contact Patient","dateOfBirth":"1990-01-01",
+                                "emergencyContact":{"version":1,"fullName":"Nguyen Van B","phone":"0901234567","relationship":"SPOUSE"}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.emergencyContact.version").value(1))
+                .andExpect(jsonPath("$.emergencyContact.fullName").value("Nguyen Van B"))
+                .andExpect(jsonPath("$.emergencyContact.phone").value("0901234567"))
+                .andExpect(jsonPath("$.emergencyContact.relationship").value("SPOUSE"))
+                .andReturn();
+        UUID patientId = UUID.fromString(objectMapper.readTree(created.getResponse().getContentAsString()).path("id").asText());
+        assertThat(jdbc().queryForObject("""
+                select count(*) from patient_account_link
+                where account_id = ? and patient_id = ? and relationship = 'OWN' and status = 'ACTIVE'
+                """, Integer.class, validSession.accountId(), patientId)).isEqualTo(1);
+
+        AuthSession invalidSession = session(Set.of());
+        mockMvc.perform(post("/api/v1/patients/self")
+                        .cookie(invalidSession.cookie())
+                        .header("X-CSRF-Token", invalidSession.csrfToken())
+                        .header("Idempotency-Key", "patient-self-contact-invalid")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fullName":"Invalid Contact Patient","dateOfBirth":"1990-01-01",
+                                "emergencyContact":{"fullName":"Nguyen Van B","phone":"0901234567","relationship":"SPOUSE"}}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_INVALID_REQUEST"))
+                .andExpect(jsonPath("$.detail").value("Emergency contact is invalid"));
+    }
+
+    @Test
     void patientCreateReplaysAndAuditsRealTraceContext() throws Exception {
         AuthSession administrator = patientAdministrator();
         String key = "patient-replay-key";

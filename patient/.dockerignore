@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.husky
+.env*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+*.md

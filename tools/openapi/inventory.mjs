@@ -68,6 +68,7 @@ export const modules = [
       action('/patient-identifiers/{identifierId}/actions/verify-manually', 'verifyPatientIdentifierManually', 'identity.link.verify', { body: 'VerifyPatientIdentifierRequest', response: 'PatientIdentifier' }),
       action('/patient-identifiers/{identifierId}/actions/revoke', 'revokePatientIdentifier', 'identity.link.verify', { body: 'RevokePatientIdentifierRequest', response: 'PatientIdentifier' }),
       action('/patient-identifiers/{identifierId}/actions/enter-in-error', 'enterPatientIdentifierInError', 'identity.link.verify', { body: 'PatientIdentifierErrorRequest', response: 'PatientIdentifier' }),
+      get('/patients/account-links', 'listMyPatientAccountLinks', 'account.authenticate', { response: 'PatientAccountLinkList' }),
       list('/patients/{patientId}/account-links', 'listPatientAccountLinks', 'patient_account_link.read', { response: 'PatientAccountLinkPage' }),
       create('/patients/{patientId}/account-links', 'linkPatientAccount', 'patient_account_link.create', { body: 'CreatePatientAccountLinkRequest', response: 'PatientAccountLink' }),
       list('/patient-duplicate-candidates', 'listPatientDuplicateCandidates', 'patient_duplicate.review', { response: 'PatientDuplicateCandidatePage', queryParameters: [{ name: 'status', schema: ref('PatientDuplicateCandidateStatus') }] }),

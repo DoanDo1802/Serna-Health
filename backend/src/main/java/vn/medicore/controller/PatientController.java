@@ -57,8 +57,14 @@ public class PatientController {
         return patientService.searchPatients(query, cursor, limit);
     }
 
+    @GetMapping("/patients/account-links")
+    List<PatientAccountLinkView> listMyPatientAccountLinks(
+            @AuthenticationPrincipal AuthenticatedAccount principal) {
+        if (principal == null) throw new AccessDeniedException("Authentication required");
+        return patientService.listAccountPatientLinks(principal.accountId());
+    }
+
     @GetMapping("/patients/{patientId}")
-    @PreAuthorize("hasAuthority('patient.read')")
     ResponseEntity<PatientView> getPatient(
             @PathVariable UUID patientId,
             @AuthenticationPrincipal AuthenticatedAccount principal) {
@@ -106,7 +112,6 @@ public class PatientController {
     }
 
     @GetMapping("/patients/{patientId}/identifiers")
-    @PreAuthorize("hasAuthority('patient_identifier.read')")
     Page<PatientIdentifierView> listPatientIdentifiers(
             @PathVariable UUID patientId,
             @AuthenticationPrincipal AuthenticatedAccount principal,

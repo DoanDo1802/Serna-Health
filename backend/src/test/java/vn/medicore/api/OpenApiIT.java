@@ -32,7 +32,7 @@ import vn.medicore.MediCoreApplication;
 @ActiveProfiles("test")
 class OpenApiIT {
 
-    private static final int EXPECTED_OPERATION_COUNT = 154; // R1-04 types existing Patient operations; no route count change.
+    private static final int EXPECTED_OPERATION_COUNT = 155; // Current-account patient-link route added.
 
     @Container
     @ServiceConnection
@@ -91,7 +91,11 @@ class OpenApiIT {
                         "endServicePrice",
                         "revokePractitionerRole",
                         "listPatientIdentifiers",
+                        "listMyPatientAccountLinks",
                         "reviewPatientDuplicateCandidate");
+        assertThat(paths.path("/patients/account-links").path("get")
+                .at("/responses/200/content/application~1json/schema/$ref").asText())
+                .endsWith("/PatientAccountLinkList");
         assertThat(paths.path("/patients/{patientId}/identifiers").path("get")
                 .at("/responses/200/content/application~1json/schema/$ref").asText())
                 .endsWith("/PatientIdentifierPage");

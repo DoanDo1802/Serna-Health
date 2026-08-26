@@ -473,6 +473,12 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     }
 
     private SessionIssue issueSession(UUID accountId, String sourceIp, String userAgent, Instant now) {
+        UUID patientRoleId = UUID.fromString("01980000-0000-7000-8000-000000000005");
+        if (store.activeRoleIds(accountId, now).isEmpty()) {
+            store.insertAssignment(new AssignmentView(
+                    ids.next(), accountId, patientRoleId, null, now, null, "ACTIVE", accountId, "Default patient role", 0
+            ));
+        }
         String sessionToken = secretHasher.randomToken(32);
         String csrfToken = secretHasher.randomToken(32);
         SessionRow row = new SessionRow(ids.next(), accountId, secretHasher.hash("SESSION", sessionToken),

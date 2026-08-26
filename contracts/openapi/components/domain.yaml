@@ -970,6 +970,9 @@ schemas:
       revokeReason: { type: [string, 'null'], maxLength: 500 }
       createdAt: { type: string, format: date-time }
       updatedAt: { type: string, format: date-time }
+  PatientAccountLinkList:
+    type: array
+    items: { $ref: '#/schemas/PatientAccountLink' }
   PatientAccountLinkPage:
     type: object
     additionalProperties: false

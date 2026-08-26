@@ -5526,6 +5526,79 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/PatientIdentifierErrorRequest"
+  /patients/account-links:
+    get:
+      tags:
+        - Patient
+      summary: List My Patient Account Links
+      operationId: listMyPatientAccountLinks
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientAccountLinkList"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: patient
+      x-medicore-permission: account.authenticate
+      x-medicore-audit-action: account.authenticate
+      x-medicore-stories:
+        - R1-04
+      x-medicore-scenarios: *a4
+      x-medicore-idempotent: false
   /patients/{patientId}/account-links:
     get:
       tags:
@@ -13659,6 +13732,8 @@ components:
       $ref: ./components/domain.yaml#/schemas/CreatePatientAccountLinkRequest
     PatientAccountLink:
       $ref: ./components/domain.yaml#/schemas/PatientAccountLink
+    PatientAccountLinkList:
+      $ref: ./components/domain.yaml#/schemas/PatientAccountLinkList
     PatientAccountLinkPage:
       $ref: ./components/domain.yaml#/schemas/PatientAccountLinkPage
     PatientDuplicateMatchReasons:
