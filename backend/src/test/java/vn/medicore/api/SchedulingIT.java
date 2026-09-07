@@ -96,7 +96,110 @@ class SchedulingIT {
                 practitionerRoleId, practitionerId, departmentId);
     }
 
-    // ── 1. Public availability endpoints require no authentication ──────────
+    // ── 1. Booking catalog is scoped to linked patients ───────────────────
+
+    @Test
+    void bookingCatalogRequiresLinkedPatient() throws Exception {
+        mockMvc.perform(get("/api/v1/booking/catalog").param("patientId", UUID.randomUUID().toString()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
+
+        AuthSession patientSession = sessionWithPatient(insertPatient("Catalog Patient"));
+        createSlot(session(Set.of(CATALOG_ADMIN_ROLE_ID)), Instant.now().plus(2, ChronoUnit.DAYS), 2);
+
+        mockMvc.perform(get("/api/v1/booking/catalog")
+                        .cookie(patientSession.cookie())
+                        .param("patientId", UUID.randomUUID().toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        mockMvc.perform(get("/api/v1/booking/catalog")
+                        .cookie(patientSession.cookie())
+                        .param("patientId", patientSession.accountId().toString()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void bookingCatalogReturnsBookableMetadataWithoutStaffFields() throws Exception {
+        UUID patientId = insertPatient("Catalog Metadata Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        createSlot(session(Set.of(CATALOG_ADMIN_ROLE_ID)), Instant.now().plus(2, ChronoUnit.DAYS), 2);
+
+        mockMvc.perform(get("/api/v1/booking/catalog")
+                        .cookie(patientSession.cookie())
+                        .param("patientId", patientId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.departments[0].id").value(departmentId.toString()))
+                .andExpect(jsonPath("$.services[0].priceAmount").value(75000))
+                .andExpect(jsonPath("$.practitioners[0].fullName").value("Dr. Test"))
+                .andExpect(jsonPath("$.practitioners[0].staffCode").doesNotExist())
+                .andExpect(jsonPath("$.practitioners[0].userAccountId").doesNotExist());
+    }
+
+    @Test
+    void bookingCatalogAllowsVerifiedRepresentativeWithSlotHoldScope() throws Exception {
+        UUID patientId = insertPatient("Dependent Child Patient");
+        AuthSession representative = session(Set.of(PATIENT_ROLE_ID));
+        jdbc().update("""
+                insert into patient_account_link
+                    (id, patient_id, account_id, relationship, verification_tier, permission_scope,
+                     status, valid_from, version, created_at, updated_at)
+                values (?, ?, ?, 'PARENT', 'IDENTITY_VERIFIED',
+                    '{"version":"1","slot_hold.create":true,"slot_hold.read":true,"slot_hold.cancel":true}'::jsonb,
+                    'ACTIVE', now() - interval '1 minute', 0, now(), now())
+                """, UUID.randomUUID(), patientId, representative.accountId());
+
+        createSlot(session(Set.of(CATALOG_ADMIN_ROLE_ID)), Instant.now().plus(2, ChronoUnit.DAYS), 2);
+
+        mockMvc.perform(get("/api/v1/booking/catalog")
+                        .cookie(representative.cookie())
+                        .param("patientId", patientId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.departments").isArray())
+                .andExpect(jsonPath("$.services").isArray());
+    }
+
+    @Test
+    void bookingCatalogExcludesInactiveAndCancelledSlots() throws Exception {
+        UUID patientId = insertPatient("Isolation Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+
+        UUID cancelledSlotId = createSlot(session(Set.of(CATALOG_ADMIN_ROLE_ID)), Instant.now().plus(2, ChronoUnit.DAYS), 2);
+        jdbc().update("update appointment_slot set status = 'CANCELLED' where id = ?", cancelledSlotId);
+
+        mockMvc.perform(get("/api/v1/booking/catalog")
+                        .cookie(patientSession.cookie())
+                        .param("patientId", patientId.toString()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void patientSessionCannotAccessGenericCatalogEndpoints() throws Exception {
+        UUID patientId = insertPatient("Generic Catalog Denial Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+
+        mockMvc.perform(get("/api/v1/departments")
+                        .cookie(patientSession.cookie()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        mockMvc.perform(get("/api/v1/rooms")
+                        .cookie(patientSession.cookie()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        mockMvc.perform(get("/api/v1/services")
+                        .cookie(patientSession.cookie()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        mockMvc.perform(get("/api/v1/practitioners")
+                        .cookie(patientSession.cookie()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+    }
+
+    // ── 2. Public availability endpoints require no authentication ──────────
 
     @Test
     void publicGetSlotEndpointsRequireNoAuth() throws Exception {

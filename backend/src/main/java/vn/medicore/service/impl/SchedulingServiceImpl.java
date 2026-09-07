@@ -17,6 +17,7 @@ import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.dto.PatientModels.Page;
 import vn.medicore.dto.SchedulingAuditContext;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
+import vn.medicore.dto.SchedulingModels.BookingCatalog;
 import vn.medicore.dto.SchedulingModels.CreateAppointmentSlotRequest;
 import vn.medicore.dto.SchedulingModels.CreateSlotHoldRequest;
 import vn.medicore.dto.SchedulingModels.SlotHoldJdbcRow;
@@ -106,6 +107,12 @@ public class SchedulingServiceImpl implements SchedulingService {
     public Page<AppointmentSlotRow> searchAppointmentSlots(String cursor, int limit) {
         int offset = offset(cursor);
         return page(store.searchAppointmentSlots(limit + 1, offset), limit, offset);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BookingCatalog bookingCatalog() {
+        return store.bookingCatalog(clock.instant());
     }
 
     @Override

@@ -2,6 +2,7 @@ package vn.medicore.dto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public interface SchedulingModels {
@@ -105,6 +106,29 @@ public interface SchedulingModels {
             UUID slotId,
             UUID patientId
     ) {}
+
+    record BookingCatalog(
+            List<BookingDepartment> departments,
+            List<BookingRoom> rooms,
+            List<BookingService> services,
+            List<BookingPractitioner> practitioners,
+            List<BookingPractitionerRole> practitionerRoles) {
+    }
+
+    record BookingDepartment(UUID id, String name) {
+    }
+
+    record BookingRoom(UUID id, UUID departmentId, String name) {
+    }
+
+    record BookingService(UUID id, String name, BigDecimal priceAmount, String priceCurrency) {
+    }
+
+    record BookingPractitioner(UUID id, String fullName) {
+    }
+
+    record BookingPractitionerRole(UUID id, UUID practitionerId, String roleCode) {
+    }
 
     record RescheduleAppointmentRequest(
             UUID targetSlotHoldId,

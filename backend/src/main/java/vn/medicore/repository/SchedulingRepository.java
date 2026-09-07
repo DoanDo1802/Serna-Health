@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
+import vn.medicore.dto.SchedulingModels.BookingCatalog;
 import vn.medicore.dto.SchedulingModels.SlotHoldJdbcRow;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
 
@@ -20,6 +21,8 @@ public interface SchedulingRepository {
     Optional<AppointmentSlotRow> appointmentSlotByIdForUpdate(UUID id);
 
     List<AppointmentSlotRow> searchAppointmentSlots(int limit, int offset);
+
+    BookingCatalog bookingCatalog(Instant now);
 
     void lockPractitionerDay(UUID practitionerRoleId, String dateIso);
 

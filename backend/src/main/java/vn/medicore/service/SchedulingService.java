@@ -4,6 +4,7 @@ import java.util.UUID;
 import vn.medicore.dto.PatientModels.Page;
 import vn.medicore.dto.SchedulingAuditContext;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
+import vn.medicore.dto.SchedulingModels.BookingCatalog;
 import vn.medicore.dto.SchedulingModels.CreateAppointmentSlotRequest;
 import vn.medicore.dto.SchedulingModels.CreateSlotHoldRequest;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
@@ -22,6 +23,8 @@ public interface SchedulingService {
     AppointmentSlotRow getAppointmentSlot(UUID slotId);
 
     Page<AppointmentSlotRow> searchAppointmentSlots(String cursor, int limit);
+
+    BookingCatalog bookingCatalog();
 
     void cancelAppointmentSlot(UUID slotId, long expectedVersion, SchedulingAuditContext context);
 

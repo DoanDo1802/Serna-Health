@@ -99,6 +99,14 @@ public class SchedulingController {
         return versioned(value, value.version());
     }
 
+    @GetMapping("/booking/catalog")
+    ResponseEntity<vn.medicore.dto.SchedulingModels.BookingCatalog> bookingCatalog(
+            @RequestParam UUID patientId,
+            @AuthenticationPrincipal AuthenticatedAccount actor) {
+        requireHoldAccess(actor, patientId, "slot_hold.create");
+        return ResponseEntity.ok(service.bookingCatalog());
+    }
+
     @PostMapping("/slot-holds")
     ResponseEntity<SlotHoldRow> createSlotHold(
             @Valid @RequestBody SlotHoldRequest body,

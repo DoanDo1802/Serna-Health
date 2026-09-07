@@ -353,6 +353,65 @@ schemas:
       items: { type: array, items: { $ref: '#/schemas/AppointmentSlot' } }
       nextCursor: { type: [string, 'null'], maxLength: 1024 }
       hasMore: { type: boolean }
+  BookingCatalog:
+    type: object
+    additionalProperties: false
+    required: [departments, rooms, services, practitioners, practitionerRoles]
+    properties:
+      departments:
+        type: array
+        items: { $ref: '#/schemas/BookingDepartment' }
+      rooms:
+        type: array
+        items: { $ref: '#/schemas/BookingRoom' }
+      services:
+        type: array
+        items: { $ref: '#/schemas/BookingService' }
+      practitioners:
+        type: array
+        items: { $ref: '#/schemas/BookingPractitioner' }
+      practitionerRoles:
+        type: array
+        items: { $ref: '#/schemas/BookingPractitionerRole' }
+  BookingDepartment:
+    type: object
+    additionalProperties: false
+    required: [id, name]
+    properties:
+      id: { type: string, format: uuid }
+      name: { type: string, maxLength: 200 }
+  BookingRoom:
+    type: object
+    additionalProperties: false
+    required: [id, departmentId, name]
+    properties:
+      id: { type: string, format: uuid }
+      departmentId: { type: string, format: uuid }
+      name: { type: string, maxLength: 200 }
+  BookingService:
+    type: object
+    additionalProperties: false
+    required: [id, name, priceAmount, priceCurrency]
+    properties:
+      id: { type: string, format: uuid }
+      name: { type: string, maxLength: 200 }
+      priceAmount: { type: number, minimum: 0, multipleOf: 0.01 }
+      priceCurrency: { type: string, const: VND }
+  BookingPractitioner:
+    type: object
+    additionalProperties: false
+    required: [id, fullName]
+    properties:
+      id: { type: string, format: uuid }
+      fullName: { type: string, maxLength: 200 }
+  BookingPractitionerRole:
+    type: object
+    additionalProperties: false
+    required: [id, practitionerId, roleCode]
+    properties:
+      id: { type: string, format: uuid }
+      practitionerId: { type: string, format: uuid }
+      roleCode: { $ref: '#/schemas/PractitionerRoleCode' }
   SlotHoldRequest:
     type: object
     additionalProperties: false

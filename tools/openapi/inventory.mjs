@@ -86,6 +86,7 @@ export const modules = [
       patch('/appointment-slots/{slotId}', 'updateAppointmentSlot', 'appointment_slot.update', { body: 'UpdateAppointmentSlotRequest', response: 'AppointmentSlot' }),
       action('/appointment-slots/{slotId}/actions/cancel', 'cancelAppointmentSlot', 'appointment_slot.cancel', { idempotent: true, response: 'AppointmentSlot' }),
       create('/slot-holds', 'createSlotHold', 'slot_hold.create', { body: 'SlotHoldRequest', response: 'SlotHold' }),
+      get('/booking/catalog', 'getBookingCatalog', 'slot_hold.create', { response: 'BookingCatalog', queryParameters: [{ name: 'patientId', required: true, schema: { type: 'string', format: 'uuid' } }] }),
       get('/slot-holds/{holdId}', 'getSlotHold', 'slot_hold.read', { response: 'SlotHold' }),
       op('delete', '/slot-holds/{holdId}', 'cancelSlotHold', { csrf: true, ifMatch: true, idempotent: true, permission: 'slot_hold.cancel', response: 'SlotHold', success: 200 }),
       create('/slot-holds/{holdId}/payment-intents', 'createPaymentIntent', 'payment_intent.create', { body: 'CreatePaymentIntentRequest', response: 'PaymentIntent' }),

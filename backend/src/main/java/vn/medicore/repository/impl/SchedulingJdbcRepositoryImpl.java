@@ -14,6 +14,12 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
+import vn.medicore.dto.SchedulingModels.BookingCatalog;
+import vn.medicore.dto.SchedulingModels.BookingDepartment;
+import vn.medicore.dto.SchedulingModels.BookingPractitioner;
+import vn.medicore.dto.SchedulingModels.BookingPractitionerRole;
+import vn.medicore.dto.SchedulingModels.BookingRoom;
+import vn.medicore.dto.SchedulingModels.BookingService;
 import vn.medicore.dto.SchedulingModels.SlotHoldJdbcRow;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
 import vn.medicore.repository.SchedulingRepository;
@@ -62,6 +68,63 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 select * from appointment_slot where status = 'ACTIVE'
                 order by start_at asc, id asc limit :limit offset :offset
                 """, new MapSqlParameterSource("limit", limit).addValue("offset", offset), this::mapAppointmentSlot);
+    }
+
+    @Override
+    public BookingCatalog bookingCatalog(Instant now) {
+        MapSqlParameterSource params = new MapSqlParameterSource("now", ts(now));
+        List<BookingDepartment> departments = jdbc.query("""
+                select distinct d.id, d.name
+                from appointment_slot slot
+                join department d on d.id = slot.department_id
+                where slot.status = 'ACTIVE' and slot.start_at > :now and d.active
+                  and d.effective_from <= :now and (d.effective_to is null or d.effective_to > :now)
+                order by d.name, d.id
+                """, params, (rs, row) -> new BookingDepartment(rs.getObject("id", UUID.class), rs.getString("name")));
+        List<BookingRoom> rooms = jdbc.query("""
+                select distinct r.id, r.department_id, r.name
+                from appointment_slot slot
+                join room r on r.id = slot.room_id
+                join department d on d.id = slot.department_id
+                where slot.status = 'ACTIVE' and slot.start_at > :now and r.active and d.active
+                  and d.effective_from <= :now and (d.effective_to is null or d.effective_to > :now)
+                order by r.name, r.id
+                """, params, (rs, row) -> new BookingRoom(rs.getObject("id", UUID.class),
+                rs.getObject("department_id", UUID.class), rs.getString("name")));
+        List<BookingService> services = jdbc.query("""
+                select distinct s.id, s.name, price.amount, price.currency
+                from appointment_slot slot
+                join service s on s.id = slot.service_id
+                join lateral (
+                    select amount, currency from service_price
+                    where service_id = s.id and effective_from <= :now
+                      and (effective_to is null or effective_to > :now)
+                    order by effective_from desc, id desc limit 1
+                ) price on true
+                where slot.status = 'ACTIVE' and slot.start_at > :now and s.active
+                order by s.name, s.id
+                """, params, (rs, row) -> new BookingService(rs.getObject("id", UUID.class), rs.getString("name"),
+                rs.getBigDecimal("amount"), rs.getString("currency")));
+        List<BookingPractitioner> practitioners = jdbc.query("""
+                select distinct p.id, p.full_name
+                from appointment_slot slot
+                join practitioner_role role on role.id = slot.practitioner_role_id
+                join practitioner p on p.id = role.practitioner_id
+                where slot.status = 'ACTIVE' and slot.start_at > :now and p.active and role.status = 'ACTIVE'
+                  and role.effective_from <= :now and (role.effective_to is null or role.effective_to > :now)
+                order by p.full_name, p.id
+                """, params, (rs, row) -> new BookingPractitioner(rs.getObject("id", UUID.class), rs.getString("full_name")));
+        List<BookingPractitionerRole> practitionerRoles = jdbc.query("""
+                select distinct role.id, role.practitioner_id, role.role_code
+                from appointment_slot slot
+                join practitioner_role role on role.id = slot.practitioner_role_id
+                join practitioner p on p.id = role.practitioner_id
+                where slot.status = 'ACTIVE' and slot.start_at > :now and p.active and role.status = 'ACTIVE'
+                  and role.effective_from <= :now and (role.effective_to is null or role.effective_to > :now)
+                order by role.id
+                """, params, (rs, row) -> new BookingPractitionerRole(rs.getObject("id", UUID.class),
+                rs.getObject("practitioner_id", UUID.class), rs.getString("role_code")));
+        return new BookingCatalog(departments, rooms, services, practitioners, practitionerRoles);
     }
 
     @Override

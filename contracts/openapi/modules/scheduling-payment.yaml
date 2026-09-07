@@ -494,6 +494,87 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SlotHoldRequest"
+  /booking/catalog:
+    get:
+      tags:
+        - SchedulingPayment
+      summary: Get Booking Catalog
+      operationId: getBookingCatalog
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: patientId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingCatalog"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: scheduling-payment
+      x-medicore-permission: slot_hold.create
+      x-medicore-audit-action: slot_hold.create
+      x-medicore-stories:
+        - R1-05
+        - R1-06
+        - R1-07
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: false
   /slot-holds/{holdId}:
     get:
       tags:
