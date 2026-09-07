@@ -37,7 +37,7 @@ Mã nguồn Backend (`backend/src/main/java/vn/medicore`) tuân thủ 100% mô h
   - Không gọi ngược từ tầng dưới lên tầng trên.
 - **Xác minh bắt buộc**: Mỗi khi thêm/sửa class mới, Agent phải chạy ArchUnit test để xác minh tuân thủ ranh giới:
   ```bash
-  JAVA_HOME=/usr/local/Cellar/openjdk@21/21.0.12/libexec/openjdk.jdk/Contents/Home ./mvnw test -Dtest=LayeredArchitectureTest
+  JAVA_HOME=/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ./mvnw test -Dtest=LayeredArchitectureTest
   ```
 
 ---
