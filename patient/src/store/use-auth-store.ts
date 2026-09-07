@@ -53,14 +53,15 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
     set({ isLoading: true });
     try {
       const session = await authService.getCurrentSession();
+      const isAuthenticated = session.status === 'ACTIVE';
       set({
-        session,
+        session: isAuthenticated ? session : null,
         currentEmail: savedEmail,
-        isAuthenticated: session.status === 'ACTIVE',
+        isAuthenticated,
         isLoading: false,
         error: null,
       });
-      return true;
+      return isAuthenticated;
     } catch {
       set({ session: null, isAuthenticated: false, isLoading: false });
       return false;

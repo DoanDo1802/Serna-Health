@@ -273,16 +273,12 @@ const flatMockData = flattenItems(allItems);
 
 export function SidebarNavPreview({ initialActiveId = 'home' }: { initialActiveId?: string }) {
   const router = useRouter();
-  const { currentEmail, initSession, logout } = useAuthStore();
+  const { currentEmail, logout } = useAuthStore();
   const mounted = useMounted();
   const [isOpen, setIsOpen] = useState(true);
   const [activeId, setActiveId] = useState(initialActiveId);
   const [activeWorkspace, setActiveWorkspace] = useState('MediCore Patient');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-
-  React.useEffect(() => {
-    initSession();
-  }, [initSession]);
 
   const activeItem = flatMockData.find((i) => i.id === activeId);
   const activeTitle = activeItem ? activeItem.title : 'Dashboard';
@@ -294,7 +290,7 @@ export function SidebarNavPreview({ initialActiveId = 'home' }: { initialActiveI
     }
     if (id === 'logout') {
       logout().catch((err) => console.error('Logout error:', err));
-      router.push('/login');
+      router.replace('/');
       return;
     }
     setActiveId(id);

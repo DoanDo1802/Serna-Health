@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { BookingPage } from '@/components/features/booking/booking-page';
 import { PatientProfilePage } from '@/components/features/patient/patient-profile-page';
+import { MyAppointmentsPage } from '@/components/features/appointments/my-appointments-page';
 import '@/styles/gemini.css';
 
 interface Message {
@@ -45,7 +46,7 @@ interface Message {
   content: string;
   action?: {
     label: string;
-    view: 'booking' | 'profile' | 'search';
+    view: 'booking' | 'profile' | 'search' | 'appointments';
   };
   timestamp: string;
 }
@@ -54,7 +55,7 @@ export function GeminiDashboard() {
   const router = useRouter();
   const { currentEmail, initSession, logout } = useAuthStore();
 
-  const [activeView, setActiveView] = useState<'home' | 'booking' | 'profile'>('home');
+  const [activeView, setActiveView] = useState<'home' | 'booking' | 'profile' | 'appointments'>('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState('Flash');
@@ -164,25 +165,13 @@ export function GeminiDashboard() {
 
   const handleLogout = async () => {
     await logout().catch(console.error);
-    router.push('/login');
+    router.push('/');
   };
 
-  // Recent history matching user screenshot
+  // Recent history mock (1-2 medical consultation items)
   const recentHistory = [
-    'Hướng dẫn cài đặt VPN trên máy Mac',
-    'Địa điểm World Cup 1958',
-    'Đối thủ của Pháp tại World Cup 1998',
-    'Pháp Thắng Brazil World Cup 1998',
-    'Tối ưu PEAK trên Mac CrossOver',
-    'Kỷ Lục Ghi Bàn EURO 1984',
-    '**Mbappé: Đáp án Đúng**',
-    'Steven Gerrard Ra Mắt Liverpool',
-    'Hướng dẫn tắt Gemini trên Chrome',
-    'Hỏi cách tắt chức năng',
-    'Chung Kết Euro 2016: Bồ Đào Nha Vô Đ...',
-    'Cài Đặt Trợ Năng Trong Game',
-    'Chơi game Windows trên Mac',
-    'Joshua Kimmich: Lời giải đáp',
+    'Tư vấn dinh dưỡng cho người tiểu đường',
+    'Hướng dẫn chuẩn bị trước khi xét nghiệm máu',
   ];
 
   // Radial glow ONLY when on home and no messages yet. Once chat starts or on other pages: pure dark black!
@@ -194,17 +183,16 @@ export function GeminiDashboard() {
           1. LEFT SIDEBAR (Collapsed or Expanded)
           ========================================================================= */}
       <aside
-        className={`h-full transition-all duration-200 ease-out flex flex-col shrink-0 relative z-30 select-none ${
-          isSidebarOpen
-            ? 'w-[280px] bg-[#0c0d0f] border-r border-white/[0.07]'
-            : 'w-[64px] bg-transparent'
-        }`}
+        className={`h-full transition-all duration-200 ease-out flex flex-col shrink-0 relative z-30 select-none ${isSidebarOpen
+          ? 'w-[280px] bg-[#0c0d0f] border-r border-white/[0.07]'
+          : 'w-[64px] bg-transparent'
+          }`}
       >
         {/* If COLLAPSED: Show slim icon rail */}
         {!isSidebarOpen ? (
           <div className="h-full flex flex-col justify-between items-center py-3">
             {/* Top icon stack */}
-            <div className="flex flex-col items-center gap-2">
+            <div className="flex flex-col items-center gap-1.5">
               {/* Top button: Logo by default -> switches to Panel Toggle on hover with tooltip 'Mở thanh bên' (Pure CSS group-hover, never gets stuck) */}
               <div className="relative group">
                 <button
@@ -214,17 +202,17 @@ export function GeminiDashboard() {
                 >
                   {/* Default: Nova logo */}
                   <span className="group-hover:hidden flex items-center justify-center">
-                    <NovaLogo size={20} />
+                    <NovaLogo size={18} />
                   </span>
 
                   {/* On Hover: PanelLeft icon */}
                   <svg
-                    width="20"
-                    height="20"
+                    width="16"
+                    height="16"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="2"
+                    strokeWidth="1.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     className="text-white hidden group-hover:block"
@@ -240,15 +228,6 @@ export function GeminiDashboard() {
                 </div>
               </div>
 
-              {/* Eye / Vision icon */}
-              <button
-                onClick={() => setActiveView('home')}
-                className="gemini-icon-btn"
-                title="Chế độ xem"
-              >
-                <Eye className="w-5 h-5 text-white/70 hover:text-white" strokeWidth={1.8} />
-              </button>
-
               {/* Square with Pen (New chat) */}
               <button
                 onClick={() => {
@@ -258,7 +237,7 @@ export function GeminiDashboard() {
                 className="gemini-icon-btn"
                 title="Cuộc trò chuyện mới"
               >
-                <SquarePen className="w-5 h-5 text-white/70 hover:text-white" strokeWidth={1.8} />
+                <SquarePen className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
               </button>
 
               {/* Search */}
@@ -267,45 +246,45 @@ export function GeminiDashboard() {
                 className="gemini-icon-btn"
                 title="Tìm kiếm trong các cuộc trò chuyện"
               >
-                <Search className="w-5 h-5 text-white/70 hover:text-white" strokeWidth={1.8} />
+                <Search className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
               </button>
 
-              {/* Sinh viên (Đặt khám) */}
+              {/* Đặt lịch khám */}
               <button
                 onClick={() => setActiveView('booking')}
                 className={`gemini-icon-btn ${activeView === 'booking' ? 'active' : ''}`}
                 title="Đặt lịch khám"
               >
-                <GraduationCap className="w-5 h-5 text-white/70 hover:text-white" strokeWidth={1.8} />
+                <Calendar className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
               </button>
 
-              {/* Video icon */}
+              {/* Hồ sơ sức khỏe */}
               <button
-                onClick={() => setActiveView('home')}
-                className="gemini-icon-btn"
-                title="Video"
+                onClick={() => setActiveView('profile')}
+                className={`gemini-icon-btn ${activeView === 'profile' ? 'active' : ''}`}
+                title="Hồ sơ sức khỏe"
               >
-                <Video className="w-5 h-5 text-white/70 hover:text-white" strokeWidth={1.8} />
+                <UserCheck className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
               </button>
 
-              {/* 4-Grid Library icon */}
+              {/* Lịch hẹn */}
               <button
-                onClick={() => setIsSidebarOpen(true)}
-                className="gemini-icon-btn"
-                title="Thư viện"
+                onClick={() => setActiveView('appointments')}
+                className={`gemini-icon-btn ${activeView === 'appointments' ? 'active' : ''}`}
+                title="Lịch hẹn của tôi"
               >
-                <LayoutGrid className="w-5 h-5 text-white/70 hover:text-white" strokeWidth={1.8} />
+                <LayoutGrid className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
               </button>
             </div>
 
             {/* Bottom items: Settings + Purple Avatar 'đ' */}
-            <div className="flex flex-col items-center gap-3 relative">
+            <div className="flex flex-col items-center gap-2.5 relative">
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                 className="gemini-icon-btn"
                 title="Cài đặt"
               >
-                <Settings className="w-5 h-5 text-white/70 hover:text-white" strokeWidth={1.8} />
+                <Settings className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
               </button>
 
               <button
@@ -362,21 +341,19 @@ export function GeminiDashboard() {
               <div className="bg-[#141517] p-1 rounded-full flex items-center">
                 <button
                   onClick={() => setActiveTab('chat')}
-                  className={`flex-1 py-1 px-3 rounded-full text-[13px] font-medium transition-colors ${
-                    activeTab === 'chat'
-                      ? 'bg-[#202124] text-white shadow-sm'
-                      : 'text-white/60 hover:text-white'
-                  }`}
+                  className={`flex-1 py-1 px-3 rounded-full text-[13px] font-medium transition-colors ${activeTab === 'chat'
+                    ? 'bg-[#202124] text-white shadow-sm'
+                    : 'text-white/60 hover:text-white'
+                    }`}
                 >
                   Trò chuyện
                 </button>
                 <button
                   onClick={() => setActiveTab('spark')}
-                  className={`flex-1 py-1 px-3 rounded-full text-[13px] font-medium flex items-center justify-center gap-1.5 transition-colors ${
-                    activeTab === 'spark'
-                      ? 'bg-[#202124] text-white shadow-sm'
-                      : 'text-white/60 hover:text-white'
-                  }`}
+                  className={`flex-1 py-1 px-3 rounded-full text-[13px] font-medium flex items-center justify-center gap-1.5 transition-colors ${activeTab === 'spark'
+                    ? 'bg-[#202124] text-white shadow-sm'
+                    : 'text-white/60 hover:text-white'
+                    }`}
                 >
                   <span>Spark</span>
                   <span className="text-[9.5px] font-semibold px-1 py-0.5 bg-white/10 rounded text-white/70">
@@ -392,89 +369,83 @@ export function GeminiDashboard() {
                     setActiveView('home');
                     setMessages([]);
                   }}
-                  className="flex items-center gap-3.5 px-3 py-2 rounded-full hover:bg-white/[0.06] text-white/90 text-[13.5px] transition-colors cursor-pointer text-left"
+                  className="flex items-center gap-3.5 px-3 py-2 rounded-full hover:bg-white/[0.06] text-white/85 text-[13.5px] transition-colors cursor-pointer text-left"
                 >
-                  <SquarePen className="w-4 h-4 text-white/70" strokeWidth={1.8} />
+                  <SquarePen className="w-[15px] h-[15px] text-white/60" strokeWidth={1.4} />
                   <span>Cuộc trò chuyện mới</span>
                 </button>
 
                 <button
                   onClick={() => setIsSearchOpen(true)}
-                  className="flex items-center gap-3.5 px-3 py-2 rounded-full hover:bg-white/[0.06] text-white/90 text-[13.5px] transition-colors cursor-pointer text-left"
+                  className="flex items-center gap-3.5 px-3 py-2 rounded-full hover:bg-white/[0.06] text-white/85 text-[13.5px] transition-colors cursor-pointer text-left"
                 >
-                  <Search className="w-4 h-4 text-white/70" strokeWidth={1.8} />
+                  <Search className="w-[15px] h-[15px] text-white/60" strokeWidth={1.4} />
                   <span className="truncate">Tìm kiếm trong các cuộc trò chuyện</span>
                 </button>
 
                 <button
                   onClick={() => setActiveView('booking')}
-                  className={`flex items-center gap-3.5 px-3 py-2 rounded-full text-[13.5px] transition-colors cursor-pointer text-left ${
-                    activeView === 'booking'
-                      ? 'bg-white/[0.1] text-white font-medium'
-                      : 'hover:bg-white/[0.06] text-white/90'
-                  }`}
+                  className={`flex items-center gap-3.5 px-3 py-2 rounded-full text-[13.5px] transition-colors cursor-pointer text-left ${activeView === 'booking'
+                    ? 'bg-white/[0.1] text-white font-medium'
+                    : 'hover:bg-white/[0.06] text-white/85'
+                    }`}
                 >
-                  <GraduationCap className="w-4 h-4 text-white/70" strokeWidth={1.8} />
-                  <span>Sinh viên (Đặt khám)</span>
+                  <Calendar className="w-[15px] h-[15px] text-white/60" strokeWidth={1.4} />
+                  <span>Đặt lịch khám</span>
                 </button>
 
                 <button
                   onClick={() => setActiveView('profile')}
-                  className={`flex items-center gap-3.5 px-3 py-2 rounded-full text-[13.5px] transition-colors cursor-pointer text-left ${
-                    activeView === 'profile'
-                      ? 'bg-white/[0.1] text-white font-medium'
-                      : 'hover:bg-white/[0.06] text-white/90'
-                  }`}
+                  className={`flex items-center gap-3.5 px-3 py-2 rounded-full text-[13.5px] transition-colors cursor-pointer text-left ${activeView === 'profile'
+                    ? 'bg-white/[0.1] text-white font-medium'
+                    : 'hover:bg-white/[0.06] text-white/85'
+                    }`}
                 >
-                  <Video className="w-4 h-4 text-white/70" strokeWidth={1.8} />
-                  <span>Video (Hồ sơ y tế)</span>
+                  <UserCheck className="w-[15px] h-[15px] text-white/60" strokeWidth={1.4} />
+                  <span>Hồ sơ sức khỏe</span>
                 </button>
 
                 <button
-                  className="flex items-center gap-3.5 px-3 py-2 rounded-full bg-white/[0.08] text-white text-[13.5px] transition-colors cursor-pointer text-left"
+                  onClick={() => setActiveView('appointments')}
+                  className={`flex items-center gap-3.5 px-3 py-2 rounded-full text-[13.5px] transition-colors cursor-pointer text-left ${activeView === 'appointments'
+                    ? 'bg-white/[0.08] text-white font-medium'
+                    : 'hover:bg-white/[0.06] text-white/85'
+                    }`}
                 >
-                  <LayoutGrid className="w-4 h-4 text-white" strokeWidth={1.8} />
-                  <span className="font-medium">Thư viện</span>
+                  <LayoutGrid className="w-[15px] h-[15px] text-white/60" strokeWidth={1.4} />
+                  <span>Lịch hẹn của tôi</span>
                 </button>
               </div>
             </div>
 
             {/* Middle Section: Scrollable Sổ ghi chú + Gần đây */}
             <div className="flex-1 overflow-y-auto gemini-dark-scrollbar py-3 flex flex-col gap-4">
-              {/* Sổ ghi chú */}
+              {/* Sổ ghi chú sức khỏe */}
               <div>
-                <span className="px-3 text-xs text-white/50 font-medium">Sổ ghi chú</span>
+                <span className="px-3 text-xs text-white/45 font-medium">Sổ ghi chú sức khỏe</span>
                 <div className="flex flex-col gap-0.5 mt-1.5">
                   <button
-                    onClick={() => setActiveView('booking')}
-                    className="flex items-center gap-3 px-3 py-1.5 rounded-xl hover:bg-white/[0.06] text-white/80 text-[13px] text-left transition-colors cursor-pointer"
+                    onClick={() => setActiveView('profile')}
+                    className="flex items-center gap-3 px-3 py-1.5 rounded-xl hover:bg-white/[0.06] text-white/75 text-[13px] text-left transition-colors cursor-pointer"
                   >
-                    <Plus className="w-4 h-4 text-white/60" />
-                    <span>Sổ ghi chú mới</span>
+                    <Plus className="w-3.5 h-3.5 text-white/50" strokeWidth={1.4} />
+                    <span>Ghi chú sức khỏe mới</span>
                   </button>
 
                   <button
                     onClick={() => setActiveView('profile')}
-                    className="flex items-center gap-3 px-3 py-1.5 rounded-xl hover:bg-white/[0.06] text-white/80 text-[13px] text-left transition-colors cursor-pointer"
+                    className="flex items-center gap-3 px-3 py-1.5 rounded-xl hover:bg-white/[0.06] text-white/75 text-[13px] text-left transition-colors cursor-pointer"
                   >
-                    <FileText className="w-4 h-4 text-white/60 shrink-0" />
-                    <span className="truncate">Machine Learning Model Evaluati...</span>
+                    <FileText className="w-3.5 h-3.5 text-white/50 shrink-0" strokeWidth={1.4} />
+                    <span className="truncate">Theo dõi chỉ số huyết áp & đường huyết</span>
                   </button>
 
                   <button
                     onClick={() => setActiveView('profile')}
-                    className="flex items-center gap-3 px-3 py-1.5 rounded-xl hover:bg-white/[0.06] text-white/80 text-[13px] text-left transition-colors cursor-pointer"
+                    className="flex items-center gap-3 px-3 py-1.5 rounded-xl hover:bg-white/[0.06] text-white/75 text-[13px] text-left transition-colors cursor-pointer"
                   >
-                    <FileText className="w-4 h-4 text-white/60 shrink-0" />
-                    <span className="truncate">Mô Tả và Yêu Cầu Hệ Thống Thư V...</span>
-                  </button>
-
-                  <button
-                    onClick={() => setIsSearchOpen(true)}
-                    className="flex items-center gap-3 px-3 py-1.5 rounded-xl hover:bg-white/[0.06] text-white/60 text-[13px] text-left transition-colors cursor-pointer"
-                  >
-                    <MoreHorizontal className="w-4 h-4 text-white/50 shrink-0" />
-                    <span>Tất cả sổ ghi chú</span>
+                    <FileText className="w-3.5 h-3.5 text-white/50 shrink-0" strokeWidth={1.4} />
+                    <span className="truncate">Đơn thuốc & Lời dặn sau khám</span>
                   </button>
                 </div>
               </div>
@@ -544,11 +515,10 @@ export function GeminiDashboard() {
               onClick={() => setIsUserMenuOpen(false)}
             />
             <div
-              className={`absolute bg-[#1e1f20] border border-white/[0.12] rounded-2xl shadow-2xl z-50 p-2 text-sm flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100 ${
-                isSidebarOpen
-                  ? 'bottom-14 left-3 w-64'
-                  : 'bottom-3 left-[70px] w-64'
-              }`}
+              className={`absolute bg-[#1e1f20] border border-white/[0.12] rounded-2xl shadow-2xl z-50 p-2 text-sm flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100 ${isSidebarOpen
+                ? 'bottom-14 left-3 w-64'
+                : 'bottom-3 left-[70px] w-64'
+                }`}
               style={{
                 boxShadow: '0 12px 36px rgba(0, 0, 0, 0.85), 0 0 1px rgba(255, 255, 255, 0.2)',
               }}
@@ -631,7 +601,16 @@ export function GeminiDashboard() {
           </div>
         )}
 
-        {/* View C: HOME */}
+        {/* View C: MY APPOINTMENTS PAGE */}
+        {activeView === 'appointments' && (
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 pt-16 animate-in fade-in duration-150">
+            <div className="max-w-6xl mx-auto">
+              <MyAppointmentsPage onNavigateBooking={() => setActiveView('booking')} />
+            </div>
+          </div>
+        )}
+
+        {/* View D: HOME */}
         {activeView === 'home' && (
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             {messages.length === 0 ? (
@@ -699,9 +678,8 @@ export function GeminiDashboard() {
                                     setSelectedModel(model);
                                     setIsModelDropdownOpen(false);
                                   }}
-                                  className={`px-3 py-2 text-left hover:bg-white/[0.08] transition-colors ${
-                                    selectedModel === model ? 'text-[#8ab4f8] font-medium' : 'text-white/80'
-                                  }`}
+                                  className={`px-3 py-2 text-left hover:bg-white/[0.08] transition-colors ${selectedModel === model ? 'text-[#8ab4f8] font-medium' : 'text-white/80'
+                                    }`}
                                 >
                                   {model}
                                 </button>
@@ -713,9 +691,8 @@ export function GeminiDashboard() {
                         <button
                           type="button"
                           onClick={() => setIsListening(!isListening)}
-                          className={`text-white/60 hover:text-white p-1 transition-colors cursor-pointer ${
-                            isListening ? 'text-red-400 animate-pulse' : ''
-                          }`}
+                          className={`text-white/60 hover:text-white p-1 transition-colors cursor-pointer ${isListening ? 'text-red-400 animate-pulse' : ''
+                            }`}
                           title={isListening ? 'Đang nghe...' : 'Nhập bằng giọng nói'}
                         >
                           {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" strokeWidth={1.8} />}
@@ -761,6 +738,7 @@ export function GeminiDashboard() {
                                 onClick={() => {
                                   if (msg.action?.view === 'booking') setActiveView('booking');
                                   if (msg.action?.view === 'profile') setActiveView('profile');
+                                  if (msg.action?.view === 'appointments') setActiveView('appointments');
                                 }}
                                 className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#8ab4f8] text-[#041e49] font-medium text-xs hover:bg-[#aecbfa] transition-colors cursor-pointer"
                               >
@@ -874,11 +852,10 @@ export function GeminiDashboard() {
                           type="button"
                           onClick={() => handleSendMessage()}
                           disabled={!inputPrompt.trim()}
-                          className={`p-1.5 rounded-full transition-all ${
-                            inputPrompt.trim()
-                              ? 'bg-[#8ab4f8] text-[#041e49]'
-                              : 'text-white/30 cursor-not-allowed'
-                          }`}
+                          className={`p-1.5 rounded-full transition-all ${inputPrompt.trim()
+                            ? 'bg-[#8ab4f8] text-[#041e49]'
+                            : 'text-white/30 cursor-not-allowed'
+                            }`}
                         >
                           <ArrowUp className="w-3.5 h-3.5 stroke-[2.5]" />
                         </button>

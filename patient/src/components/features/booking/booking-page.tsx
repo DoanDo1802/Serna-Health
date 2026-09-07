@@ -48,16 +48,50 @@ export function BookingPage() {
     setDateFilter,
     setSessionFilter,
     resetFilters,
+    currentHold,
+    currentPaymentIntent,
+    bookingPhase,
+    isHolding,
+    isCreatingPaymentIntent,
+    isSimulatingPayment,
+    createSlotHold,
+    createPaymentIntent,
+    simulateMockPaymentOutcome,
+    refreshBookingStatus,
+    resetBookingFlow,
   } = useBookingStore();
 
   const [selectedSlotForDetail, setSelectedSlotForDetail] =
     useState<EnrichedAppointmentSlot | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const mockPaymentEnabled = process.env.NEXT_PUBLIC_ENABLE_MOCK_PAYMENT === 'true' || process.env.NODE_ENV !== 'production';
+  const bookingInProgress = bookingPhase !== 'IDLE';
+  const holdRemainingMs = currentHold
+    ? Math.max(0, new Date(currentHold.expiresAt).getTime() - now)
+    : 0;
 
   useEffect(() => {
     if (!isAuthLoading) {
       initBooking();
     }
   }, [isAuthLoading, initBooking]);
+
+  useEffect(() => {
+    if (!currentHold || currentHold.status !== 'ACTIVE') return;
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [currentHold]);
+
+  useEffect(() => {
+    if (!currentHold || currentHold.status !== 'ACTIVE' || holdRemainingMs > 0) return;
+    void refreshBookingStatus();
+  }, [currentHold, holdRemainingMs, refreshBookingStatus]);
+
+  useEffect(() => {
+    if (!currentPaymentIntent || !['REQUIRES_PAYMENT_METHOD', 'PROCESSING'].includes(currentPaymentIntent.status)) return;
+    const interval = window.setInterval(() => void refreshBookingStatus(), 5000);
+    return () => window.clearInterval(interval);
+  }, [currentPaymentIntent, refreshBookingStatus]);
 
   // Format currency (e.g. 300.000 đ)
   const formatPrice = (amount: number, currency: string = 'VND') => {
@@ -101,20 +135,30 @@ export function BookingPage() {
   };
 
   const handleSelectSlot = (slot: EnrichedAppointmentSlot) => {
-    if (slot.remainingCapacity <= 0) {
-      toast.warning('Ca khám này hiện đã hết chỗ. Vui lòng chọn ca khám khác.', 'Hết chỗ');
+    if (bookingInProgress) {
+      toast.warning('Hoàn tất hoặc hủy phiên đặt lịch hiện tại trước khi chọn ca khác.', 'Đang Có Phiên Đặt Lịch');
       return;
     }
     setSelectedSlotForDetail(slot);
   };
 
-  const handleConfirmSlotHold = () => {
+  const handleConfirmSlotHold = async () => {
     if (!selectedSlotForDetail) return;
-    toast.success(
-      `Đã chọn ca khám ${selectedSlotForDetail.serviceName} (${selectedSlotForDetail.practitionerName})!`,
-      'Chọn Ca Thành Công'
-    );
-    setSelectedSlotForDetail(null);
+    const created = await createSlotHold(selectedSlotForDetail);
+    if (created) setSelectedSlotForDetail(null);
+  };
+
+  const handleCreatePaymentIntent = async () => {
+    await createPaymentIntent();
+  };
+
+  const handleSimulateMockPaymentOutcome = async (outcome: 'SUCCEEDED' | 'FAILED') => {
+    await simulateMockPaymentOutcome(outcome);
+  };
+
+  const formatRemainingTime = (milliseconds: number) => {
+    const seconds = Math.ceil(milliseconds / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   };
 
   return (
@@ -283,7 +327,7 @@ export function BookingPage() {
           {/* Session Filter */}
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold text-content-muted mr-1">Buổi:</span>
-            {(['ALL', 'MORNING', 'AFTERNOON', 'EVENING'] as const).map((s) => (
+            {(['ALL', 'MORNING', 'AFTERNOON'] as const).map((s) => (
               <button
                 key={s}
                 type="button"
@@ -294,13 +338,7 @@ export function BookingPage() {
                     : 'bg-surface-container text-content-secondary hover:bg-surface-container-high hover:text-content-primary'
                 }`}
               >
-                {s === 'ALL'
-                  ? 'Tất cả'
-                  : s === 'MORNING'
-                    ? 'Sáng'
-                    : s === 'AFTERNOON'
-                      ? 'Chiều'
-                      : 'Tối'}
+                {s === 'ALL' ? 'Tất cả' : s === 'MORNING' ? 'Sáng' : 'Chiều'}
               </button>
             ))}
           </div>
@@ -311,12 +349,12 @@ export function BookingPage() {
       <div className="w-full max-w-[1600px] mx-auto flex items-center justify-between mb-6 px-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-content-primary">
-            Tìm thấy <strong>{enrichedSlots.length}</strong> ca khám khả dụng
+            Tìm thấy <strong>{enrichedSlots.length}</strong> ca khám đang mở
           </span>
         </div>
         <div className="hidden sm:flex items-center gap-2 text-xs text-content-secondary">
           <Info className="w-4 h-4 text-content-muted" />
-          <span>Chỉ hiển thị ca khám đang mở (ACTIVE). Chọn ca để tiến hành giữ chỗ.</span>
+          <span>Ca khám đang mở. Hệ thống xác nhận chỗ khi tạo phiên giữ chỗ.</span>
         </div>
       </div>
 
@@ -465,7 +503,6 @@ export function BookingPage() {
         <div className="w-full max-w-[1600px] mx-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {enrichedSlots.map((slot) => {
             const { dateStr, timeStr } = formatSlotDateTime(slot.startAt, slot.endAt);
-            const isFull = slot.remainingCapacity <= 0;
 
             return (
               <div
@@ -476,27 +513,12 @@ export function BookingPage() {
                   {/* Top Badge Row */}
                   <div className="flex items-center justify-between gap-3 mb-4">
                     <span className="text-xs font-mono font-semibold text-content-primary bg-surface-container px-3 py-1 rounded-full border border-outline-variant">
-                      {slot.session === 'MORNING'
-                        ? '☀️ BUỔI SÁNG'
-                        : slot.session === 'AFTERNOON'
-                          ? '🌤️ BUỔI CHIỀU'
-                          : '🌙 BUỔI TỐI'}
+                      {slot.session === 'MORNING' ? '☀️ BUỔI SÁNG' : '🌤️ BUỔI CHIỀU'}
                     </span>
 
-                    {/* Capacity Badge */}
-                    {isFull ? (
-                      <span className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1 rounded-full">
-                        Hết chỗ
-                      </span>
-                    ) : slot.remainingCapacity <= 2 ? (
-                      <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-                        Còn {slot.remainingCapacity} chỗ
-                      </span>
-                    ) : (
-                      <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
-                        Còn {slot.remainingCapacity} chỗ
-                      </span>
-                    )}
+                    <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
+                      Đang mở đặt lịch
+                    </span>
                   </div>
 
                   {/* Service Name */}
@@ -552,16 +574,126 @@ export function BookingPage() {
                   <button
                     type="button"
                     onClick={() => handleSelectSlot(slot)}
-                    disabled={isFull}
+                    disabled={bookingInProgress}
                     className="px-6 py-3 rounded-full bg-primary hover:bg-primary-hover text-white text-xs sm:text-sm font-semibold transition-all shadow-xs hover:shadow-card-hover cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                   >
-                    <span>{isFull ? 'Hết Chỗ' : 'Chọn Ca'}</span>
-                    {!isFull && <ChevronRight className="w-4 h-4" />}
+                    <span>Chọn Ca</span>
+                    <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {currentHold && bookingPhase !== 'IDLE' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-surface border border-outline-variant rounded-3xl shadow-floating p-6 sm:p-8">
+            <div className="flex items-center justify-between pb-4 border-b border-outline-variant mb-6">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-bold tracking-tight text-content-primary m-0">Trạng Thái Đặt Lịch</h3>
+              </div>
+              <button
+                type="button"
+                onClick={resetBookingFlow}
+                disabled={isHolding || isCreatingPaymentIntent || isSimulatingPayment || bookingPhase === 'PAYMENT_PROCESSING'}
+                className="p-1.5 rounded-full text-content-muted hover:text-content-primary hover:bg-surface-container transition-colors cursor-pointer bg-transparent border-none disabled:opacity-40"
+                aria-label="Đóng trạng thái đặt lịch"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="p-5 rounded-2xl bg-surface-container/60 border border-outline-variant">
+                <p className="text-xs font-semibold text-content-muted uppercase tracking-wider m-0 mb-2">Phiên giữ chỗ</p>
+                {currentHold.status === 'ACTIVE' ? (
+                  <>
+                    <p className="text-base font-bold text-content-primary m-0">Đã giữ chỗ tạm thời</p>
+                    <p className="text-sm text-content-secondary m-0 mt-1">Còn {formatRemainingTime(holdRemainingMs)}. Máy chủ quyết định hiệu lực phiên giữ chỗ.</p>
+                  </>
+                ) : (
+                  <p className="text-base font-bold text-rose-700 m-0">Phiên giữ chỗ không còn hiệu lực</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-surface-container border border-outline-variant">
+                <span className="text-xs font-bold text-content-secondary">Tiền cọc theo máy chủ</span>
+                <span className="text-lg font-bold font-mono text-primary">{formatPrice(currentHold.depositAmount, currentHold.currency)}</span>
+              </div>
+
+              {bookingPhase === 'HOLD_ACTIVE' && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  Tạo yêu cầu thanh toán để tiếp tục. Chưa có xác nhận lịch khám.
+                </div>
+              )}
+
+              {currentPaymentIntent && (
+                <div className="rounded-2xl border border-outline-variant p-4">
+                  <p className="text-xs font-semibold text-content-muted uppercase tracking-wider m-0 mb-2">Thanh toán</p>
+                  <p className="text-sm font-bold text-content-primary m-0">{currentPaymentIntent.status}</p>
+                  <p className="text-xs text-content-secondary m-0 mt-1">
+                    {currentPaymentIntent.provider} {currentPaymentIntent.providerReference ? `· ${currentPaymentIntent.providerReference}` : ''}
+                  </p>
+                </div>
+              )}
+
+              {bookingPhase === 'AWAITING_PAYMENT' && currentPaymentIntent?.provider === 'MOCK_PAY' && mockPaymentEnabled && (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                  Môi trường mock đang bật. Chọn kết quả giả lập; máy chủ vẫn xác thực thanh toán và xác nhận lịch.
+                </div>
+              )}
+              {bookingPhase === 'AWAITING_PAYMENT' && (!mockPaymentEnabled || currentPaymentIntent?.provider !== 'MOCK_PAY') && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  Thanh toán mock chưa bật cho môi trường này. Lịch khám chỉ được xác nhận khi máy chủ nhận thanh toán hợp lệ.
+                </div>
+              )}
+              {bookingPhase === 'PAYMENT_PROCESSING' && (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 flex gap-2"><RefreshCw className="w-4 h-4 animate-spin shrink-0" />Đang chờ máy chủ xác nhận thanh toán.</div>
+              )}
+              {bookingPhase === 'SUCCEEDED' && currentHold.status === 'CONSUMED' && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 font-semibold">Thanh toán thành công. Lịch khám đã được xác nhận.</div>
+              )}
+              {bookingPhase === 'FAILED' && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">Thanh toán thất bại. Lịch khám chưa được xác nhận.</div>
+              )}
+              {bookingPhase === 'CANCELLED' && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">Yêu cầu thanh toán đã hủy. Lịch khám chưa được xác nhận.</div>
+              )}
+              {bookingPhase === 'RECONCILIATION_REQUIRED' && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Thanh toán cần đối soát. Lịch khám chưa được xác nhận; vui lòng liên hệ hỗ trợ.</div>
+              )}
+              {bookingPhase === 'HOLD_EXPIRED' && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">Phiên giữ chỗ đã hết hạn hoặc được giải phóng. Vui lòng chọn ca khác.</div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                {bookingPhase === 'HOLD_ACTIVE' && (
+                  <button type="button" onClick={() => void handleCreatePaymentIntent()} disabled={isCreatingPaymentIntent} className="flex-1 py-3.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs sm:text-sm font-bold shadow-card cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-50">
+                    {isCreatingPaymentIntent && <RefreshCw className="w-4 h-4 animate-spin" />}
+                    <span>{isCreatingPaymentIntent ? 'Đang Tạo Yêu Cầu' : 'Tạo Yêu Cầu Thanh Toán'}</span>
+                  </button>
+                )}
+                {['SUCCEEDED', 'FAILED', 'CANCELLED', 'RECONCILIATION_REQUIRED', 'HOLD_EXPIRED'].includes(bookingPhase) && (
+                  <button type="button" onClick={() => { resetBookingFlow(); void loadSlots(); }} className="flex-1 py-3.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs sm:text-sm font-bold shadow-card cursor-pointer">Chọn Ca Khác</button>
+                )}
+                {mockPaymentEnabled && currentHold.status === 'ACTIVE' && currentPaymentIntent?.provider === 'MOCK_PAY' && currentPaymentIntent.status === 'REQUIRES_PAYMENT_METHOD' && (
+                  <>
+                    <button type="button" onClick={() => void handleSimulateMockPaymentOutcome('SUCCEEDED')} disabled={isSimulatingPayment} className="flex-1 py-3.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs sm:text-sm font-bold shadow-card cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-50">
+                      {isSimulatingPayment && <RefreshCw className="w-4 h-4 animate-spin" />}
+                      <span>{isSimulatingPayment ? 'Đang Xử Lý' : 'Thanh Toán Mock Thành Công'}</span>
+                    </button>
+                    <button type="button" onClick={() => void handleSimulateMockPaymentOutcome('FAILED')} disabled={isSimulatingPayment} className="py-3.5 px-4 rounded-full border border-rose-300 text-xs sm:text-sm font-bold text-rose-700 hover:bg-rose-50 cursor-pointer transition-colors disabled:opacity-50">Mô Phỏng Thất Bại</button>
+                  </>
+                )}
+                {currentPaymentIntent && ['REQUIRES_PAYMENT_METHOD', 'PROCESSING'].includes(currentPaymentIntent.status) && (
+                  <button type="button" onClick={() => void refreshBookingStatus()} disabled={isSimulatingPayment} className="flex-1 py-3.5 rounded-full border border-outline-variant text-xs sm:text-sm font-bold text-content-secondary hover:bg-surface-container cursor-pointer disabled:opacity-50">Cập Nhật Trạng Thái</button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -675,11 +807,12 @@ export function BookingPage() {
               </button>
               <button
                 type="button"
-                onClick={handleConfirmSlotHold}
-                className="flex-1 py-3.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs sm:text-sm font-bold shadow-card cursor-pointer flex items-center justify-center gap-2 transition-all"
+                onClick={() => void handleConfirmSlotHold()}
+                disabled={isHolding}
+                className="flex-1 py-3.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs sm:text-sm font-bold shadow-card cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span>Xác Nhận Giữ Chỗ</span>
-                <ChevronRight className="w-4 h-4" />
+                {isHolding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
+                <span>{isHolding ? 'Đang Giữ Chỗ' : 'Xác Nhận Giữ Chỗ'}</span>
               </button>
             </div>
           </div>

@@ -87,17 +87,17 @@
 
 /* Icon Buttons on Rail */
 .gemini-scope .gemini-icon-btn {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #c4c7c5;
+  color: rgba(255, 255, 255, 0.65);
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
   flex-shrink: 0;
 }
 
@@ -108,7 +108,7 @@
 
 .gemini-scope .gemini-icon-btn.active {
   background-color: rgba(255, 255, 255, 0.12);
-  color: #8ab4f8;
+  color: #ffffff;
 }
 
 /* Tooltip Pill like 'Mở thanh bên' */
@@ -170,13 +170,13 @@
 
 /* User Avatar (Purple circle with 'đ' for Đoàn) */
 .gemini-scope .gemini-avatar {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: #7c4dff;
   color: #ffffff;
   font-weight: 500;
-  font-size: 14px;
+  font-size: 12.5px;
   display: flex;
   align-items: center;
   justify-content: center;

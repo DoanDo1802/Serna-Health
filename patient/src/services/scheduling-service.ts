@@ -1,16 +1,22 @@
 import { axiosClient } from '@/lib/axios-client';
 import {
+  AppointmentRow,
+  AppointmentPageResponse,
   AppointmentSlotRow,
   AppointmentSlotPageResponse,
   BookingCatalog,
-  SlotHoldRow,
+  CommandAcceptedResponse,
   CreateSlotHoldRequest,
+  PaymentIntentRow,
+  SimulateMockPaymentOutcomeRequest,
+  SlotHoldRow,
 } from '@/types/scheduling';
 
+interface IdempotentRequest {
+  idempotencyKey: string;
+}
+
 export const schedulingService = {
-  /**
-   * Tìm kiếm danh sách ca khám (AppointmentSlot).
-   */
   async searchAppointmentSlots(params?: {
     cursor?: string;
     limit?: number;
@@ -24,17 +30,11 @@ export const schedulingService = {
     return response.data;
   },
 
-  /**
-   * Lấy chi tiết thông tin ca khám theo ID.
-   */
   async getAppointmentSlot(slotId: string): Promise<AppointmentSlotRow> {
     const response = await axiosClient.get<AppointmentSlotRow>(`/appointment-slots/${slotId}`);
     return response.data;
   },
 
-  /**
-   * Lấy danh mục tối thiểu cho ca khám còn có thể đặt của một hồ sơ bệnh nhân.
-   */
   async getBookingCatalog(patientId: string): Promise<BookingCatalog> {
     const response = await axiosClient.get<BookingCatalog>('/booking/catalog', {
       params: { patientId },
@@ -42,19 +42,60 @@ export const schedulingService = {
     return response.data;
   },
 
-  /**
-   * Tạo yêu cầu giữ chỗ ca khám (SlotHold - R1-05/R1-06).
-   */
-  async createSlotHold(payload: CreateSlotHoldRequest): Promise<SlotHoldRow> {
-    const response = await axiosClient.post<SlotHoldRow>('/slot-holds', payload);
+  async createSlotHold(
+    payload: CreateSlotHoldRequest,
+    { idempotencyKey }: IdempotentRequest
+  ): Promise<SlotHoldRow> {
+    const response = await axiosClient.post<SlotHoldRow>('/slot-holds', payload, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
     return response.data;
   },
 
-  /**
-   * Lấy thông tin chi tiết phiên giữ chỗ.
-   */
   async getSlotHold(holdId: string): Promise<SlotHoldRow> {
     const response = await axiosClient.get<SlotHoldRow>(`/slot-holds/${holdId}`);
+    return response.data;
+  },
+
+  async createPaymentIntent(
+    holdId: string,
+    { idempotencyKey }: IdempotentRequest
+  ): Promise<PaymentIntentRow> {
+    const response = await axiosClient.post<PaymentIntentRow>(
+      `/slot-holds/${holdId}/payment-intents`,
+      {},
+      { headers: { 'Idempotency-Key': idempotencyKey } }
+    );
+    return response.data;
+  },
+
+  async getPaymentIntent(paymentIntentId: string): Promise<PaymentIntentRow> {
+    const response = await axiosClient.get<PaymentIntentRow>(`/payment-intents/${paymentIntentId}`);
+    return response.data;
+  },
+
+  async simulateMockPaymentOutcome(
+    paymentIntentId: string,
+    payload: SimulateMockPaymentOutcomeRequest,
+    { idempotencyKey }: IdempotentRequest
+  ): Promise<CommandAcceptedResponse> {
+    const response = await axiosClient.post<CommandAcceptedResponse>(
+      `/mock-payment-intents/${paymentIntentId}/actions/simulate`,
+      payload,
+      { headers: { 'Idempotency-Key': idempotencyKey } }
+    );
+    return response.data;
+  },
+
+  async listAppointments(cursor?: string, limit = 20): Promise<AppointmentPageResponse> {
+    const response = await axiosClient.get<AppointmentPageResponse>('/appointments', {
+      params: { cursor, limit },
+    });
+    return response.data;
+  },
+
+  async getAppointment(appointmentId: string): Promise<AppointmentRow> {
+    const response = await axiosClient.get<AppointmentRow>(`/appointments/${appointmentId}`);
     return response.data;
   },
 };
