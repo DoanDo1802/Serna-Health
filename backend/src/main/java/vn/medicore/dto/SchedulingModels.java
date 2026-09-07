@@ -136,6 +136,11 @@ public interface SchedulingModels {
             UUID topUpPaymentIntentId
     ) {}
 
+    record RescheduleTopUpRequest(
+            UUID targetSlotHoldId,
+            String reason
+    ) {}
+
     record RescheduleAppointmentResponse(
             UUID oldAppointmentId,
             UUID newAppointmentId,

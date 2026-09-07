@@ -474,6 +474,7 @@ schemas:
   SimulatePaymentOutcomeRequest:
     type: object
     additionalProperties: false
+    required: [outcome]
     properties:
       outcome: { type: string, enum: [SUCCEEDED, FAILED] }
       providerTransactionId: { type: string, maxLength: 128 }
@@ -528,6 +529,14 @@ schemas:
       targetSlotHoldId: { type: string, format: uuid }
       reason: { type: string, maxLength: 500 }
       topUpPaymentIntentId: { type: string, format: uuid }
+
+  RescheduleTopUpRequest:
+    type: object
+    additionalProperties: false
+    required: [targetSlotHoldId]
+    properties:
+      targetSlotHoldId: { type: string, format: uuid }
+      reason: { type: string, maxLength: 500 }
 
   RescheduleAppointmentResponse:
     type: object

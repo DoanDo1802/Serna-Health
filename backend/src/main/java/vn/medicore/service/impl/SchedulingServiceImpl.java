@@ -191,6 +191,19 @@ public class SchedulingServiceImpl implements SchedulingService {
                 null, null, null, status, version, value.createdAt(), now);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Page<vn.medicore.dto.SchedulingModels.AppointmentRow> searchAppointments(List<UUID> patientIds, String cursor, int limit) {
+        int offset = offset(cursor);
+        return page(store.searchAppointments(patientIds, limit + 1, offset), limit, offset);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public vn.medicore.dto.SchedulingModels.AppointmentRow getAppointment(UUID appointmentId) {
+        return store.appointmentById(appointmentId).orElseThrow(ResourceNotFoundException::new);
+    }
+
     private static void requireVersion(long actual, long expected) {
         if (actual != expected) throw new StaleVersionException();
     }

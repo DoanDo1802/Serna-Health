@@ -15,7 +15,7 @@ spring:
       mail.smtp.starttls.enable: true
       mail.smtp.starttls.required: true
   flyway:
-    enabled: false # Disable flyway in local environment
+    enabled: true
 
 medicore:
   crypto:

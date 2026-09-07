@@ -14,6 +14,7 @@ import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.dto.PaymentModels.OutboxEventRow;
 import vn.medicore.dto.PaymentModels.PaymentIntentRow;
 import vn.medicore.dto.PaymentModels.PaymentRow;
+import vn.medicore.dto.PaymentModels.RescheduleTopUpRow;
 import vn.medicore.dto.PaymentModels.WebhookInboxRow;
 import vn.medicore.repository.PaymentRepository;
 
@@ -213,8 +214,19 @@ public class PaymentJdbcRepositoryImpl implements PaymentRepository {
     }
 
     @Override
+    public Optional<PaymentRow> paymentByIdForUpdate(UUID id) {
+        return queryOne("select * from payment where id = :id for update", new MapSqlParameterSource("id", id), this::mapPayment);
+    }
+
+    @Override
     public Optional<PaymentRow> paymentByIntentId(UUID paymentIntentId) {
         return queryOne("select * from payment where payment_intent_id = :intentId", new MapSqlParameterSource("intentId", paymentIntentId), this::mapPayment);
+    }
+
+    @Override
+    public Optional<PaymentRow> paymentByIntentIdForUpdate(UUID paymentIntentId) {
+        return queryOne("select * from payment where payment_intent_id = :intentId for update",
+                new MapSqlParameterSource("intentId", paymentIntentId), this::mapPayment);
     }
 
     @Override
@@ -223,6 +235,51 @@ public class PaymentJdbcRepositoryImpl implements PaymentRepository {
                 select * from payment
                 where provider = :provider and provider_transaction_id = :providerTransactionId
                 """, new MapSqlParameterSource("provider", provider).addValue("providerTransactionId", providerTransactionId), this::mapPayment);
+    }
+
+    @Override
+    public void insertRescheduleTopUp(RescheduleTopUpRow row) {
+        jdbc.update("""
+                insert into reschedule_top_up (
+                    id, payment_intent_id, old_appointment_id, old_appointment_version, target_slot_hold_id,
+                    amount, currency, actor_account_id, reason, correlation_id, status, created_at, consumed_at
+                ) values (
+                    :id, :paymentIntentId, :oldAppointmentId, :oldAppointmentVersion, :targetSlotHoldId,
+                    :amount, :currency, :actorAccountId, :reason, :correlationId, :status, :createdAt, :consumedAt
+                )
+                """, new MapSqlParameterSource()
+                .addValue("id", row.id())
+                .addValue("paymentIntentId", row.paymentIntentId())
+                .addValue("oldAppointmentId", row.oldAppointmentId())
+                .addValue("oldAppointmentVersion", row.oldAppointmentVersion())
+                .addValue("targetSlotHoldId", row.targetSlotHoldId())
+                .addValue("amount", row.amount())
+                .addValue("currency", row.currency())
+                .addValue("actorAccountId", row.actorAccountId())
+                .addValue("reason", row.reason())
+                .addValue("correlationId", row.correlationId())
+                .addValue("status", row.status())
+                .addValue("createdAt", ts(row.createdAt()))
+                .addValue("consumedAt", ts(row.consumedAt())));
+    }
+
+    @Override
+    public Optional<RescheduleTopUpRow> rescheduleTopUpByPaymentIntentIdForUpdate(UUID paymentIntentId) {
+        return queryOne("select * from reschedule_top_up where payment_intent_id = :paymentIntentId for update",
+                new MapSqlParameterSource("paymentIntentId", paymentIntentId), this::mapRescheduleTopUp);
+    }
+
+    @Override
+    public void updateRescheduleTopUpStatus(UUID id, String status, Instant consumedAt, String expectedStatus) {
+        int rows = jdbc.update("""
+                update reschedule_top_up set status = :status, consumed_at = :consumedAt
+                where id = :id and status = :expectedStatus
+                """, new MapSqlParameterSource()
+                .addValue("id", id)
+                .addValue("status", status)
+                .addValue("consumedAt", ts(consumedAt))
+                .addValue("expectedStatus", expectedStatus));
+        if (rows == 0) throw new StaleVersionException();
     }
 
     @Override
@@ -318,6 +375,23 @@ public class PaymentJdbcRepositoryImpl implements PaymentRepository {
                 rs.getObject("webhook_inbox_id", UUID.class),
                 instant(rs, "captured_at"),
                 instant(rs, "created_at"));
+    }
+
+    private RescheduleTopUpRow mapRescheduleTopUp(ResultSet rs, int rowNum) throws SQLException {
+        return new RescheduleTopUpRow(
+                rs.getObject("id", UUID.class),
+                rs.getObject("payment_intent_id", UUID.class),
+                rs.getObject("old_appointment_id", UUID.class),
+                rs.getLong("old_appointment_version"),
+                rs.getObject("target_slot_hold_id", UUID.class),
+                rs.getBigDecimal("amount"),
+                rs.getString("currency"),
+                rs.getObject("actor_account_id", UUID.class),
+                rs.getString("reason"),
+                rs.getString("correlation_id"),
+                rs.getString("status"),
+                instant(rs, "created_at"),
+                instant(rs, "consumed_at"));
     }
 
     private OutboxEventRow mapOutboxEvent(ResultSet rs, int rowNum) throws SQLException {

@@ -35,4 +35,8 @@ public interface SchedulingService {
     SlotHoldRow getSlotHold(UUID holdId, SchedulingAuditContext context);
 
     void cancelSlotHold(UUID holdId, long expectedVersion, SchedulingAuditContext context);
+
+    Page<vn.medicore.dto.SchedulingModels.AppointmentRow> searchAppointments(java.util.List<UUID> patientIds, String cursor, int limit);
+
+    vn.medicore.dto.SchedulingModels.AppointmentRow getAppointment(UUID appointmentId);
 }

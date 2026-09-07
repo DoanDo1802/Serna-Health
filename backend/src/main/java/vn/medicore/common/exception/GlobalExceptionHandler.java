@@ -37,6 +37,11 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.PRECONDITION_FAILED, "CONCURRENCY_STALE_VERSION", "ETag is stale", request);
     }
 
+    @ExceptionHandler(RescheduleFundingException.class)
+    ResponseEntity<ProblemDetail> rescheduleFunding(RescheduleFundingException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, exception.code(), "Reschedule funding conflict", request);
+    }
+
     @ExceptionHandler(MissingRequestHeaderException.class)
     ResponseEntity<ProblemDetail> missingHeader(MissingRequestHeaderException exception, HttpServletRequest request) {
         if ("If-Match".equalsIgnoreCase(exception.getHeaderName())) {

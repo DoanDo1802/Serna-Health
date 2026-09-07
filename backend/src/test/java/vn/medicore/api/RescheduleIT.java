@@ -242,12 +242,21 @@ class RescheduleIT {
         // 2. Target hold with 80k deposit (difference: 30k)
         UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
 
-        // 3. Create top-up payment intent for 30k
-        var topUpIntent = paymentService.createRescheduleTopUpIntent(targetHoldId, new BigDecimal("30000.00"),
-                new vn.medicore.dto.SchedulingAuditContext(patientSession.accountId(), patientSession.sessionId().toString(), java.util.Map.of(), "req", "corr"));
+        // 3. Create top-up payment intent through public reschedule flow.
+        MvcResult topUpResult = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule-top-up", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "topup-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetSlotHoldId\":\"%s\",\"reason\":\"Upgraded to standard\"}".formatted(targetHoldId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(30000.00))
+                .andReturn();
+        UUID topUpIntentId = UUID.fromString(objectMapper.readTree(topUpResult.getResponse().getContentAsString()).path("id").asText());
 
         // 4. Simulate mock capture for top-up intent
-        mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", topUpIntent.id())
+        mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", topUpIntentId)
                         .cookie(patientSession.cookie())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "sim-topup-" + UUID.randomUUID())
@@ -264,7 +273,7 @@ class RescheduleIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"targetSlotHoldId":"%s","reason":"Upgraded to standard","topUpPaymentIntentId":"%s"}
-                                """.formatted(targetHoldId, topUpIntent.id())))
+                                """.formatted(targetHoldId, topUpIntentId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.transferredAmount").value(50000.00))
                 .andExpect(jsonPath("$.differenceAmount").value(30000.00))
@@ -274,10 +283,32 @@ class RescheduleIT {
         JsonNode responseJson = objectMapper.readTree(rescheduleResult.getResponse().getContentAsString());
         UUID newAppointmentId = UUID.fromString(responseJson.path("newAppointmentId").asText());
 
-        // New appointment has 2 active deposit allocations: 80k (TRANSFER_IN) + 40k (ORIGINAL)
+        // New appointment has 2 active deposit allocations: 50k transfer + 30k top-up.
         JdbcTemplate jdbc = jdbc();
         Integer allocCount = jdbc.queryForObject("select count(*) from deposit_allocation where appointment_id = ? and status = 'ACTIVE'", Integer.class, newAppointmentId);
         assertThat(allocCount).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select status from reschedule_top_up where payment_intent_id = ?", String.class, topUpIntentId))
+                .isEqualTo("CONSUMED");
+
+        // Reschedule again. Both active allocations move through independent transfer legs.
+        UUID secondTargetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        MvcResult secondReschedule = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", newAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "resched-higher-second-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetSlotHoldId\":\"%s\",\"reason\":\"Second change\"}".formatted(secondTargetHoldId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.transferredAmount").value(80000.00))
+                .andExpect(jsonPath("$.differenceDisposition").value("NONE"))
+                .andReturn();
+        UUID secondTransferId = UUID.fromString(objectMapper.readTree(secondReschedule.getResponse().getContentAsString())
+                .path("depositTransferId").asText());
+        assertThat(jdbc.queryForObject("select count(*) from deposit_transfer_leg where deposit_transfer_id = ?", Integer.class,
+                secondTransferId)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select coalesce(sum(amount), 0) from deposit_transfer_leg where deposit_transfer_id = ?",
+                BigDecimal.class, secondTransferId)).isEqualByComparingTo("80000.00");
     }
 
     @Test
@@ -317,6 +348,56 @@ class RescheduleIT {
         // Outbox event payment.refund_pending.v1 is created
         Integer refundOutboxCount = jdbc.queryForObject("select count(*) from outbox_event where aggregate_id = ? and event_type = 'payment.refund_pending.v1'", Integer.class, refundPendingAllocId);
         assertThat(refundOutboxCount).isEqualTo(1);
+    }
+
+    @Test
+    void rescheduleWithoutSourceAllocationRejectsBeforeLineageOrHoldMutation() throws Exception {
+        UUID patientId = insertPatient("Missing Allocation Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        jdbc().update("update deposit_allocation set status = 'ENTERED_IN_ERROR' where appointment_id = ?", oldAppointmentId);
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "resched-missing-funding-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetSlotHoldId\":\"%s\",\"reason\":\"Change\"}".formatted(targetHoldId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PAYMENT_SOURCE_ALLOCATION_MISSING"));
+
+        assertThat(jdbc().queryForObject("select status from appointment where id = ?", String.class, oldAppointmentId))
+                .isEqualTo("CONFIRMED");
+        assertThat(jdbc().queryForObject("select status from slot_hold where id = ?", String.class, targetHoldId))
+                .isEqualTo("ACTIVE");
+        assertThat(jdbc().queryForObject("select count(*) from appointment where rescheduled_from_id = ?", Integer.class, oldAppointmentId))
+                .isZero();
+    }
+
+    @Test
+    void rescheduleRejectsZeroDepositTargetWithoutMutatingLineageOrHold() throws Exception {
+        UUID patientId = insertPatient("Zero Target Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+        UUID zeroTargetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        jdbc().update("update slot_hold set deposit_amount = 0.00 where id = ?", zeroTargetHoldId);
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "resched-zero-target-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetSlotHoldId\":\"%s\",\"reason\":\"Change\"}".formatted(zeroTargetHoldId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PAYMENT_TARGET_DEPOSIT_UNSUPPORTED"));
+
+        assertThat(jdbc().queryForObject("select status from appointment where id = ?", String.class, oldAppointmentId))
+                .isEqualTo("CONFIRMED");
+        assertThat(jdbc().queryForObject("select status from slot_hold where id = ?", String.class, zeroTargetHoldId))
+                .isEqualTo("ACTIVE");
     }
 
     @Test

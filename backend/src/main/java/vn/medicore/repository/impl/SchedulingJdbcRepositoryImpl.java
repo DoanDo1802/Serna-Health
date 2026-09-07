@@ -274,6 +274,18 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
     }
 
     @Override
+    public List<vn.medicore.dto.SchedulingModels.AppointmentRow> searchAppointments(List<UUID> patientIds, int limit, int offset) {
+        if (patientIds == null || patientIds.isEmpty()) {
+            return jdbc.query("select * from appointment order by created_at desc limit :limit offset :offset",
+                    new MapSqlParameterSource().addValue("limit", limit).addValue("offset", offset),
+                    this::mapAppointment);
+        }
+        return jdbc.query("select * from appointment where patient_id in (:patientIds) order by created_at desc limit :limit offset :offset",
+                new MapSqlParameterSource().addValue("patientIds", patientIds).addValue("limit", limit).addValue("offset", offset),
+                this::mapAppointment);
+    }
+
+    @Override
     public void insertDepositAllocation(vn.medicore.dto.PaymentModels.DepositAllocationRow row) {
         jdbc.update("""
                 insert into deposit_allocation (
@@ -323,6 +335,16 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
     }
 
     @Override
+    public List<vn.medicore.dto.PaymentModels.DepositAllocationRow> activeDepositAllocationsByAppointmentIdForUpdate(UUID appointmentId) {
+        return jdbc.query("""
+                select * from deposit_allocation
+                where appointment_id = :appointmentId and status = 'ACTIVE'
+                order by id
+                for update
+                """, new MapSqlParameterSource("appointmentId", appointmentId), this::mapDepositAllocation);
+    }
+
+    @Override
     public Optional<vn.medicore.dto.PaymentModels.DepositAllocationRow> depositAllocationById(UUID id) {
         return queryOne("select * from deposit_allocation where id = :id", new MapSqlParameterSource("id", id), this::mapDepositAllocation);
     }
@@ -352,6 +374,26 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 .addValue("actorAccountId", row.actorAccountId())
                 .addValue("reason", row.reason())
                 .addValue("correlationId", row.correlationId())
+                .addValue("createdAt", ts(row.createdAt())));
+    }
+
+    @Override
+    public void insertDepositTransferLeg(vn.medicore.dto.PaymentModels.DepositTransferLegRow row) {
+        jdbc.update("""
+                insert into deposit_transfer_leg (
+                    id, deposit_transfer_id, source_allocation_id, target_allocation_id,
+                    amount, currency, created_at
+                ) values (
+                    :id, :depositTransferId, :sourceAllocationId, :targetAllocationId,
+                    :amount, :currency, :createdAt
+                )
+                """, new MapSqlParameterSource()
+                .addValue("id", row.id())
+                .addValue("depositTransferId", row.depositTransferId())
+                .addValue("sourceAllocationId", row.sourceAllocationId())
+                .addValue("targetAllocationId", row.targetAllocationId())
+                .addValue("amount", row.amount())
+                .addValue("currency", row.currency())
                 .addValue("createdAt", ts(row.createdAt())));
     }
 

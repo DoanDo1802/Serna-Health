@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,6 +19,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.exception.ResourceNotFoundException;
+import vn.medicore.common.exception.RescheduleFundingException;
+import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.config.PaymentProperties;
 import vn.medicore.dto.AuditModels.AuditEventView;
@@ -26,6 +29,7 @@ import vn.medicore.dto.PaymentModels.NormalizedWebhookEvent;
 import vn.medicore.dto.PaymentModels.OutboxEventRow;
 import vn.medicore.dto.PaymentModels.PaymentIntentRow;
 import vn.medicore.dto.PaymentModels.PaymentRow;
+import vn.medicore.dto.PaymentModels.RescheduleTopUpRow;
 import vn.medicore.dto.PaymentModels.SimulatePaymentOutcomeRequest;
 import vn.medicore.dto.PaymentModels.WebhookInboxRow;
 import vn.medicore.dto.SchedulingAuditContext;
@@ -172,8 +176,10 @@ public class PaymentServiceImpl implements PaymentService {
         return intentRow;
     }
 
-    @Override
-    public PaymentIntentRow createRescheduleTopUpIntent(UUID targetSlotHoldId, BigDecimal topUpAmount, SchedulingAuditContext context) {
+    private PaymentIntentRow createBoundRescheduleTopUpPaymentIntent(
+            UUID targetSlotHoldId,
+            BigDecimal topUpAmount,
+            SchedulingAuditContext context) {
         Instant now = clock.instant();
 
         SlotHoldRow initialHold = schedulingRepository.slotHoldById(targetSlotHoldId)
@@ -215,6 +221,69 @@ public class PaymentServiceImpl implements PaymentService {
                 intentRow.id(), intentRow.version(), "reschedule_top_up_created", now);
 
         return intentRow;
+    }
+
+    @Override
+    public PaymentIntentRow createRescheduleTopUpIntent(
+            UUID oldAppointmentId,
+            UUID targetSlotHoldId,
+            long ifMatchVersion,
+            String reason,
+            SchedulingAuditContext context) {
+        Instant now = clock.instant();
+        AppointmentRow oldAppointment = schedulingRepository.appointmentByIdForUpdate(oldAppointmentId)
+                .orElseThrow(ResourceNotFoundException::new);
+        if (oldAppointment.version() != ifMatchVersion) {
+            throw new StaleVersionException();
+        }
+        if (!"CONFIRMED".equals(oldAppointment.status()) || oldAppointment.rescheduledToId() != null) {
+            throw new IllegalStateException("Appointment cannot be rescheduled in status: " + oldAppointment.status());
+        }
+
+        SlotHoldRow initialTargetHold = schedulingRepository.slotHoldById(targetSlotHoldId)
+                .orElseThrow(() -> new ResourceNotFoundException("Target slot hold not found"));
+        schedulingRepository.appointmentSlotByIdForUpdate(initialTargetHold.slotId())
+                .orElseThrow(ResourceNotFoundException::new);
+        SlotHoldRow targetHold = schedulingRepository.slotHoldByIdForUpdate(targetSlotHoldId)
+                .orElseThrow(() -> new ResourceNotFoundException("Target slot hold not found"));
+        if (!oldAppointment.patientId().equals(targetHold.patientId())) {
+            throw new IllegalStateException("Target slot hold must be for the same patient");
+        }
+        if (!"ACTIVE".equals(targetHold.status()) || !targetHold.expiresAt().isAfter(now)) {
+            throw new IllegalStateException("Target slot hold is not active");
+        }
+
+        var allocations = schedulingRepository.activeDepositAllocationsByAppointmentIdForUpdate(oldAppointmentId);
+        if (allocations.isEmpty()) {
+            throw new RescheduleFundingException(
+                    "PAYMENT_SOURCE_ALLOCATION_MISSING",
+                    "Confirmed appointment has no active deposit allocation");
+        }
+        BigDecimal sourceAmount = BigDecimal.ZERO.setScale(2);
+        for (DepositAllocationRow allocation : allocations) {
+            PaymentRow payment = paymentRepository.paymentByIdForUpdate(allocation.paymentId())
+                    .orElseThrow(() -> new RescheduleFundingException(
+                            "PAYMENT_SOURCE_ALLOCATION_INVALID", "Source allocation payment does not exist"));
+            if (!"CAPTURED".equals(payment.status())
+                    || !targetHold.currency().equals(allocation.currency())
+                    || !payment.currency().equals(allocation.currency())) {
+                throw new RescheduleFundingException(
+                        "PAYMENT_SOURCE_ALLOCATION_INVALID", "Source allocation is not valid funding for target hold");
+            }
+            sourceAmount = sourceAmount.add(allocation.amount());
+        }
+
+        BigDecimal topUpAmount = targetHold.depositAmount().subtract(sourceAmount).setScale(2);
+        if (topUpAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RescheduleFundingException(
+                    "PAYMENT_TOP_UP_NOT_REQUIRED", "Target deposit does not require additional capture");
+        }
+        PaymentIntentRow intent = createBoundRescheduleTopUpPaymentIntent(targetSlotHoldId, topUpAmount, context);
+        paymentRepository.insertRescheduleTopUp(new RescheduleTopUpRow(
+                ids.next(), intent.id(), oldAppointment.id(), oldAppointment.version(), targetHold.id(),
+                topUpAmount, targetHold.currency(), context.actorAccountId(), reason, context.correlationId(),
+                "PENDING", now, null));
+        return intent;
     }
 
     @Override
@@ -648,6 +717,15 @@ public class PaymentServiceImpl implements PaymentService {
 
         PaymentIntentRow intent = paymentRepository.paymentIntentById(paymentIntentId)
                 .orElseThrow(ResourceNotFoundException::new);
+        if (!providerAdapter.providerName().equals(intent.provider())) {
+            throw new IllegalStateException("Payment intent does not use mock provider");
+        }
+        if (!"REQUIRES_PAYMENT_METHOD".equals(intent.status())) {
+            throw new IllegalStateException("Payment intent is not awaiting payment");
+        }
+        if (request.outcome() == null || (!"SUCCEEDED".equals(request.outcome()) && !"FAILED".equals(request.outcome()))) {
+            throw new IllegalArgumentException("Mock payment outcome must be SUCCEEDED or FAILED");
+        }
 
         String eventId = "mock_evt_" + ids.next();
         String providerTxId = request.providerTransactionId() != null && !request.providerTransactionId().isBlank()
@@ -655,8 +733,7 @@ public class PaymentServiceImpl implements PaymentService {
                 : "mock_tx_" + ids.next();
         Instant occurredAt = request.providerOccurredAt() != null ? request.providerOccurredAt() : clock.instant();
 
-        String outcome = request.outcome() != null ? request.outcome() : "SUCCEEDED";
-        String eventType = "FAILED".equalsIgnoreCase(outcome) ? "payment.failed" : "payment.succeeded";
+        String eventType = "FAILED".equals(request.outcome()) ? "payment.failed" : "payment.succeeded";
 
         BigDecimal amount = request.amount() != null ? request.amount() : intent.amount();
         String currency = request.currency() != null ? request.currency() : intent.currency();

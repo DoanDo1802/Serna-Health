@@ -7410,6 +7410,7 @@ paths:
             type: string
             format: uuid
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
       security:
         - sessionCookie: []
       responses:
@@ -7775,6 +7776,116 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RescheduleAppointmentRequest'
+  /appointments/{appointmentId}/actions/reschedule-top-up:
+    post:
+      tags:
+        - SchedulingPayment
+      summary: Create Reschedule Top Up
+      operationId: createRescheduleTopUp
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IfMatch'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentIntent'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '412':
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '428':
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: scheduling-payment
+      x-medicore-permission: appointment.reschedule
+      x-medicore-audit-action: appointment.reschedule
+      x-medicore-stories:
+        - R1-05
+        - R1-06
+        - R1-07
+      x-medicore-scenarios:
+        - SC-R1-BOOK-01
+        - SC-R1-BOOK-02
+        - SC-R1-BOOK-03
+        - SC-R1-BOOK-04
+        - SC-R1-PAY-01
+        - SC-R1-PAY-02
+        - SC-R1-RESCHEDULE-01
+        - SC-R1-RESCHEDULE-02
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RescheduleTopUpRequest'
   /appointments/{appointmentId}/actions/cancel:
     post:
       tags:
@@ -15415,6 +15526,8 @@ components:
     SimulatePaymentOutcomeRequest:
       type: object
       additionalProperties: false
+      required:
+        - outcome
       properties:
         outcome:
           type: string
@@ -15557,6 +15670,18 @@ components:
         topUpPaymentIntentId:
           type: string
           format: uuid
+    RescheduleTopUpRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - targetSlotHoldId
+      properties:
+        targetSlotHoldId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          maxLength: 500
     RescheduleAppointmentResponse:
       type: object
       additionalProperties: false

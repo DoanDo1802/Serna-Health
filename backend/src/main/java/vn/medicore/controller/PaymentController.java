@@ -24,9 +24,11 @@ import vn.medicore.dto.PaymentModels.CommandAcceptedResponse;
 import vn.medicore.dto.PaymentModels.PaymentIntentRow;
 import vn.medicore.dto.PaymentModels.SimulatePaymentOutcomeRequest;
 import vn.medicore.dto.SchedulingAuditContext;
+import vn.medicore.dto.SchedulingModels.RescheduleTopUpRequest;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
 import vn.medicore.service.PatientService;
 import vn.medicore.service.PaymentService;
+import vn.medicore.service.RescheduleService;
 import vn.medicore.service.SchedulingService;
 
 @RestController
@@ -35,16 +37,19 @@ public class PaymentController {
 
     private final PaymentService paymentService;
     private final SchedulingService schedulingService;
+    private final RescheduleService rescheduleService;
     private final PatientService patientService;
     private final Clock clock;
 
     public PaymentController(
             PaymentService paymentService,
             SchedulingService schedulingService,
+            RescheduleService rescheduleService,
             PatientService patientService,
             Clock clock) {
         this.paymentService = paymentService;
         this.schedulingService = schedulingService;
+        this.rescheduleService = rescheduleService;
         this.patientService = patientService;
         this.clock = clock;
     }
@@ -58,6 +63,24 @@ public class PaymentController {
         requirePatientAccess(actor, hold.patientId(), "payment_intent.create");
         SchedulingAuditContext context = auditContext(request, actor);
         PaymentIntentRow value = paymentService.createPaymentIntent(holdId, context);
+        return versioned(value, value.version());
+    }
+
+    @PostMapping("/appointments/{appointmentId}/actions/reschedule-top-up")
+    public ResponseEntity<PaymentIntentRow> createRescheduleTopUpIntent(
+            @PathVariable UUID appointmentId,
+            @RequestHeader(value = "If-Match", required = true) String ifMatch,
+            @RequestBody RescheduleTopUpRequest body,
+            @AuthenticationPrincipal AuthenticatedAccount actor,
+            HttpServletRequest request) {
+        long version = parseVersion(ifMatch);
+        var appointment = rescheduleService.getAppointmentForAccess(appointmentId);
+        requirePatientAccess(actor, appointment.patientId(), "appointment.reschedule");
+        if (body == null || body.targetSlotHoldId() == null) {
+            throw new IllegalArgumentException("Target slot hold ID is required");
+        }
+        PaymentIntentRow value = paymentService.createRescheduleTopUpIntent(
+                appointmentId, body.targetSlotHoldId(), version, body.reason(), auditContext(request, actor));
         return versioned(value, value.version());
     }
 
@@ -98,17 +121,14 @@ public class PaymentController {
     @PreAuthorize("hasAuthority('payment.mock.simulate')")
     public ResponseEntity<CommandAcceptedResponse> simulateMockPaymentOutcome(
             @PathVariable UUID paymentIntentId,
-            @RequestBody(required = false) SimulatePaymentOutcomeRequest body,
+            @RequestBody SimulatePaymentOutcomeRequest body,
             @AuthenticationPrincipal AuthenticatedAccount actor,
             HttpServletRequest request) {
         PaymentIntentRow existing = paymentService.getPaymentIntentForAccess(paymentIntentId);
         SlotHoldRow hold = schedulingService.getSlotHoldForAccess(existing.slotHoldId());
         requirePatientAccess(actor, hold.patientId(), "payment_intent.read");
         SchedulingAuditContext context = auditContext(request, actor);
-        paymentService.simulateMockPaymentOutcome(
-                paymentIntentId,
-                body != null ? body : new SimulatePaymentOutcomeRequest(null, null, null, null, null, null),
-                context);
+        paymentService.simulateMockPaymentOutcome(paymentIntentId, body, context);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(new CommandAcceptedResponse("ACCEPTED"));
     }
@@ -132,6 +152,13 @@ public class PaymentController {
                 Map.of("permissions", List.copyOf(actor.permissions())),
                 RequestContext.requestId(request),
                 RequestContext.correlationId(request));
+    }
+
+    private static long parseVersion(String value) {
+        if (value == null || !value.matches("^\"[0-9]+\"$")) {
+            throw new IllegalArgumentException("If-Match is invalid");
+        }
+        return Long.parseLong(value.substring(1, value.length() - 1));
     }
 
     private static <T> ResponseEntity<T> versioned(T body, long value) {

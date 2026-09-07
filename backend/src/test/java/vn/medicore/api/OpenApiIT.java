@@ -32,7 +32,7 @@ import vn.medicore.MediCoreApplication;
 @ActiveProfiles("test")
 class OpenApiIT {
 
-    private static final int EXPECTED_OPERATION_COUNT = 155; // Current-account patient-link route added.
+    private static final int EXPECTED_OPERATION_COUNT = 157; // Reschedule top-up route added.
 
     @Container
     @ServiceConnection
@@ -92,7 +92,8 @@ class OpenApiIT {
                         "revokePractitionerRole",
                         "listPatientIdentifiers",
                         "listMyPatientAccountLinks",
-                        "reviewPatientDuplicateCandidate");
+                        "reviewPatientDuplicateCandidate",
+                        "createRescheduleTopUp");
         assertThat(paths.path("/patients/account-links").path("get")
                 .at("/responses/200/content/application~1json/schema/$ref").asText())
                 .endsWith("/PatientAccountLinkList");
@@ -170,6 +171,12 @@ class OpenApiIT {
         assertThat(paths.path("/mock-payment-intents/{paymentIntentId}/actions/simulate").path("post")
                 .at("/responses/202/content/application~1json/schema/$ref").asText())
                 .endsWith("/CommandAccepted");
+        assertThat(paths.path("/mock-payment-intents/{paymentIntentId}/actions/simulate").path("post")
+                .path("parameters").toString()).contains("#/components/parameters/CsrfToken");
+        assertThat(paths.path("/mock-payment-intents/{paymentIntentId}/actions/simulate").path("post")
+                .at("/requestBody/required").asBoolean()).isTrue();
+        assertThat(document.at("/components/schemas/SimulatePaymentOutcomeRequest/required")).extracting(JsonNode::asText)
+                .containsExactly("outcome");
         assertThat(document.at("/components/schemas/PaymentIntentStatus/enum")).extracting(JsonNode::asText)
                 .containsExactly("REQUIRES_PAYMENT_METHOD", "PROCESSING", "SUCCEEDED", "FAILED", "CANCELLED", "RECONCILIATION_REQUIRED");
         assertThat(document.at("/components/schemas/PaymentIntent/properties/currency/const").asText()).isEqualTo("VND");

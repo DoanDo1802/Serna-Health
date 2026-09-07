@@ -9,7 +9,12 @@ public interface PaymentService {
 
     PaymentIntentRow createPaymentIntent(UUID slotHoldId, SchedulingAuditContext context);
 
-    PaymentIntentRow createRescheduleTopUpIntent(UUID targetSlotHoldId, java.math.BigDecimal topUpAmount, SchedulingAuditContext context);
+    PaymentIntentRow createRescheduleTopUpIntent(
+            UUID oldAppointmentId,
+            UUID targetSlotHoldId,
+            long ifMatchVersion,
+            String reason,
+            SchedulingAuditContext context);
 
     PaymentIntentRow getPaymentIntentForAccess(UUID paymentIntentId);
 

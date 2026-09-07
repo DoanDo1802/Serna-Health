@@ -61,6 +61,22 @@ public interface PaymentModels {
             Instant createdAt
     ) {}
 
+    record RescheduleTopUpRow(
+            UUID id,
+            UUID paymentIntentId,
+            UUID oldAppointmentId,
+            long oldAppointmentVersion,
+            UUID targetSlotHoldId,
+            BigDecimal amount,
+            String currency,
+            UUID actorAccountId,
+            String reason,
+            String correlationId,
+            String status,
+            Instant createdAt,
+            Instant consumedAt
+    ) {}
+
     record DepositAllocationRow(
             UUID id,
             UUID paymentId,
@@ -87,6 +103,16 @@ public interface PaymentModels {
             UUID actorAccountId,
             String reason,
             String correlationId,
+            Instant createdAt
+    ) {}
+
+    record DepositTransferLegRow(
+            UUID id,
+            UUID depositTransferId,
+            UUID sourceAllocationId,
+            UUID targetAllocationId,
+            BigDecimal amount,
+            String currency,
             Instant createdAt
     ) {}
 

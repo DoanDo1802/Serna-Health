@@ -142,13 +142,51 @@ public class SchedulingController {
         return versioned(value, value.version());
     }
 
+    @GetMapping("/appointments")
+    @PreAuthorize("hasAnyAuthority('appointment.read', 'slot_hold.read', 'patient.read')")
+    Page<vn.medicore.dto.SchedulingModels.AppointmentRow> listAppointments(
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
+            @AuthenticationPrincipal AuthenticatedAccount actor) {
+        Instant now = clock.instant();
+        List<UUID> accessiblePatientIds = patients.listAccountPatientLinks(actor.accountId()).stream()
+                .filter(link -> "ACTIVE".equals(link.status())
+                        && !now.isBefore(link.validFrom()) && (link.validTo() == null || now.isBefore(link.validTo())))
+                .map(link -> link.patientId())
+                .toList();
+
+        boolean isStaff = actor.permissions().contains("appointment_slot.create")
+                || actor.permissions().contains("practitioner.read");
+
+        if (accessiblePatientIds.isEmpty() && !isStaff) {
+            return new Page<>(List.of(), null, false);
+        }
+
+        return service.searchAppointments(isStaff && accessiblePatientIds.isEmpty() ? null : accessiblePatientIds, cursor, limit);
+    }
+
+    @GetMapping("/appointments/{appointmentId}")
+    @PreAuthorize("hasAnyAuthority('appointment.read', 'slot_hold.read', 'patient.read')")
+    ResponseEntity<vn.medicore.dto.SchedulingModels.AppointmentRow> getAppointment(
+            @PathVariable UUID appointmentId,
+            @AuthenticationPrincipal AuthenticatedAccount actor) {
+        vn.medicore.dto.SchedulingModels.AppointmentRow appointment = service.getAppointment(appointmentId);
+        boolean isStaff = actor.permissions().contains("appointment_slot.create")
+                || actor.permissions().contains("practitioner.read");
+        if (!isStaff) {
+            requireHoldAccess(actor, appointment.patientId(), "patient.read");
+        }
+        return versioned(appointment, appointment.version());
+    }
+
     private void requireHoldAccess(AuthenticatedAccount actor, UUID patientId, String schedulingPermission) {
         Instant now = clock.instant();
         boolean allowed = patients.listAccountPatientLinks(actor.accountId()).stream().anyMatch(link ->
                 link.patientId().equals(patientId) && "ACTIVE".equals(link.status())
                         && !now.isBefore(link.validFrom()) && (link.validTo() == null || now.isBefore(link.validTo()))
                         && ("OWN".equals(link.relationship()) || ("REPRESENTATION_VERIFIED".equals(link.verificationTier())
-                        && Boolean.TRUE.equals(link.permissionScope().get(schedulingPermission)))));
+                        && (Boolean.TRUE.equals(link.permissionScope().get(schedulingPermission))
+                                || Boolean.TRUE.equals(link.permissionScope().get("patient.read"))))));
         if (!allowed) throw new AccessDeniedException("Patient access is not granted");
     }
 

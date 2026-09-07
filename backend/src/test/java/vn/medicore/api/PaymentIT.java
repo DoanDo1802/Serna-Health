@@ -176,6 +176,83 @@ class PaymentIT {
     }
 
     @Test
+    void simulatedFailedPaymentNeverConfirmsAppointment() throws Exception {
+        UUID patientId = insertPatient("Mock Failure Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID holdId = createSlotHold(patientSession, slotId, patientId);
+        UUID intentId = createPaymentIntent(patientSession, holdId);
+
+        mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", intentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("Idempotency-Key", "sim-failed-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FAILED\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"));
+
+        JdbcTemplate jdbc = jdbc();
+        String intentStatus = jdbc.queryForObject("select status from payment_intent where id = ?", String.class, intentId);
+        assertThat(intentStatus).isEqualTo("FAILED");
+        Integer appointmentCount = jdbc.queryForObject("select count(*) from appointment where slot_hold_id = ?", Integer.class, holdId);
+        assertThat(appointmentCount).isZero();
+    }
+
+    @Test
+    void mockSimulationRequiresCsrfAndMockPermission() throws Exception {
+        UUID patientId = insertPatient("Mock Permission Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID holdId = createSlotHold(patientSession, slotId, patientId);
+        UUID intentId = createPaymentIntent(patientSession, holdId);
+
+        mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", intentId)
+                        .cookie(patientSession.cookie())
+                        .header("Idempotency-Key", "sim-no-csrf-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"SUCCEEDED\"}"))
+                .andExpect(status().isForbidden());
+
+        AuthSession unprivilegedSession = session(Set.of());
+        linkPatientToAccount(patientId, unprivilegedSession.accountId());
+        mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", intentId)
+                        .cookie(unprivilegedSession.cookie())
+                        .header("X-CSRF-Token", unprivilegedSession.csrfToken())
+                        .header("Idempotency-Key", "sim-no-permission-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"SUCCEEDED\"}"))
+                .andExpect(status().isForbidden());
+
+        Integer appointmentCount = jdbc().queryForObject("select count(*) from appointment where slot_hold_id = ?", Integer.class, holdId);
+        assertThat(appointmentCount).isZero();
+    }
+
+    @Test
+    void mockSimulationIdempotencyReplayCapturesOnlyOnce() throws Exception {
+        UUID patientId = insertPatient("Mock Replay Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID holdId = createSlotHold(patientSession, slotId, patientId);
+        UUID intentId = createPaymentIntent(patientSession, holdId);
+        String idempotencyKey = "sim-replay-" + UUID.randomUUID();
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", intentId)
+                            .cookie(patientSession.cookie())
+                            .header("X-CSRF-Token", patientSession.csrfToken())
+                            .header("Idempotency-Key", idempotencyKey)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"outcome\":\"SUCCEEDED\"}"))
+                    .andExpect(status().isAccepted())
+                    .andExpect(jsonPath("$.status").value("ACCEPTED"));
+        }
+
+        JdbcTemplate jdbc = jdbc();
+        Integer paymentCount = jdbc.queryForObject("select count(*) from payment where payment_intent_id = ?", Integer.class, intentId);
+        Integer appointmentCount = jdbc.queryForObject("select count(*) from appointment where slot_hold_id = ?", Integer.class, holdId);
+        assertThat(paymentCount).isEqualTo(1);
+        assertThat(appointmentCount).isEqualTo(1);
+    }
+
+    @Test
     void zeroPriceDirectConfirmFlowBypassesProviderAndConfirmsAppointment() throws Exception {
         UUID patientId = insertPatient("Zero Price Patient");
         AuthSession patientSession = sessionWithPatient(patientId);
@@ -570,6 +647,16 @@ class PaymentIT {
                         .cookie(ownerSession.cookie()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(intentId.toString()));
+    }
+
+    private UUID createPaymentIntent(AuthSession session, UUID holdId) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
+                        .cookie(session.cookie())
+                        .header("X-CSRF-Token", session.csrfToken())
+                        .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
+                .andExpect(status().isOk())
+                .andReturn();
+        return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString()).path("id").asText());
     }
 
     private UUID createSlotHold(AuthSession session, UUID targetSlotId, UUID patientId) throws Exception {

@@ -54,6 +54,8 @@ public interface SchedulingRepository {
 
     Optional<vn.medicore.dto.SchedulingModels.AppointmentRow> appointmentBySlotHoldId(UUID slotHoldId);
 
+    List<vn.medicore.dto.SchedulingModels.AppointmentRow> searchAppointments(List<UUID> patientIds, int limit, int offset);
+
     void insertDepositAllocation(vn.medicore.dto.PaymentModels.DepositAllocationRow row);
 
     void updateDepositAllocationStatus(UUID id, String newStatus, String expectedStatus);
@@ -62,9 +64,13 @@ public interface SchedulingRepository {
 
     Optional<vn.medicore.dto.PaymentModels.DepositAllocationRow> activeDepositAllocationByAppointmentId(UUID appointmentId);
 
+    List<vn.medicore.dto.PaymentModels.DepositAllocationRow> activeDepositAllocationsByAppointmentIdForUpdate(UUID appointmentId);
+
     Optional<vn.medicore.dto.PaymentModels.DepositAllocationRow> depositAllocationById(UUID id);
 
     void insertDepositTransfer(vn.medicore.dto.PaymentModels.DepositTransferRow row);
+
+    void insertDepositTransferLeg(vn.medicore.dto.PaymentModels.DepositTransferLegRow row);
 
     Optional<vn.medicore.dto.PaymentModels.DepositTransferRow> depositTransferByOldAppointmentId(UUID oldAppointmentId);
 }

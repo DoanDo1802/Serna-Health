@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.exception.ResourceNotFoundException;
+import vn.medicore.common.exception.RescheduleFundingException;
 import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.dto.AuditModels.AuditEventView;
@@ -22,6 +24,7 @@ import vn.medicore.dto.PaymentModels.DepositTransferRow;
 import vn.medicore.dto.PaymentModels.OutboxEventRow;
 import vn.medicore.dto.PaymentModels.PaymentIntentRow;
 import vn.medicore.dto.PaymentModels.PaymentRow;
+import vn.medicore.dto.PaymentModels.RescheduleTopUpRow;
 import vn.medicore.dto.SchedulingAuditContext;
 import vn.medicore.dto.SchedulingModels.AppointmentRow;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
@@ -153,16 +156,45 @@ public class RescheduleServiceImpl implements RescheduleService {
             throw new IllegalStateException("Target slot capacity exhausted");
         }
 
-        // 3. Resolve source allocation and compute deposit differences
-        DepositAllocationRow sourceAllocation = schedulingRepository.activeDepositAllocationByAppointmentId(oldAppointmentId)
-                .orElse(null);
+        // 3. Resolve and lock complete source funding before any state mutation.
+        List<DepositAllocationRow> sourceAllocations = schedulingRepository
+                .activeDepositAllocationsByAppointmentIdForUpdate(oldAppointmentId);
+        if (sourceAllocations.isEmpty()) {
+            throw new RescheduleFundingException(
+                    "PAYMENT_SOURCE_ALLOCATION_MISSING",
+                    "Confirmed appointment has no active deposit allocation");
+        }
 
-        BigDecimal sourceAmount = sourceAllocation != null ? sourceAllocation.amount() : BigDecimal.ZERO;
+        Map<UUID, PaymentRow> sourcePayments = new HashMap<>();
+        BigDecimal sourceAmount = BigDecimal.ZERO.setScale(2);
+        for (DepositAllocationRow sourceAllocation : sourceAllocations) {
+            PaymentRow sourcePayment = paymentRepository.paymentByIdForUpdate(sourceAllocation.paymentId())
+                    .orElseThrow(() -> new RescheduleFundingException(
+                            "PAYMENT_SOURCE_ALLOCATION_INVALID",
+                            "Source allocation payment does not exist"));
+            if (!"CAPTURED".equals(sourcePayment.status())
+                    || !targetHold.currency().equals(sourceAllocation.currency())
+                    || !sourcePayment.currency().equals(sourceAllocation.currency())) {
+                throw new RescheduleFundingException(
+                        "PAYMENT_SOURCE_ALLOCATION_INVALID",
+                        "Source allocation is not valid funding for target hold");
+            }
+            sourcePayments.put(sourceAllocation.id(), sourcePayment);
+            sourceAmount = sourceAmount.add(sourceAllocation.amount());
+        }
+
         BigDecimal targetRequired = targetHold.depositAmount();
+        if (targetRequired.signum() <= 0) {
+            throw new RescheduleFundingException(
+                    "PAYMENT_TARGET_DEPOSIT_UNSUPPORTED",
+                    "Rescheduling funded appointments to zero-deposit holds requires refund reconciliation");
+        }
+        DepositAllocationRow responseSourceAllocation = sourceAllocations.getFirst();
 
         String differenceDisposition;
         BigDecimal differenceAmount;
         PaymentRow topUpPayment = null;
+        RescheduleTopUpRow topUp = null;
 
         if (targetRequired.compareTo(sourceAmount) == 0) {
             differenceDisposition = "NONE";
@@ -180,15 +212,30 @@ public class RescheduleServiceImpl implements RescheduleService {
             if (!"SUCCEEDED".equals(topUpIntent.status())) {
                 throw new IllegalStateException("Top-up payment intent is not in SUCCEEDED status: " + topUpIntent.status());
             }
+            topUp = paymentRepository.rescheduleTopUpByPaymentIntentIdForUpdate(topUpIntent.id())
+                    .orElseThrow(() -> new RescheduleFundingException(
+                            "PAYMENT_TOP_UP_INVALID", "Payment intent is not a reschedule top-up"));
+            if (!"PENDING".equals(topUp.status())
+                    || !topUp.oldAppointmentId().equals(oldAppointment.id())
+                    || topUp.oldAppointmentVersion() != oldAppointment.version()
+                    || !topUp.targetSlotHoldId().equals(targetHold.id())
+                    || topUp.amount().compareTo(differenceAmount) != 0
+                    || !topUp.currency().equals(targetHold.currency())) {
+                throw new RescheduleFundingException(
+                        "PAYMENT_TOP_UP_INVALID", "Top-up context does not match reschedule command");
+            }
             if (!topUpIntent.slotHoldId().equals(targetHold.id())) {
-                throw new IllegalStateException("Top-up payment intent does not match target slot hold");
+                throw new RescheduleFundingException(
+                        "PAYMENT_TOP_UP_INVALID", "Top-up payment intent does not match target slot hold");
             }
             if (topUpIntent.amount().compareTo(differenceAmount) != 0) {
-                throw new IllegalStateException("Top-up payment intent amount mismatch: expected " + differenceAmount + " but was " + topUpIntent.amount());
+                throw new RescheduleFundingException(
+                        "PAYMENT_TOP_UP_INVALID", "Top-up payment intent amount does not match required difference");
             }
 
-            topUpPayment = paymentRepository.paymentByIntentId(topUpIntent.id())
-                    .orElseThrow(() -> new IllegalStateException("Captured top-up payment record not found"));
+            topUpPayment = paymentRepository.paymentByIntentIdForUpdate(topUpIntent.id())
+                    .orElseThrow(() -> new RescheduleFundingException(
+                            "PAYMENT_TOP_UP_INVALID", "Captured top-up payment record not found"));
             if (!"CAPTURED".equals(topUpPayment.status())) {
                 throw new IllegalStateException("Top-up payment is not captured");
             }
@@ -241,84 +288,129 @@ public class RescheduleServiceImpl implements RescheduleService {
         UUID refundPendingAllocationId = null;
         BigDecimal transferredAmount = targetRequired.min(sourceAmount);
 
-        if (sourceAllocation != null) {
-            // Transition source allocation: ACTIVE -> TRANSFERRED
-            schedulingRepository.updateDepositAllocationStatus(sourceAllocation.id(), "TRANSFERRED", "ACTIVE");
-
-            // Target transfer allocation: TRANSFER_IN
-            targetAllocationId = ids.next();
-            DepositAllocationRow targetAllocation = new DepositAllocationRow(
-                    targetAllocationId,
-                    sourceAllocation.paymentId(),
-                    newAppointmentId,
-                    transferredAmount,
-                    "VND",
-                    "TRANSFER_IN",
-                    sourceAllocation.id(),
-                    "ACTIVE",
-                    now,
-                    context.correlationId());
-            schedulingRepository.insertDepositAllocation(targetAllocation);
-
-            // If additional capture: top-up payment gets ORIGINAL allocation on new appointment
-            if ("ADDITIONAL_CAPTURE".equals(differenceDisposition) && topUpPayment != null) {
-                UUID topUpAllocationId = ids.next();
-                DepositAllocationRow topUpAllocation = new DepositAllocationRow(
-                        topUpAllocationId,
-                        topUpPayment.id(),
+        // Transfer each active source allocation deterministically. Parent transfer preserves command API shape;
+        // immutable legs preserve allocation-by-allocation provenance across later reschedules.
+        Map<UUID, UUID> targetAllocationIdsBySource = new HashMap<>();
+        Map<UUID, BigDecimal> transferAmountsBySource = new HashMap<>();
+        Map<UUID, BigDecimal> refundAmountsBySource = new HashMap<>();
+        BigDecimal remainingTransfer = transferredAmount;
+        for (DepositAllocationRow sourceAllocation : sourceAllocations) {
+            BigDecimal allocationTransfer = sourceAllocation.amount().min(remainingTransfer);
+            BigDecimal allocationRefund = sourceAllocation.amount().subtract(allocationTransfer);
+            transferAmountsBySource.put(sourceAllocation.id(), allocationTransfer);
+            refundAmountsBySource.put(sourceAllocation.id(), allocationRefund);
+            if (allocationTransfer.signum() > 0) {
+                UUID allocationId = ids.next();
+                DepositAllocationRow targetAllocation = new DepositAllocationRow(
+                        allocationId,
+                        sourcePayments.get(sourceAllocation.id()).id(),
                         newAppointmentId,
-                        differenceAmount,
-                        "VND",
-                        "ORIGINAL",
-                        null,
+                        allocationTransfer,
+                        targetHold.currency(),
+                        "TRANSFER_IN",
+                        sourceAllocation.id(),
                         "ACTIVE",
                         now,
                         context.correlationId());
-                schedulingRepository.insertDepositAllocation(topUpAllocation);
+                schedulingRepository.insertDepositAllocation(targetAllocation);
+                targetAllocationIdsBySource.put(sourceAllocation.id(), allocationId);
+                if (targetAllocationId == null) {
+                    targetAllocationId = allocationId;
+                }
             }
+            remainingTransfer = remainingTransfer.subtract(allocationTransfer);
+        }
+        if (remainingTransfer.signum() != 0) {
+            throw new RescheduleFundingException(
+                    "PAYMENT_SOURCE_ALLOCATION_INVALID", "Source allocation transfer calculation does not balance");
+        }
+        for (DepositAllocationRow sourceAllocation : sourceAllocations) {
+            schedulingRepository.updateDepositAllocationStatus(sourceAllocation.id(), "TRANSFERRED", "ACTIVE");
+        }
 
-            // If lower deposit: excess funding becomes REFUND_PENDING allocation on old appointment
-            if ("REFUND_PENDING".equals(differenceDisposition)) {
-                refundPendingAllocationId = ids.next();
+        // If additional capture: top-up payment gets ORIGINAL allocation on new appointment.
+        if ("ADDITIONAL_CAPTURE".equals(differenceDisposition) && topUpPayment != null) {
+            UUID topUpAllocationId = ids.next();
+            DepositAllocationRow topUpAllocation = new DepositAllocationRow(
+                    topUpAllocationId,
+                    topUpPayment.id(),
+                    newAppointmentId,
+                    differenceAmount,
+                    targetHold.currency(),
+                    "ORIGINAL",
+                    null,
+                    "ACTIVE",
+                    now,
+                    context.correlationId());
+            schedulingRepository.insertDepositAllocation(topUpAllocation);
+        }
+
+        // Lower-deposit excess becomes one or more REFUND_PENDING allocations on old appointment.
+        if ("REFUND_PENDING".equals(differenceDisposition)) {
+            BigDecimal remainingRefund = differenceAmount;
+            for (DepositAllocationRow sourceAllocation : sourceAllocations) {
+                BigDecimal allocationRefund = refundAmountsBySource.get(sourceAllocation.id());
+                if (allocationRefund.signum() <= 0) {
+                    continue;
+                }
+                UUID allocationId = ids.next();
                 DepositAllocationRow refundAllocation = new DepositAllocationRow(
-                        refundPendingAllocationId,
-                        sourceAllocation.paymentId(),
+                        allocationId,
+                        sourcePayments.get(sourceAllocation.id()).id(),
                         oldAppointment.id(),
-                        differenceAmount,
-                        "VND",
+                        allocationRefund,
+                        targetHold.currency(),
                         "TRANSFER_IN",
                         sourceAllocation.id(),
                         "REFUND_PENDING",
                         now,
                         context.correlationId());
                 schedulingRepository.insertDepositAllocation(refundAllocation);
-
+                if (refundPendingAllocationId == null) {
+                    refundPendingAllocationId = allocationId;
+                }
                 Map<String, Object> refundOutbox = new LinkedHashMap<>();
-                refundOutbox.put("refundAllocationId", refundPendingAllocationId.toString());
+                refundOutbox.put("refundAllocationId", allocationId.toString());
                 refundOutbox.put("oldAppointmentId", oldAppointment.id().toString());
                 refundOutbox.put("paymentId", sourceAllocation.paymentId().toString());
-                refundOutbox.put("refundAmount", differenceAmount.toPlainString());
-                refundOutbox.put("currency", "VND");
+                refundOutbox.put("refundAmount", allocationRefund.toPlainString());
+                refundOutbox.put("currency", targetHold.currency());
                 refundOutbox.put("createdAt", now.toString());
-                recordOutbox(refundPendingAllocationId, "PAYMENT", "payment.refund_pending.v1", refundOutbox, context.correlationId(), now);
+                recordOutbox(allocationId, "PAYMENT", "payment.refund_pending.v1", refundOutbox, context.correlationId(), now);
+                remainingRefund = remainingRefund.subtract(allocationRefund);
             }
+            if (remainingRefund.signum() != 0) {
+                throw new RescheduleFundingException(
+                        "PAYMENT_SOURCE_ALLOCATION_INVALID", "Source allocation refund calculation does not balance");
+            }
+        }
 
-            // DepositTransfer record
-            DepositTransferRow depositTransfer = new DepositTransferRow(
-                    depositTransferId,
-                    oldAppointment.id(),
-                    newAppointmentId,
-                    sourceAllocation.id(),
-                    targetAllocationId,
-                    transferredAmount,
-                    "VND",
-                    differenceAmount,
-                    differenceDisposition,
-                    context.actorAccountId(),
-                    request.reason(),
-                    context.correlationId(),
-                    now);
-            schedulingRepository.insertDepositTransfer(depositTransfer);
+        DepositTransferRow depositTransfer = new DepositTransferRow(
+                depositTransferId,
+                oldAppointment.id(),
+                newAppointmentId,
+                responseSourceAllocation.id(),
+                targetAllocationId,
+                transferredAmount,
+                targetHold.currency(),
+                differenceAmount,
+                differenceDisposition,
+                context.actorAccountId(),
+                request.reason(),
+                context.correlationId(),
+                now);
+        schedulingRepository.insertDepositTransfer(depositTransfer);
+        for (DepositAllocationRow sourceAllocation : sourceAllocations) {
+            UUID allocationId = targetAllocationIdsBySource.get(sourceAllocation.id());
+            if (allocationId == null) {
+                continue;
+            }
+            schedulingRepository.insertDepositTransferLeg(new vn.medicore.dto.PaymentModels.DepositTransferLegRow(
+                    ids.next(), depositTransferId, sourceAllocation.id(), allocationId,
+                    transferAmountsBySource.get(sourceAllocation.id()), targetHold.currency(), now));
+        }
+        if (topUp != null) {
+            paymentRepository.updateRescheduleTopUpStatus(topUp.id(), "CONSUMED", now, "PENDING");
         }
 
         // Outbox event for appointment reschedule
@@ -344,7 +436,7 @@ public class RescheduleServiceImpl implements RescheduleService {
                 newOldAppointmentVersion,
                 newAppointmentVersion,
                 depositTransferId,
-                sourceAllocation != null ? sourceAllocation.id() : null,
+                responseSourceAllocation.id(),
                 targetAllocationId,
                 transferredAmount,
                 differenceAmount,

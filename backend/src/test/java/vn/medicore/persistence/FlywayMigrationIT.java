@@ -80,7 +80,9 @@ class FlywayMigrationIT {
                     "payment",
                     // R1-07 Reschedule & Deposit
                     "deposit_allocation",
-                    "deposit_transfer");
+                    "deposit_transfer",
+                    "deposit_transfer_leg",
+                    "reschedule_top_up");
             assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("5");
             assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("61");
             assertThat(singleValue(statement, """
@@ -109,12 +111,27 @@ class FlywayMigrationIT {
                         'ix_payment_intent_status_updated', 'ix_webhook_inbox_status_next',
                         'ix_payment_captured_status', 'uq_appointment_rescheduled_from',
                         'uq_appointment_rescheduled_to', 'ix_deposit_allocation_appointment',
-                        'uq_deposit_transfer_old_appointment')
-                    """)).isEqualTo("14");
+                        'uq_deposit_transfer_old_appointment', 'uq_reschedule_top_up_pending_appointment',
+                        'uq_deposit_allocation_target_source')
+                    """)).isEqualTo("16");
             assertAuditIsAppendOnly(statement);
             assertPaymentIsAppendOnly(statement);
             assertDepositTransferIsAppendOnly(statement);
+            assertDepositTransferLegIsAppendOnly(statement);
+            assertRescheduleTopUpIsAppendOnly(statement);
         }
+    }
+
+    private void assertDepositTransferLegIsAppendOnly(Statement statement) throws SQLException {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.executeUpdate("truncate deposit_transfer_leg"))
+                .isInstanceOf(SQLException.class)
+                .hasMessageContaining("deposit_transfer_leg rows are append-only");
+    }
+
+    private void assertRescheduleTopUpIsAppendOnly(Statement statement) throws SQLException {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.executeUpdate("truncate reschedule_top_up"))
+                .isInstanceOf(SQLException.class)
+                .hasMessageContaining("reschedule_top_up rows are append-only");
     }
 
     private void assertDepositTransferIsAppendOnly(Statement statement) throws SQLException {
