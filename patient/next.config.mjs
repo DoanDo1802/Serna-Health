@@ -13,6 +13,14 @@ const nextConfig = {
       },
     ],
   },
+  rewrites: async () => ({
+    beforeFiles: [
+      {
+        source: '/download',
+        destination: '/dashboard/booking',
+      },
+    ],
+  }),
 };
 
 export default nextConfig;

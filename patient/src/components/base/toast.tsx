@@ -32,9 +32,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const showToast = useCallback(
     ({ type, title, message, duration = 4000 }: Omit<ToastItem, 'id'>) => {
-      const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
+      const id =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : Math.random().toString(36).substring(2, 9);
       const newToast: ToastItem = { id, type, title, message, duration };
-      
+
       setToasts((prev) => [...prev, newToast]);
 
       if (duration > 0) {
@@ -82,7 +85,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="pointer-events-auto w-full bg-[#ffffff] text-[#141311] border border-[#e8e4dc] p-4 rounded-2xl shadow-[0_16px_45px_rgba(0,0,0,0.12)] flex items-start gap-3.5 animate-in slide-in-from-bottom-5 fade-in duration-300 transition-all font-sans"
+            className="pointer-events-auto w-full bg-surface text-content-primary border border-outline-variant p-4 rounded-2xl shadow-floating flex items-start gap-3.5 animate-in slide-in-from-bottom-5 fade-in duration-300 transition-all font-sans"
           >
             {/* Icon based on type */}
             <div className="shrink-0 mt-0.5">
@@ -102,7 +105,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 </div>
               )}
               {toast.type === 'info' && (
-                <div className="w-7 h-7 rounded-full bg-[#ede8dc] text-[#141311] flex items-center justify-center border border-[#dcd6ca]">
+                <div className="w-7 h-7 rounded-full bg-surface-container text-primary flex items-center justify-center border border-outline-variant">
                   <Info className="w-4 h-4" />
                 </div>
               )}
@@ -111,11 +114,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             {/* Content */}
             <div className="flex-1 min-w-0 pr-1">
               {toast.title && (
-                <h4 className="text-xs font-bold text-[#141311] mb-0.5 tracking-tight">
+                <h4 className="text-xs font-bold text-content-primary mb-0.5 tracking-tight">
                   {toast.title}
                 </h4>
               )}
-              <p className="text-xs text-[#555147] leading-relaxed font-medium m-0 break-words">
+              <p className="text-xs text-content-secondary leading-relaxed font-medium m-0 break-words">
                 {toast.message}
               </p>
             </div>
@@ -124,7 +127,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => removeToast(toast.id)}
-              className="shrink-0 p-1 rounded-md text-[#8e897e] hover:text-[#141311] hover:bg-black/5 transition-colors cursor-pointer bg-transparent border-none"
+              className="shrink-0 p-1 rounded-md text-content-muted hover:text-content-primary hover:bg-surface-container transition-colors cursor-pointer bg-transparent border-none"
             >
               <X className="w-3.5 h-3.5" />
             </button>

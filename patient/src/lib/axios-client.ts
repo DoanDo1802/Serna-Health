@@ -49,7 +49,8 @@ const generateUUID = (): string => {
 // Request Interceptor: Attach CSRF, Request IDs, and Idempotency Keys
 axiosClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const method = config.method?.toUpperCase();
-  const isMutating = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+  const isMutating =
+    method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
 
   const csrfToken = getCsrfToken();
   if (isMutating && csrfToken && !config.headers['X-CSRF-Token']) {
@@ -79,8 +80,17 @@ axiosClient.interceptors.response.use(
   (error: AxiosError<ProblemDetail>) => {
     if (error.response?.data) {
       const problem = error.response.data;
-      const message = problem.detail || problem.title || (typeof problem === 'string' ? problem : error.message);
-      return Promise.reject(new Error(message));
+      const message =
+        problem.detail || problem.title || (typeof problem === 'string' ? problem : error.message);
+      const customError = new Error(message) as Error & {
+        status?: number;
+        code?: string;
+        response?: AxiosError['response'];
+      };
+      customError.status = error.response.status;
+      customError.code = problem.code;
+      customError.response = error.response;
+      return Promise.reject(customError);
     }
     return Promise.reject(error);
   }

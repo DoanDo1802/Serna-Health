@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <!-- Soft Outer Ambient Glow Filter -->
+    <filter id="nova-glow" x="-20%" y="-20%" width="140%" height="140%" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" mode="over" />
+    </filter>
+
+    <!-- Clip path of the Cosmic Medical Cross shape -->
+    <clipPath id="nova-cross-clip">
+      <path d="M 100 20 
+               C 113 20, 123 35, 123 55 
+               C 123 75, 125 77, 145 77 
+               C 165 77, 180 87, 180 100 
+               C 180 113, 165 123, 145 123 
+               C 125 123, 123 125, 123 145 
+               C 123 165, 113 180, 100 180 
+               C 87 180, 77 165, 77 145 
+               C 77 125, 75 123, 55 123 
+               C 35 123, 20 113, 20 100 
+               C 20 87, 35 77, 55 77 
+               C 75 77, 77 75, 77 55 
+               C 77 35, 87 20, 100 20 Z" />
+    </clipPath>
+
+    <!-- Base Gradient -->
+    <linearGradient id="nova-base" x1="20" y1="20" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3186FF" />
+      <stop offset="35%" stop-color="#2DD4BF" />
+      <stop offset="65%" stop-color="#FBBC04" />
+      <stop offset="100%" stop-color="#FC413D" />
+    </linearGradient>
+
+    <!-- Radial Mesh Glows -->
+    <!-- Top-Left: Cosmic Blue -->
+    <radialGradient id="mesh-blue" cx="85" cy="45" r="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4C96FF" stop-opacity="1" />
+      <stop offset="60%" stop-color="#3186FF" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#3186FF" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Right: Solar Amber -->
+    <radialGradient id="mesh-amber" cx="155" cy="95" r="65" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFDD55" stop-opacity="1" />
+      <stop offset="50%" stop-color="#FBBC04" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#FBBC04" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Bottom: Coral Life Pulse -->
+    <radialGradient id="mesh-coral" cx="100" cy="155" r="65" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF635C" stop-opacity="1" />
+      <stop offset="55%" stop-color="#FC413D" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#FC413D" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Left / Center: Aurora Vitality Green -->
+    <radialGradient id="mesh-teal" cx="45" cy="100" r="65" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2DD4BF" stop-opacity="1" />
+      <stop offset="60%" stop-color="#059669" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#059669" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Core Luminous Nucleus -->
+    <radialGradient id="core-lumen" cx="100" cy="100" r="45" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.65" />
+      <stop offset="40%" stop-color="#FFFFFF" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Ambient Outer Glow -->
+  <path d="M 100 20 
+           C 113 20, 123 35, 123 55 
+           C 123 75, 125 77, 145 77 
+           C 165 77, 180 87, 180 100 
+           C 180 113, 165 123, 145 123 
+           C 125 123, 123 125, 123 145 
+           C 123 165, 113 180, 100 180 
+           C 87 180, 77 165, 77 145 
+           C 77 125, 75 123, 55 123 
+           C 35 123, 20 113, 20 100 
+           C 20 87, 35 77, 55 77 
+           C 75 77, 77 75, 77 55 
+           C 77 35, 87 20, 100 20 Z" 
+        fill="url(#nova-base)" 
+        opacity="0.45" 
+        filter="url(#nova-glow)" />
+
+  <!-- Main Solid Clustered Body with Multidimensional Mesh -->
+  <g clip-path="url(#nova-cross-clip)">
+    <!-- Base Fill -->
+    <rect x="0" y="0" width="200" height="200" fill="url(#nova-base)" />
+    <!-- Gradient Overlays for 3D Volumetric Mesh -->
+    <rect x="0" y="0" width="200" height="200" fill="url(#mesh-blue)" />
+    <rect x="0" y="0" width="200" height="200" fill="url(#mesh-amber)" />
+    <rect x="0" y="0" width="200" height="200" fill="url(#mesh-coral)" />
+    <rect x="0" y="0" width="200" height="200" fill="url(#mesh-teal)" />
+    <!-- Center Core Highlight -->
+    <rect x="0" y="0" width="200" height="200" fill="url(#core-lumen)" />
+  </g>
+</svg>

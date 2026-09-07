@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import { SessionView, RegistrationRequest, PasswordLoginRequest, OtpLoginRequest, EmailVerificationRequest } from '@/types/auth';
+import {
+  SessionView,
+  RegistrationRequest,
+  PasswordLoginRequest,
+  OtpLoginRequest,
+  EmailVerificationRequest,
+} from '@/types/auth';
 import { authService } from '@/services/auth-service';
 
 interface AuthState {
@@ -39,7 +45,8 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
   clearError: () => set({ error: null }),
 
   initSession: async () => {
-    const savedEmail = typeof window !== 'undefined' ? localStorage.getItem('medicore_user_email') : null;
+    const savedEmail =
+      typeof window !== 'undefined' ? localStorage.getItem('medicore_user_email') : null;
     if (savedEmail) {
       set({ currentEmail: savedEmail });
     }
@@ -76,7 +83,8 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
       });
       return true;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
+      const message =
+        err instanceof Error ? err.message : 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
       set({ isLoading: false, error: message });
       return false;
     }
@@ -98,7 +106,8 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
       });
       return true;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Mã OTP không chính xác hoặc đã hết hạn.';
+      const message =
+        err instanceof Error ? err.message : 'Mã OTP không chính xác hoặc đã hết hạn.';
       set({ isLoading: false, error: message });
       return false;
     }
@@ -114,7 +123,8 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
       set({ currentEmail: data.email, isLoading: false, error: null });
       return true;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Đăng ký thất bại. Vui lòng kiểm tra lại mật khẩu.';
+      const message =
+        err instanceof Error ? err.message : 'Đăng ký thất bại. Vui lòng kiểm tra lại mật khẩu.';
       set({ isLoading: false, error: message });
       return false;
     }
@@ -127,7 +137,8 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
       set({ isLoading: false, error: null });
       return true;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Mã xác thực không hợp lệ hoặc đã hết hạn.';
+      const message =
+        err instanceof Error ? err.message : 'Mã xác thực không hợp lệ hoặc đã hết hạn.';
       set({ isLoading: false, error: message });
       return false;
     }
@@ -143,7 +154,8 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
       set({ currentEmail: email, isLoading: false, error: null });
       return true;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Không thể gửi mã OTP. Vui lòng thử lại sau.';
+      const message =
+        err instanceof Error ? err.message : 'Không thể gửi mã OTP. Vui lòng thử lại sau.';
       set({ isLoading: false, error: message });
       return false;
     }
@@ -172,7 +184,13 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
       if (typeof window !== 'undefined') {
         localStorage.removeItem('medicore_user_email');
       }
-      set({ session: null, currentEmail: null, isAuthenticated: false, isLoading: false, error: null });
+      set({
+        session: null,
+        currentEmail: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null,
+      });
     }
   },
 }));

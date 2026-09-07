@@ -43,7 +43,8 @@ export interface PatientIdentifierView {
   evidenceReference?: string | null;
 }
 
-export type AccountRelationship = 'OWN' | 'SELF' | 'PARENT' | 'CHILD' | 'SPOUSE' | 'GUARDIAN' | 'REPRESENTATIVE';
+export type AccountRelationship =
+  'OWN' | 'SELF' | 'PARENT' | 'CHILD' | 'SPOUSE' | 'GUARDIAN' | 'REPRESENTATIVE';
 export type VerificationTier = 'PENDING' | 'IDENTITY_VERIFIED' | 'REPRESENTATION_VERIFIED';
 
 export interface PatientAccountLinkView {

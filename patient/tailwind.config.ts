@@ -9,38 +9,47 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        primary: {
-          DEFAULT: 'var(--color-black)',
-          dark: 'var(--color-dark)',
-          white: 'var(--color-white)',
+        canvas: {
+          DEFAULT: 'var(--color-canvas)',
+          subtle: 'var(--color-canvas-subtle)',
         },
         surface: {
-          DEFAULT: 'var(--color-white)',
-          subtle: 'var(--color-gray-50)',
-          muted: 'var(--color-gray-100)',
-          card: 'var(--color-dark)',
-          black: 'var(--color-black)',
+          DEFAULT: 'var(--color-surface)',
+          container: 'var(--color-surface-container)',
+          'container-high': 'var(--color-surface-container-high)',
+          'container-highest': 'var(--color-surface-container-highest)',
+          dark: 'var(--color-surface-dark)',
+          'dark-card': 'var(--color-surface-dark-card)',
           glass: 'var(--glass-bg)',
         },
-        border: {
-          DEFAULT: 'var(--color-gray-200)',
-          subtle: 'var(--color-gray-100)',
-          muted: 'var(--color-gray-300)',
-          dark: 'var(--color-gray-800)',
-          glass: 'var(--glass-border)',
+        outline: {
+          DEFAULT: 'var(--color-outline)',
+          variant: 'var(--color-outline-variant)',
+        },
+        primary: {
+          DEFAULT: 'var(--color-primary)',
+          hover: 'var(--color-primary-hover)',
+          container: 'var(--color-primary-container)',
+        },
+        'on-primary': {
+          DEFAULT: 'var(--color-on-primary)',
+          container: 'var(--color-on-primary-container)',
+        },
+        teal: {
+          DEFAULT: 'var(--color-teal)',
+          container: 'var(--color-teal-container)',
+          'on-container': 'var(--color-on-teal-container)',
         },
         content: {
-          primary: 'var(--color-black)',
-          secondary: 'var(--color-gray-700)',
-          muted: 'var(--color-gray-400)',
-          subtle: 'var(--color-gray-500)',
-          inverse: 'var(--color-white)',
-          inverseMuted: 'var(--color-gray-300)',
+          primary: 'var(--color-on-surface)',
+          secondary: 'var(--color-on-surface-variant)',
+          muted: 'var(--color-on-surface-muted)',
+          inverse: 'var(--color-surface)',
         },
       },
       fontFamily: {
-        sans: ['ABCDiatype', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
-        mono: ['ABCDiatype-Mono', 'monospace'],
+        sans: ['Google Sans Flex', 'Google Sans', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        mono: ['Google Sans Code', 'monospace'],
       },
       borderRadius: {
         sm: 'var(--radius-sm)',

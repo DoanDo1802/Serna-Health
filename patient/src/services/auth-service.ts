@@ -1,4 +1,4 @@
-import { axiosClient } from '@/lib/axios-client';
+import { axiosClient, clearCsrfToken } from '@/lib/axios-client';
 import {
   AccountView,
   SessionView,
@@ -25,9 +25,12 @@ export const authService = {
    * Yêu cầu gửi lại mã OTP xác thực email.
    */
   async requestEmailVerification(email: string): Promise<CommandAccepted> {
-    const response = await axiosClient.post<CommandAccepted>('/auth/email-verification-challenges', {
-      email,
-    } as TargetEmailRequest);
+    const response = await axiosClient.post<CommandAccepted>(
+      '/auth/email-verification-challenges',
+      {
+        email,
+      } as TargetEmailRequest
+    );
     return response.data;
   },
 
@@ -79,11 +82,11 @@ export const authService = {
    */
   async logout(): Promise<void> {
     try {
-      await axiosClient.delete('/auth/session');
+      await axiosClient.delete('/auth/session', {
+        validateStatus: (status) => (status >= 200 && status < 300) || status === 401,
+      });
     } finally {
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('medicore_csrf_token');
-      }
+      clearCsrfToken();
     }
   },
 

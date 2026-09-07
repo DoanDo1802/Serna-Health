@@ -1,36 +1,30 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { AppProvider } from '@/providers/app-provider';
-import { Header } from '@/components/features/header/header';
-import { Footer } from '@/components/features/footer/footer';
-
+import '@/styles/antigravity.css';
+import { AppShell } from '@/components/layout/app-shell';
 
 export const metadata: Metadata = {
-  title: 'Home | Wolverine Worldwide',
+  title: 'NOVAMED',
   description:
-    'The story of a company that was founded on the simple desire to create good products for good people, whose own footprint can be found in approximately 200 countries and territories throughout the world.',
+    'Trải nghiệm nền tảng y tế thế hệ mới NOVAMED. Trợ lý y tế AI, đặt lịch khám, hồ sơ bệnh án số và công nghệ chăm sóc toàn diện.',
   openGraph: {
-    title: 'Home | Wolverine Worldwide',
+    title: 'NOVAMED',
     description:
-      'The story of a company that was founded on the simple desire to create good products for good people.',
-    url: 'https://wolverineworldwide.com/',
-    siteName: 'Wolverine Worldwide',
-    images: [
-      {
-        url: 'https://d3ql15awrosklt.cloudfront.net/medias/_transforms/_1200x627_crop_center-center_none/wolverinemeta01.jpg',
-        width: 1200,
-        height: 627,
-      },
-    ],
-    locale: 'en_US',
+      'Trải nghiệm nền tảng y tế thế hệ mới NOVAMED. Trợ lý y tế AI, đặt lịch khám, hồ sơ bệnh án số và công nghệ chăm sóc toàn diện.',
+    siteName: 'NOVAMED',
+    locale: 'vi_VN',
     type: 'website',
   },
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico' },
+      { url: '/favicon.png', type: 'image/png' },
+    ],
+    shortcut: '/favicon.svg',
+    apple: '/apple-touch-icon.png',
   },
 };
-
-import { AppShell } from '@/components/layout/app-shell';
 
 export default function RootLayout({
   children,
@@ -38,14 +32,30 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="is-first-loaded">
+    <html lang="vi">
       <head>
-        <link rel="stylesheet" href="/css/main-2.css" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,slnt,wdth,wght,ROND@8..144,-10..0,25..150,400..700,0..100&display=swap"
+        />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:ital,wght@0,400..700;1,400..700&display=swap"
+        />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Google+Symbols:opsz,wght,FILL,GRAD,ROND@20..48,100..700,0..1,-50..200,0..100&display=block"
+        />
+        <link
+          rel="modulepreload"
+          href="/_astro/MainParticlesComponent.astro_astro_type_script_index_0_lang.Dox42TL8.js"
+        />
+        <link rel="modulepreload" href="/_astro/Mouse.ZrlRGzn3.js" />
       </head>
-      <body>
-        <div id="swup">
-          <AppShell>{children}</AppShell>
-        </div>
+      <body className="antialiased selection:bg-primary selection:text-white">
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

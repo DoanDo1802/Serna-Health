@@ -23,7 +23,10 @@ interface PatientState {
   selectPatient: (patientId: string) => Promise<void>;
   loadPatient: (patientId: string) => Promise<PatientView | null>;
   createOwnProfile: (data: PatientCreateRequest) => Promise<PatientView | null>;
-  createDependentProfile: (data: PatientCreateRequest, relationship: string) => Promise<PatientView | null>;
+  createDependentProfile: (
+    data: PatientCreateRequest,
+    relationship: string
+  ) => Promise<PatientView | null>;
   deleteDependentProfile: (patientId: string) => Promise<boolean>;
   updateProfile: (data: PatientUpdateRequest) => Promise<PatientView | null>;
   loadIdentifiers: (patientId: string) => Promise<void>;

@@ -2,16 +2,16 @@ import Link from 'next/link';
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center text-center px-4">
-      <h2 className="text-4xl font-bold text-gray-900 mb-4">404 - Page Not Found</h2>
-      <p className="text-gray-600 mb-8 max-w-md">
-        The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.
+    <div className="flex min-h-[60vh] flex-col items-center justify-center text-center px-4 bg-canvas text-content-primary">
+      <h2 className="text-4xl font-bold text-content-primary mb-4">404 - Trang Không Tồn Tại</h2>
+      <p className="text-content-secondary mb-8 max-w-md">
+        Trang bạn đang tìm kiếm không tồn tại hoặc đã được di chuyển.
       </p>
       <Link
         href="/"
-        className="px-6 py-3 bg-[#111] text-white rounded-full font-medium hover:bg-black transition-colors"
+        className="px-6 py-3 bg-primary text-white rounded-full font-medium hover:bg-primary-hover shadow-card transition-all"
       >
-        Return Home
+        Trở Về Trang Chủ
       </Link>
     </div>
   );
