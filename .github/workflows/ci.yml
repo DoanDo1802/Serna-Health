@@ -63,7 +63,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
-      - uses: actions/setup-java@536de9e5ba95309550b74c08e297b4b0f11e8b7d
+      - uses: actions/setup-java@0781fc6af30d3e1f67f2d243034e1a15cf5f3677
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
@@ -82,7 +82,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - uses: actions/setup-java@536de9e5ba95309550b74c08e297b4b0f11e8b7d
+      - uses: actions/setup-java@0781fc6af30d3e1f67f2d243034e1a15cf5f3677
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
