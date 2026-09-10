@@ -26,5 +26,7 @@ build/
 # Logs
 *.log
 
-# Claude
+# Claude and Agents
 .claude/
+.agents/skills/supabase/
+.agents/skills/supabase-postgres-best-practices/
