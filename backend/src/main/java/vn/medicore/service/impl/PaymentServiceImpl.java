@@ -15,11 +15,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vn.medicore.common.exception.ResourceNotFoundException;
+import vn.medicore.common.exception.PatientScheduleConflictException;
+import vn.medicore.common.exception.RescheduleEligibilityException;
 import vn.medicore.common.exception.RescheduleFundingException;
+import vn.medicore.common.exception.ResourceNotFoundException;
 import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.config.PaymentProperties;
@@ -83,8 +86,9 @@ public class PaymentServiceImpl implements PaymentService {
         SlotHoldRow initialHold = schedulingRepository.slotHoldById(slotHoldId)
                 .orElseThrow(ResourceNotFoundException::new);
 
-        // 2. Strict lock order: AppointmentSlot -> SlotHold
-        schedulingRepository.appointmentSlotByIdForUpdate(initialHold.slotId())
+        // 2. Strict lock order: patient schedule -> AppointmentSlot -> SlotHold
+        schedulingRepository.lockPatientSchedule(initialHold.patientId());
+        AppointmentSlotRow lockedSlot = schedulingRepository.appointmentSlotByIdForUpdate(initialHold.slotId())
                 .orElseThrow(ResourceNotFoundException::new);
         SlotHoldRow hold = schedulingRepository.slotHoldByIdForUpdate(slotHoldId)
                 .orElseThrow(ResourceNotFoundException::new);
@@ -98,6 +102,15 @@ public class PaymentServiceImpl implements PaymentService {
                     hold.currency(), null, null, null, "EXPIRED", hold.version() + 1, hold.createdAt(), now);
             schedulingRepository.updateSlotHold(expired, hold.version());
             throw new IllegalStateException("Slot hold is expired");
+        }
+
+        if (schedulingRepository.hasPatientScheduleConflict(
+                hold.patientId(), lockedSlot.startAt(), lockedSlot.endAt(), now, null, hold.id())) {
+            String code = schedulingRepository.hasPatientSlotReservation(
+                    hold.patientId(), hold.slotId(), now, null, hold.id())
+                    ? "APPOINTMENT_PATIENT_DUPLICATE_SLOT"
+                    : "APPOINTMENT_PATIENT_TIME_OVERLAP";
+            throw new PatientScheduleConflictException(code, "Patient already has a conflicting appointment or active hold");
         }
 
         Optional<PaymentIntentRow> existing = paymentRepository.paymentIntentBySlotHoldId(slotHoldId);
@@ -177,39 +190,19 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private PaymentIntentRow createBoundRescheduleTopUpPaymentIntent(
-            UUID targetSlotHoldId,
+            SlotHoldRow targetHold,
             BigDecimal topUpAmount,
-            SchedulingAuditContext context) {
-        Instant now = clock.instant();
-
-        SlotHoldRow initialHold = schedulingRepository.slotHoldById(targetSlotHoldId)
-                .orElseThrow(ResourceNotFoundException::new);
-
-        schedulingRepository.appointmentSlotByIdForUpdate(initialHold.slotId())
-                .orElseThrow(ResourceNotFoundException::new);
-        SlotHoldRow hold = schedulingRepository.slotHoldByIdForUpdate(targetSlotHoldId)
-                .orElseThrow(ResourceNotFoundException::new);
-
-        if (!"ACTIVE".equals(hold.status())) {
-            throw new IllegalStateException("Target slot hold is not active");
-        }
-        if (!hold.expiresAt().isAfter(now)) {
-            SlotHoldJdbcRow expired = new SlotHoldJdbcRow(
-                    hold.id(), hold.slotId(), hold.patientId(), hold.expiresAt(), hold.depositAmount(),
-                    hold.currency(), null, null, null, "EXPIRED", hold.version() + 1, hold.createdAt(), now);
-            schedulingRepository.updateSlotHold(expired, hold.version());
-            throw new IllegalStateException("Target slot hold is expired");
-        }
-
+            SchedulingAuditContext context,
+            Instant now) {
         UUID intentId = ids.next();
         String providerReference = "mock_topup_" + intentId;
         PaymentIntentRow intentRow = new PaymentIntentRow(
                 intentId,
-                hold.id(),
+                targetHold.id(),
                 providerAdapter.providerName(),
                 providerReference,
                 topUpAmount,
-                hold.currency(),
+                targetHold.currency(),
                 "REQUIRES_PAYMENT_METHOD",
                 null,
                 0,
@@ -217,7 +210,7 @@ public class PaymentServiceImpl implements PaymentService {
                 now);
 
         paymentRepository.insertPaymentIntent(intentRow);
-        recordAudit(context, hold.patientId(), "payment_intent.create", "SUCCEEDED", "PaymentIntent",
+        recordAudit(context, targetHold.patientId(), "payment_intent.create", "SUCCEEDED", "PaymentIntent",
                 intentRow.id(), intentRow.version(), "reschedule_top_up_created", now);
 
         return intentRow;
@@ -229,8 +222,46 @@ public class PaymentServiceImpl implements PaymentService {
             UUID targetSlotHoldId,
             long ifMatchVersion,
             String reason,
-            SchedulingAuditContext context) {
+            SchedulingAuditContext context,
+            boolean isStaffOverride) {
         Instant now = clock.instant();
+        AppointmentRow initialOldAppointment = schedulingRepository.appointmentById(oldAppointmentId)
+                .orElseThrow(ResourceNotFoundException::new);
+        if (initialOldAppointment.version() != ifMatchVersion) {
+            throw new StaleVersionException();
+        }
+        if (!"CONFIRMED".equals(initialOldAppointment.status()) || initialOldAppointment.rescheduledToId() != null) {
+            throw new IllegalStateException("Appointment cannot be rescheduled in status: " + initialOldAppointment.status());
+        }
+        AppointmentSlotRow initialOldSlot = schedulingRepository.appointmentSlotById(initialOldAppointment.slotId())
+                .orElseThrow(ResourceNotFoundException::new);
+        requireRescheduleEligibility(initialOldSlot, now, reason, isStaffOverride);
+
+        SlotHoldRow initialOldHold = schedulingRepository.slotHoldById(initialOldAppointment.slotHoldId())
+                .orElseThrow(ResourceNotFoundException::new);
+        SlotHoldRow initialTargetHold = schedulingRepository.slotHoldById(targetSlotHoldId)
+                .orElseThrow(() -> new ResourceNotFoundException("Target slot hold not found"));
+        AppointmentSlotRow initialTargetSlot = schedulingRepository.appointmentSlotById(initialTargetHold.slotId())
+                .orElseThrow(ResourceNotFoundException::new);
+        if (!initialOldAppointment.patientId().equals(initialTargetHold.patientId())) {
+            throw new IllegalStateException("Target slot hold must be for the same patient");
+        }
+        if (initialOldSlot.id().equals(initialTargetSlot.id())) {
+            throw new PatientScheduleConflictException(
+                    "APPOINTMENT_PATIENT_DUPLICATE_SLOT", "Reschedule target cannot be current appointment slot");
+        }
+
+        // Match final-reschedule lock order to avoid a top-up/final-reschedule deadlock.
+        schedulingRepository.lockPatientSchedule(initialOldAppointment.patientId());
+        List<UUID> slotIds = Stream.of(initialOldSlot.id(), initialTargetSlot.id()).distinct().sorted().toList();
+        for (UUID slotId : slotIds) {
+            schedulingRepository.appointmentSlotByIdForUpdate(slotId);
+        }
+        List<UUID> holdIds = Stream.of(initialOldHold.id(), initialTargetHold.id()).distinct().sorted().toList();
+        for (UUID holdId : holdIds) {
+            schedulingRepository.slotHoldByIdForUpdate(holdId);
+        }
+
         AppointmentRow oldAppointment = schedulingRepository.appointmentByIdForUpdate(oldAppointmentId)
                 .orElseThrow(ResourceNotFoundException::new);
         if (oldAppointment.version() != ifMatchVersion) {
@@ -239,18 +270,35 @@ public class PaymentServiceImpl implements PaymentService {
         if (!"CONFIRMED".equals(oldAppointment.status()) || oldAppointment.rescheduledToId() != null) {
             throw new IllegalStateException("Appointment cannot be rescheduled in status: " + oldAppointment.status());
         }
+        requireRescheduleEligibility(initialOldSlot, now, reason, isStaffOverride);
 
-        SlotHoldRow initialTargetHold = schedulingRepository.slotHoldById(targetSlotHoldId)
-                .orElseThrow(() -> new ResourceNotFoundException("Target slot hold not found"));
-        schedulingRepository.appointmentSlotByIdForUpdate(initialTargetHold.slotId())
-                .orElseThrow(ResourceNotFoundException::new);
         SlotHoldRow targetHold = schedulingRepository.slotHoldByIdForUpdate(targetSlotHoldId)
                 .orElseThrow(() -> new ResourceNotFoundException("Target slot hold not found"));
+        AppointmentSlotRow targetSlot = schedulingRepository.appointmentSlotByIdForUpdate(targetHold.slotId())
+                .orElseThrow(ResourceNotFoundException::new);
         if (!oldAppointment.patientId().equals(targetHold.patientId())) {
             throw new IllegalStateException("Target slot hold must be for the same patient");
         }
-        if (!"ACTIVE".equals(targetHold.status()) || !targetHold.expiresAt().isAfter(now)) {
+        if (!"ACTIVE".equals(targetSlot.status()) || !targetSlot.startAt().isAfter(now)) {
+            throw new IllegalStateException("Target slot is unavailable");
+        }
+        if (!"ACTIVE".equals(targetHold.status())) {
             throw new IllegalStateException("Target slot hold is not active");
+        }
+        if (!targetHold.expiresAt().isAfter(now)) {
+            SlotHoldJdbcRow expired = new SlotHoldJdbcRow(
+                    targetHold.id(), targetHold.slotId(), targetHold.patientId(), targetHold.expiresAt(), targetHold.depositAmount(),
+                    targetHold.currency(), null, null, null, "EXPIRED", targetHold.version() + 1, targetHold.createdAt(), now);
+            schedulingRepository.updateSlotHold(expired, targetHold.version());
+            throw new IllegalStateException("Target slot hold is expired");
+        }
+        if (schedulingRepository.hasPatientScheduleConflict(
+                oldAppointment.patientId(), targetSlot.startAt(), targetSlot.endAt(), now, oldAppointment.id(), targetHold.id())) {
+            String code = schedulingRepository.hasPatientSlotReservation(
+                    oldAppointment.patientId(), targetSlot.id(), now, oldAppointment.id(), targetHold.id())
+                    ? "APPOINTMENT_PATIENT_DUPLICATE_SLOT"
+                    : "APPOINTMENT_PATIENT_TIME_OVERLAP";
+            throw new PatientScheduleConflictException(code, "Patient already has a conflicting appointment or active hold");
         }
 
         var allocations = schedulingRepository.activeDepositAllocationsByAppointmentIdForUpdate(oldAppointmentId);
@@ -278,12 +326,30 @@ public class PaymentServiceImpl implements PaymentService {
             throw new RescheduleFundingException(
                     "PAYMENT_TOP_UP_NOT_REQUIRED", "Target deposit does not require additional capture");
         }
-        PaymentIntentRow intent = createBoundRescheduleTopUpPaymentIntent(targetSlotHoldId, topUpAmount, context);
+        PaymentIntentRow intent = createBoundRescheduleTopUpPaymentIntent(targetHold, topUpAmount, context, now);
         paymentRepository.insertRescheduleTopUp(new RescheduleTopUpRow(
                 ids.next(), intent.id(), oldAppointment.id(), oldAppointment.version(), targetHold.id(),
                 topUpAmount, targetHold.currency(), context.actorAccountId(), reason, context.correlationId(),
                 "PENDING", now, null));
         return intent;
+    }
+
+    private static void requireRescheduleEligibility(
+            AppointmentSlotRow slot,
+            Instant now,
+            String reason,
+            boolean isStaffOverride) {
+        if (now.isBefore(slot.startAt().minus(Duration.ofHours(24)))) {
+            return;
+        }
+        if (!isStaffOverride) {
+            throw new RescheduleEligibilityException(
+                    "SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED",
+                    "Reschedule window has closed for patient self-service");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("Mandatory reason required for staff exception reschedule after cutoff");
+        }
     }
 
     @Override
@@ -443,6 +509,7 @@ public class PaymentServiceImpl implements PaymentService {
             return;
         }
 
+        schedulingRepository.lockPatientSchedule(initialHold.patientId());
         AppointmentSlotRow slot = schedulingRepository.appointmentSlotByIdForUpdate(initialHold.slotId()).orElse(null);
         if (slot == null) {
             paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "FAILED", "SLOT_NOT_FOUND", now), 0);
@@ -602,7 +669,7 @@ public class PaymentServiceImpl implements PaymentService {
             return;
         }
 
-        // Capacity check
+        // Capacity and same-patient schedule checks
         int activeCount = schedulingRepository.countActiveHoldsAndAppointments(slot.id(), now);
         if (activeCount > slot.capacity()) {
             paymentRepository.insertPayment(new PaymentRow(
@@ -618,6 +685,42 @@ public class PaymentServiceImpl implements PaymentService {
                     Map.of("intentId", intent.id().toString(), "reason", "CAPACITY_EXHAUSTED"), effectiveCorrelationId, now);
             recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
                     "PaymentIntent", intent.id(), intent.version() + 1, "CAPACITY_EXHAUSTED", effectiveCorrelationId, now);
+            return;
+        }
+
+        // Load and lock reschedule_top_up by payment intent ID before patient conflict check
+        Optional<RescheduleTopUpRow> topUpOpt = paymentRepository.rescheduleTopUpByPaymentIntentIdForUpdate(intent.id());
+        RescheduleTopUpRow validTopUp = null;
+        if (topUpOpt.isPresent()) {
+            RescheduleTopUpRow candidate = topUpOpt.get();
+            var oldApptOpt = schedulingRepository.appointmentById(candidate.oldAppointmentId());
+            if (oldApptOpt.isPresent()
+                    && oldApptOpt.get().patientId().equals(hold.patientId())
+                    && candidate.targetSlotHoldId().equals(hold.id())
+                    && candidate.amount().compareTo(intent.amount()) == 0
+                    && candidate.currency().equalsIgnoreCase(intent.currency())
+                    && "PENDING".equals(candidate.status())) {
+                validTopUp = candidate;
+            }
+        }
+
+        UUID excludedAppointmentId = validTopUp != null ? validTopUp.oldAppointmentId() : null;
+
+        if (schedulingRepository.hasPatientScheduleConflict(
+                hold.patientId(), slot.startAt(), slot.endAt(), now, excludedAppointmentId, hold.id())) {
+            UUID paymentId = ids.next();
+            paymentRepository.insertPayment(new PaymentRow(
+                    paymentId, intent.id(), provider, event.providerTransactionId(), intent.amount(), "VND", "CAPTURED",
+                    event.providerOccurredAt(), "TRUSTED", inbox.id(), now, now));
+            paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
+            paymentRepository.updatePaymentIntent(new PaymentIntentRow(
+                    intent.id(), intent.slotHoldId(), intent.provider(), intent.providerReference(),
+                    intent.amount(), intent.currency(), "RECONCILIATION_REQUIRED", "PATIENT_SCHEDULE_CONFLICT",
+                    intent.version() + 1, intent.createdAt(), now), intent.version());
+            recordOutbox(intent.id(), "PAYMENT_INTENT", "payment.reconciliation_required.v1",
+                    Map.of("intentId", intent.id().toString(), "reason", "PATIENT_SCHEDULE_CONFLICT"), effectiveCorrelationId, now);
+            recordAuditDirect(null, hold.patientId(), "payment.webhook.receive", "FAILED",
+                    "PaymentIntent", intent.id(), intent.version() + 1, "PATIENT_SCHEDULE_CONFLICT", effectiveCorrelationId, now);
             return;
         }
 
@@ -646,9 +749,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         paymentRepository.updateWebhookInbox(withInboxTerminal(inbox, "PROCESSED", null, now), 0);
 
-        boolean isTopUp = intent.providerReference() != null
-                && (intent.providerReference().startsWith("mock_topup_") || intent.providerReference().startsWith("topup_"));
-        if (isTopUp) {
+        if (validTopUp != null) {
             Map<String, Object> outboxPayload = new LinkedHashMap<>();
             outboxPayload.put("paymentId", paymentId.toString());
             outboxPayload.put("paymentIntentId", intent.id().toString());

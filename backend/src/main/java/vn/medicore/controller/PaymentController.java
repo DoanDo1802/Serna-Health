@@ -1,14 +1,11 @@
 package vn.medicore.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
-import java.time.Clock;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,9 +23,9 @@ import vn.medicore.dto.PaymentModels.SimulatePaymentOutcomeRequest;
 import vn.medicore.dto.SchedulingAuditContext;
 import vn.medicore.dto.SchedulingModels.RescheduleTopUpRequest;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
-import vn.medicore.service.PatientService;
 import vn.medicore.service.PaymentService;
 import vn.medicore.service.RescheduleService;
+import vn.medicore.service.SchedulingAccessPolicy;
 import vn.medicore.service.SchedulingService;
 
 @RestController
@@ -38,20 +35,17 @@ public class PaymentController {
     private final PaymentService paymentService;
     private final SchedulingService schedulingService;
     private final RescheduleService rescheduleService;
-    private final PatientService patientService;
-    private final Clock clock;
+    private final SchedulingAccessPolicy accessPolicy;
 
     public PaymentController(
             PaymentService paymentService,
             SchedulingService schedulingService,
             RescheduleService rescheduleService,
-            PatientService patientService,
-            Clock clock) {
+            SchedulingAccessPolicy accessPolicy) {
         this.paymentService = paymentService;
         this.schedulingService = schedulingService;
         this.rescheduleService = rescheduleService;
-        this.patientService = patientService;
-        this.clock = clock;
+        this.accessPolicy = accessPolicy;
     }
 
     @PostMapping("/slot-holds/{holdId}/payment-intents")
@@ -60,7 +54,7 @@ public class PaymentController {
             @AuthenticationPrincipal AuthenticatedAccount actor,
             HttpServletRequest request) {
         SlotHoldRow hold = schedulingService.getSlotHoldForAccess(holdId);
-        requirePatientAccess(actor, hold.patientId(), "payment_intent.create");
+        accessPolicy.requirePatientAccess(actor, hold.patientId(), "payment_intent.create");
         SchedulingAuditContext context = auditContext(request, actor);
         PaymentIntentRow value = paymentService.createPaymentIntent(holdId, context);
         return versioned(value, value.version());
@@ -75,12 +69,15 @@ public class PaymentController {
             HttpServletRequest request) {
         long version = parseVersion(ifMatch);
         var appointment = rescheduleService.getAppointmentForAccess(appointmentId);
-        requirePatientAccess(actor, appointment.patientId(), "appointment.reschedule");
+        boolean isStaff = accessPolicy.isAuthorizedStaff(actor, "appointment.reschedule");
+        if (!isStaff) {
+            accessPolicy.requirePatientAccess(actor, appointment.patientId(), "appointment.reschedule");
+        }
         if (body == null || body.targetSlotHoldId() == null) {
             throw new IllegalArgumentException("Target slot hold ID is required");
         }
         PaymentIntentRow value = paymentService.createRescheduleTopUpIntent(
-                appointmentId, body.targetSlotHoldId(), version, body.reason(), auditContext(request, actor));
+                appointmentId, body.targetSlotHoldId(), version, body.reason(), auditContext(request, actor), isStaff);
         return versioned(value, value.version());
     }
 
@@ -91,7 +88,7 @@ public class PaymentController {
             HttpServletRequest request) {
         PaymentIntentRow existing = paymentService.getPaymentIntentForAccess(paymentIntentId);
         SlotHoldRow hold = schedulingService.getSlotHoldForAccess(existing.slotHoldId());
-        requirePatientAccess(actor, hold.patientId(), "payment_intent.read");
+        accessPolicy.requirePatientAccess(actor, hold.patientId(), "payment_intent.read");
         SchedulingAuditContext context = auditContext(request, actor);
         PaymentIntentRow value = paymentService.getPaymentIntent(paymentIntentId, context);
         return versioned(value, value.version());
@@ -126,23 +123,11 @@ public class PaymentController {
             HttpServletRequest request) {
         PaymentIntentRow existing = paymentService.getPaymentIntentForAccess(paymentIntentId);
         SlotHoldRow hold = schedulingService.getSlotHoldForAccess(existing.slotHoldId());
-        requirePatientAccess(actor, hold.patientId(), "payment_intent.read");
+        accessPolicy.requirePatientAccess(actor, hold.patientId(), "payment_intent.read");
         SchedulingAuditContext context = auditContext(request, actor);
         paymentService.simulateMockPaymentOutcome(paymentIntentId, body, context);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(new CommandAcceptedResponse("ACCEPTED"));
-    }
-
-    private void requirePatientAccess(AuthenticatedAccount actor, UUID patientId, String permission) {
-        Instant now = clock.instant();
-        boolean allowed = patientService.listAccountPatientLinks(actor.accountId()).stream().anyMatch(link ->
-                link.patientId().equals(patientId) && "ACTIVE".equals(link.status())
-                        && !now.isBefore(link.validFrom()) && (link.validTo() == null || now.isBefore(link.validTo()))
-                        && ("OWN".equals(link.relationship()) || ("REPRESENTATION_VERIFIED".equals(link.verificationTier())
-                        && Boolean.TRUE.equals(link.permissionScope().get(permission)))));
-        if (!allowed) {
-            throw new AccessDeniedException("Patient access is not granted");
-        }
     }
 
     private static SchedulingAuditContext auditContext(HttpServletRequest request, AuthenticatedAccount actor) {

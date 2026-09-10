@@ -46,17 +46,32 @@ export const usePatientStore = create<PatientState>((set, get) => ({
   clearError: () => set({ error: null }),
 
   loadAccountLinks: async () => {
-    set({ isLoading: true, error: null });
+    // Only show full loading spinner if we don't already have data in memory
+    const hasData = get().accountLinks.length > 0 && Boolean(get().activePatient);
+    if (!hasData) {
+      set({ isLoading: true, error: null });
+    }
     try {
       const links = await patientService.getMyAccountLinks();
       set({ accountLinks: links });
 
       if (links.length > 0) {
-        // Ưu tiên chọn hồ sơ chính chủ 'OWN', nếu không chọn hồ sơ đầu tiên
-        const ownLink = links.find((l) => l.relationship === 'OWN') || links[0];
-        const patientId = ownLink.patientId;
-        set({ activePatientId: patientId });
-        await get().selectPatient(patientId);
+        const currentPatientId = get().activePatientId;
+        const currentLink = links.find((link) => link.patientId === currentPatientId);
+        const ownLink =
+          links.find((link) => link.relationship === 'OWN' || link.relationship === 'SELF') ||
+          links.find(
+            (link) =>
+              (link.verificationTier === 'IDENTITY_VERIFIED' || link.verificationTier === 'REPRESENTATION_VERIFIED') &&
+              Boolean(link.permissionScope?.['patient.read'])
+          ) ||
+          links[0];
+        const patientId = currentLink?.patientId || ownLink.patientId;
+        if (patientId !== currentPatientId || !get().activePatient) {
+          await get().selectPatient(patientId);
+        } else {
+          set({ isLoading: false });
+        }
       } else {
         set({ activePatientId: null, activePatient: null, identifiers: [], isLoading: false });
       }
@@ -69,10 +84,15 @@ export const usePatientStore = create<PatientState>((set, get) => ({
   },
 
   selectPatient: async (patientId: string) => {
-    set({ activePatientId: patientId, isLoading: true, error: null });
+    const isDifferent = get().activePatientId !== patientId || !get().activePatient;
+    if (isDifferent) {
+      set({ activePatientId: patientId, isLoading: true, error: null });
+    }
     try {
-      const patient = await patientService.getPatient(patientId);
-      const identifiersData = await patientService.listPatientIdentifiers(patientId);
+      const [patient, identifiersData] = await Promise.all([
+        patientService.getPatient(patientId),
+        patientService.listPatientIdentifiers(patientId),
+      ]);
       set({
         activePatient: patient,
         identifiers: identifiersData.items || [],
@@ -141,7 +161,14 @@ export const usePatientStore = create<PatientState>((set, get) => ({
       const currentLinks = get().accountLinks.filter((l) => l.patientId !== patientId);
       set({ accountLinks: currentLinks });
 
-      const ownLink = currentLinks.find((l) => l.relationship === 'OWN') || currentLinks[0];
+      const ownLink =
+        currentLinks.find((l) => l.relationship === 'OWN' || l.relationship === 'SELF') ||
+        currentLinks.find(
+          (l) =>
+            (l.verificationTier === 'IDENTITY_VERIFIED' || l.verificationTier === 'REPRESENTATION_VERIFIED') &&
+            Boolean(l.permissionScope?.['patient.read'])
+        ) ||
+        currentLinks[0];
       if (ownLink) {
         await get().selectPatient(ownLink.patientId);
       } else {

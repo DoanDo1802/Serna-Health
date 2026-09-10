@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
+import vn.medicore.dto.SchedulingModels.BookingAvailabilityProjection;
 import vn.medicore.dto.SchedulingModels.BookingCatalog;
 import vn.medicore.dto.SchedulingModels.SlotHoldJdbcRow;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
@@ -22,9 +23,29 @@ public interface SchedulingRepository {
 
     List<AppointmentSlotRow> searchAppointmentSlots(int limit, int offset);
 
+    List<BookingAvailabilityProjection> searchBookingAvailability(
+            UUID patientId,
+            Instant now,
+            UUID excludedAppointmentId,
+            UUID currentSlotId,
+            int limit,
+            int offset);
+
     BookingCatalog bookingCatalog(Instant now);
 
     void lockPractitionerDay(UUID practitionerRoleId, String dateIso);
+
+    void lockPatientSchedule(UUID patientId);
+
+    boolean hasPatientScheduleConflict(
+            UUID patientId,
+            Instant startAt,
+            Instant endAt,
+            Instant now,
+            UUID excludedAppointmentId,
+            UUID excludedSlotHoldId);
+
+    boolean hasPatientSlotReservation(UUID patientId, UUID slotId, Instant now, UUID excludedAppointmentId, UUID excludedSlotHoldId);
 
     int countActiveSlotsByPractitionerAndDate(UUID practitionerRoleId, String dateIso);
 
@@ -55,6 +76,10 @@ public interface SchedulingRepository {
     Optional<vn.medicore.dto.SchedulingModels.AppointmentRow> appointmentBySlotHoldId(UUID slotHoldId);
 
     List<vn.medicore.dto.SchedulingModels.AppointmentRow> searchAppointments(List<UUID> patientIds, int limit, int offset);
+
+    List<vn.medicore.dto.SchedulingModels.PatientAppointment> searchPatientAppointments(List<UUID> patientIds, Instant now, int limit, int offset);
+
+    Optional<vn.medicore.dto.SchedulingModels.PatientAppointment> patientAppointmentById(UUID id, Instant now);
 
     void insertDepositAllocation(vn.medicore.dto.PaymentModels.DepositAllocationRow row);
 

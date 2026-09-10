@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/use-auth-store';
+import { useBookingStore } from '@/store/use-booking-store';
 import { NovaLogo } from '@/components/base/nova-logo';
 import { BorderBeam } from 'border-beam';
 import {
@@ -16,9 +16,6 @@ import {
   ChevronDown,
   LayoutGrid,
   SquarePen,
-  Eye,
-  GraduationCap,
-  Video,
   FileText,
   Calendar,
   UserCheck,
@@ -54,8 +51,61 @@ interface Message {
 export function GeminiDashboard() {
   const router = useRouter();
   const { currentEmail, initSession, logout } = useAuthStore();
+  const startRescheduleMode = useBookingStore((state) => state.startRescheduleMode);
 
-  const [activeView, setActiveView] = useState<'home' | 'booking' | 'profile' | 'appointments'>('home');
+  // Persist activeView across F5 using localStorage + sessionStorage + URL hash
+  const [activeView, setActiveViewRaw] = useState<'home' | 'booking' | 'profile' | 'appointments'>('home');
+
+  const setActiveView = useCallback((view: 'home' | 'booking' | 'profile' | 'appointments') => {
+    setActiveViewRaw(view);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('medicore_active_view', view);
+        sessionStorage.setItem('medicore_active_view', view);
+      } catch {
+        // ignore storage errors
+      }
+      window.history.replaceState(null, '', `#${view}`);
+    }
+  }, []);
+
+  // Restore active view on mount (for F5 refresh) and sync with hash change (back/forward)
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (['booking', 'profile', 'appointments', 'home'].includes(hash)) {
+      setActiveViewRaw(hash as 'home' | 'booking' | 'profile' | 'appointments');
+    } else {
+      try {
+        const saved =
+          localStorage.getItem('medicore_active_view') ||
+          sessionStorage.getItem('medicore_active_view');
+        if (saved && ['booking', 'profile', 'appointments', 'home'].includes(saved)) {
+          setActiveViewRaw(saved as 'home' | 'booking' | 'profile' | 'appointments');
+          window.history.replaceState(null, '', `#${saved}`);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const onHashChange = () => {
+      const currentHash = window.location.hash.replace('#', '');
+      if (['booking', 'profile', 'appointments', 'home'].includes(currentHash)) {
+        setActiveViewRaw(currentHash as 'home' | 'booking' | 'profile' | 'appointments');
+        try {
+          localStorage.setItem('medicore_active_view', currentHash);
+          sessionStorage.setItem('medicore_active_view', currentHash);
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  const [focusedAppointmentId, setFocusedAppointmentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState('Flash');
@@ -76,7 +126,18 @@ export function GeminiDashboard() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    initSession();
+    // Init auth session, then prefetch patient data so sub-pages load instantly
+    const bootstrap = async () => {
+      const isAuthenticated = await initSession();
+      if (isAuthenticated) {
+        const { usePatientStore } = await import('@/store/use-patient-store');
+        const patientStore = usePatientStore.getState();
+        if (patientStore.accountLinks.length === 0) {
+          patientStore.loadAccountLinks();
+        }
+      }
+    };
+    bootstrap();
   }, [initSession]);
 
   useEffect(() => {
@@ -229,71 +290,106 @@ export function GeminiDashboard() {
               </div>
 
               {/* Square with Pen (New chat) */}
-              <button
-                onClick={() => {
-                  setActiveView('home');
-                  setMessages([]);
-                }}
-                className="gemini-icon-btn"
-                title="Cuộc trò chuyện mới"
-              >
-                <SquarePen className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => {
+                    setActiveView('home');
+                    setMessages([]);
+                  }}
+                  className="gemini-icon-btn"
+                  aria-label="Cuộc trò chuyện mới"
+                >
+                  <SquarePen className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
+                </button>
+                <div className="gemini-tooltip-pill hidden group-hover:block pointer-events-none">
+                  Cuộc trò chuyện mới
+                </div>
+              </div>
 
               {/* Search */}
-              <button
-                onClick={() => setIsSearchOpen(true)}
-                className="gemini-icon-btn"
-                title="Tìm kiếm trong các cuộc trò chuyện"
-              >
-                <Search className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => setIsSearchOpen(true)}
+                  className="gemini-icon-btn"
+                  aria-label="Tìm kiếm trong các cuộc trò chuyện"
+                >
+                  <Search className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
+                </button>
+                <div className="gemini-tooltip-pill hidden group-hover:block pointer-events-none">
+                  Tìm kiếm
+                </div>
+              </div>
 
               {/* Đặt lịch khám */}
-              <button
-                onClick={() => setActiveView('booking')}
-                className={`gemini-icon-btn ${activeView === 'booking' ? 'active' : ''}`}
-                title="Đặt lịch khám"
-              >
-                <Calendar className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => setActiveView('booking')}
+                  className={`gemini-icon-btn ${activeView === 'booking' ? 'active' : ''}`}
+                  aria-label="Đặt lịch khám"
+                >
+                  <Calendar className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
+                </button>
+                <div className="gemini-tooltip-pill hidden group-hover:block pointer-events-none">
+                  Đặt lịch khám
+                </div>
+              </div>
 
               {/* Hồ sơ sức khỏe */}
-              <button
-                onClick={() => setActiveView('profile')}
-                className={`gemini-icon-btn ${activeView === 'profile' ? 'active' : ''}`}
-                title="Hồ sơ sức khỏe"
-              >
-                <UserCheck className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => setActiveView('profile')}
+                  className={`gemini-icon-btn ${activeView === 'profile' ? 'active' : ''}`}
+                  aria-label="Hồ sơ sức khỏe"
+                >
+                  <UserCheck className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
+                </button>
+                <div className="gemini-tooltip-pill hidden group-hover:block pointer-events-none">
+                  Hồ sơ sức khỏe
+                </div>
+              </div>
 
               {/* Lịch hẹn */}
-              <button
-                onClick={() => setActiveView('appointments')}
-                className={`gemini-icon-btn ${activeView === 'appointments' ? 'active' : ''}`}
-                title="Lịch hẹn của tôi"
-              >
-                <LayoutGrid className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => setActiveView('appointments')}
+                  className={`gemini-icon-btn ${activeView === 'appointments' ? 'active' : ''}`}
+                  aria-label="Lịch hẹn của tôi"
+                >
+                  <LayoutGrid className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
+                </button>
+                <div className="gemini-tooltip-pill hidden group-hover:block pointer-events-none">
+                  Lịch hẹn của tôi
+                </div>
+              </div>
             </div>
 
             {/* Bottom items: Settings + Purple Avatar 'đ' */}
             <div className="flex flex-col items-center gap-2.5 relative">
-              <button
-                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="gemini-icon-btn"
-                title="Cài đặt"
-              >
-                <Settings className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="gemini-icon-btn"
+                  aria-label="Cài đặt"
+                >
+                  <Settings className="w-[16px] h-[16px] text-white/65 hover:text-white" strokeWidth={1.4} />
+                </button>
+                <div className="gemini-tooltip-pill hidden group-hover:block pointer-events-none">
+                  Cài đặt
+                </div>
+              </div>
 
-              <button
-                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="gemini-avatar"
-                title={currentEmail || 'Tài khoản'}
-              >
-                đ
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="gemini-avatar"
+                  aria-label={currentEmail || 'Tài khoản'}
+                >
+                  đ
+                </button>
+                <div className="gemini-tooltip-pill hidden group-hover:block pointer-events-none">
+                  {currentEmail || 'Tài khoản cá nhân'}
+                </div>
+              </div>
             </div>
           </div>
         ) : (
@@ -585,9 +681,17 @@ export function GeminiDashboard() {
 
         {/* View A: BOOKING PAGE */}
         {activeView === 'booking' && (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8 pt-16 animate-in fade-in duration-150">
-            <div className="max-w-6xl mx-auto">
-              <BookingPage />
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 pt-16 animate-in fade-in duration-150 flex flex-col">
+            <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col">
+              <BookingPage
+                onRescheduleComplete={(newAppointmentId) => {
+                  setFocusedAppointmentId(newAppointmentId);
+                  setActiveView('appointments');
+                }}
+                onCancelReschedule={() => {
+                  setActiveView('appointments');
+                }}
+              />
             </div>
           </div>
         )}
@@ -603,9 +707,18 @@ export function GeminiDashboard() {
 
         {/* View C: MY APPOINTMENTS PAGE */}
         {activeView === 'appointments' && (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8 pt-16 animate-in fade-in duration-150">
-            <div className="max-w-6xl mx-auto">
-              <MyAppointmentsPage onNavigateBooking={() => setActiveView('booking')} />
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 pt-16 animate-in fade-in duration-150 flex flex-col">
+            <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col">
+              <MyAppointmentsPage
+                onNavigateBooking={() => setActiveView('booking')}
+                focusedAppointmentId={focusedAppointmentId}
+                onClearFocusedAppointment={() => setFocusedAppointmentId(null)}
+                onStartReschedule={(context) => {
+                  void startRescheduleMode(context).then((started) => {
+                    if (started) setActiveView('booking');
+                  });
+                }}
+              />
             </div>
           </div>
         )}

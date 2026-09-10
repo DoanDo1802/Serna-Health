@@ -32,7 +32,7 @@ import vn.medicore.MediCoreApplication;
 @ActiveProfiles("test")
 class OpenApiIT {
 
-    private static final int EXPECTED_OPERATION_COUNT = 157; // Reschedule top-up route added.
+    private static final int EXPECTED_OPERATION_COUNT = 159; // Booking availability and cancel appointment added.
 
     @Container
     @ServiceConnection
@@ -93,7 +93,16 @@ class OpenApiIT {
                         "listPatientIdentifiers",
                         "listMyPatientAccountLinks",
                         "reviewPatientDuplicateCandidate",
-                        "createRescheduleTopUp");
+                        "createRescheduleSlotHold",
+                        "createRescheduleTopUp",
+                        "getBookingAvailability",
+                        "cancelAppointment");
+        assertThat(paths.path("/booking/availability").path("get")
+                .at("/responses/200/content/application~1json/schema/$ref").asText())
+                .endsWith("/BookingAvailabilityPage");
+        assertThat(paths.path("/appointments/{appointmentId}/actions/cancel").path("post")
+                .at("/responses/200/content/application~1json/schema/$ref").asText())
+                .endsWith("/PatientAppointment");
         assertThat(paths.path("/patients/account-links").path("get")
                 .at("/responses/200/content/application~1json/schema/$ref").asText())
                 .endsWith("/PatientAccountLinkList");
@@ -111,6 +120,14 @@ class OpenApiIT {
         assertThat(paths.path("/slot-holds/{holdId}").path("delete")
                 .at("/responses/200/content/application~1json/schema/$ref").asText())
                 .endsWith("/SlotHold");
+        assertThat(paths.path("/appointments/{appointmentId}/actions/reschedule-slot-holds").path("post")
+                .at("/requestBody/content/application~1json/schema/$ref").asText())
+                .endsWith("/RescheduleSlotHoldRequest");
+        assertThat(paths.path("/appointments/{appointmentId}/actions/reschedule-slot-holds").path("post")
+                .at("/responses/200/content/application~1json/schema/$ref").asText())
+                .endsWith("/SlotHold");
+        assertThat(paths.path("/appointments/{appointmentId}/actions/reschedule-slot-holds").path("post")
+                .path("parameters").toString()).contains("#/components/parameters/IdempotencyKey", "#/components/parameters/CsrfToken");
         assertThat(document.at("/components/schemas/SlotHoldStatus/enum")).extracting(JsonNode::asText)
                 .containsExactly("ACTIVE", "CONSUMED", "EXPIRED", "RELEASED");
         assertThat(document.at("/components/schemas/SlotHold/properties/idempotencyKey").isMissingNode()).isTrue();

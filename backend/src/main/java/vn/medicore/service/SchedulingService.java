@@ -1,12 +1,17 @@
 package vn.medicore.service;
 
+import java.util.List;
 import java.util.UUID;
 import vn.medicore.dto.PatientModels.Page;
 import vn.medicore.dto.SchedulingAuditContext;
+import vn.medicore.dto.SchedulingModels.AppointmentRow;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
+import vn.medicore.dto.SchedulingModels.BookingAvailabilitySlot;
 import vn.medicore.dto.SchedulingModels.BookingCatalog;
 import vn.medicore.dto.SchedulingModels.CreateAppointmentSlotRequest;
 import vn.medicore.dto.SchedulingModels.CreateSlotHoldRequest;
+import vn.medicore.dto.SchedulingModels.CreateRescheduleSlotHoldRequest;
+import vn.medicore.dto.SchedulingModels.PatientAppointment;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
 import vn.medicore.dto.SchedulingModels.UpdateAppointmentSlotRequest;
 
@@ -30,13 +35,30 @@ public interface SchedulingService {
 
     SlotHoldRow createSlotHold(CreateSlotHoldRequest request, SchedulingAuditContext context);
 
+    SlotHoldRow createRescheduleSlotHold(CreateRescheduleSlotHoldRequest request, SchedulingAuditContext context);
+
     SlotHoldRow getSlotHoldForAccess(UUID holdId);
 
     SlotHoldRow getSlotHold(UUID holdId, SchedulingAuditContext context);
 
     void cancelSlotHold(UUID holdId, long expectedVersion, SchedulingAuditContext context);
 
-    Page<vn.medicore.dto.SchedulingModels.AppointmentRow> searchAppointments(java.util.List<UUID> patientIds, String cursor, int limit);
+    Page<AppointmentRow> searchAppointments(List<UUID> patientIds, String cursor, int limit);
 
-    vn.medicore.dto.SchedulingModels.AppointmentRow getAppointment(UUID appointmentId);
+    AppointmentRow getAppointment(UUID appointmentId);
+
+    Page<PatientAppointment> searchPatientAppointments(List<UUID> patientIds, String cursor, int limit);
+
+    PatientAppointment getPatientAppointment(UUID appointmentId);
+
+    Page<BookingAvailabilitySlot> getBookingAvailability(UUID patientId, String cursor, int limit);
+
+    Page<BookingAvailabilitySlot> getRescheduleAvailability(UUID appointmentId, String cursor, int limit);
+
+    PatientAppointment cancelAppointment(
+            UUID appointmentId,
+            long expectedVersion,
+            String reason,
+            SchedulingAuditContext context,
+            boolean isStaff);
 }

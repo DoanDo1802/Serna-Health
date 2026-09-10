@@ -2,13 +2,10 @@ package vn.medicore.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.time.Clock;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,24 +19,21 @@ import vn.medicore.dto.SchedulingAuditContext;
 import vn.medicore.dto.SchedulingModels.AppointmentRow;
 import vn.medicore.dto.SchedulingModels.RescheduleAppointmentRequest;
 import vn.medicore.dto.SchedulingModels.RescheduleAppointmentResponse;
-import vn.medicore.service.PatientService;
 import vn.medicore.service.RescheduleService;
+import vn.medicore.service.SchedulingAccessPolicy;
 
 @RestController
 @RequestMapping("/api/v1")
 public class RescheduleController {
 
     private final RescheduleService rescheduleService;
-    private final PatientService patientService;
-    private final Clock clock;
+    private final SchedulingAccessPolicy accessPolicy;
 
     public RescheduleController(
             RescheduleService rescheduleService,
-            PatientService patientService,
-            Clock clock) {
+            SchedulingAccessPolicy accessPolicy) {
         this.rescheduleService = rescheduleService;
-        this.patientService = patientService;
-        this.clock = clock;
+        this.accessPolicy = accessPolicy;
     }
 
     @PostMapping("/appointments/{appointmentId}/actions/reschedule")
@@ -51,29 +45,16 @@ public class RescheduleController {
             HttpServletRequest request) {
         long version = parseVersion(ifMatch);
         AppointmentRow existing = rescheduleService.getAppointmentForAccess(appointmentId);
-        requirePatientAccess(actor, existing.patientId(), "appointment.reschedule");
+        boolean isStaff = accessPolicy.isAuthorizedStaff(actor, "appointment.reschedule");
+        if (!isStaff) {
+            accessPolicy.requirePatientAccess(actor, existing.patientId(), "appointment.reschedule");
+        }
         SchedulingAuditContext context = auditContext(request, actor);
-        RescheduleAppointmentResponse response = rescheduleService.rescheduleAppointment(appointmentId, body, version, context);
+        RescheduleAppointmentResponse response = rescheduleService.rescheduleAppointment(
+                appointmentId, body, version, context, isStaff);
         return ResponseEntity.ok()
                 .eTag(Long.toString(response.newAppointmentVersion()))
                 .body(response);
-    }
-
-    private void requirePatientAccess(AuthenticatedAccount actor, UUID patientId, String permission) {
-        if (actor.permissions().contains(permission) && actor.permissions().contains("catalog.manage")) {
-            // Staff / admin role with global management
-            return;
-        }
-        Instant now = clock.instant();
-        boolean allowed = patientService.listAccountPatientLinks(actor.accountId()).stream().anyMatch(link ->
-                link.patientId().equals(patientId) && "ACTIVE".equals(link.status())
-                        && !now.isBefore(link.validFrom()) && (link.validTo() == null || now.isBefore(link.validTo()))
-                        && ("OWN".equals(link.relationship())
-                        || (("IDENTITY_VERIFIED".equals(link.verificationTier()) || "REPRESENTATION_VERIFIED".equals(link.verificationTier()))
-                        && Boolean.TRUE.equals(link.permissionScope().get(permission)))));
-        if (!allowed) {
-            throw new AccessDeniedException("Patient access is not granted");
-        }
     }
 
     private static SchedulingAuditContext auditContext(HttpServletRequest request, AuthenticatedAccount actor) {

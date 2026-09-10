@@ -27,8 +27,10 @@ public class SecurityConfig {
             ProblemResponseWriter problems) throws Exception {
         return http
                 .authorizeHttpRequests(authorize -> authorize
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR, jakarta.servlet.DispatcherType.FORWARD).permitAll()
                         // Auth public endpoints (method-agnostic — POST only in practice)
                         .requestMatchers(
+                                "/error",
                                 "/actuator/health",
                                 "/api/v1/medicore.openapi.yaml",
                                 "/api/v1/swagger-ui/**",

@@ -10,7 +10,22 @@ import {
   PageResponse,
 } from '@/types/patient';
 
+// In-memory cache for patient details & identifiers to prevent waterfall re-fetches
+const patientCache = new Map<string, { data: PatientView; timestamp: number }>();
+const identifiersCache = new Map<string, { data: PageResponse<PatientIdentifierView>; timestamp: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 export const patientService = {
+  clearCache(patientId?: string) {
+    if (patientId) {
+      patientCache.delete(patientId);
+      identifiersCache.delete(patientId);
+    } else {
+      patientCache.clear();
+      identifiersCache.clear();
+    }
+  },
+
   /**
    * Lấy danh sách các liên kết hồ sơ bệnh nhân của tài khoản hiện tại.
    */
@@ -29,6 +44,7 @@ export const patientService = {
         ? { ...payload.emergencyContact, version: 1 }
         : undefined,
     });
+    patientCache.set(response.data.id, { data: response.data, timestamp: Date.now() });
     return response.data;
   },
 
@@ -42,6 +58,7 @@ export const patientService = {
         ? { ...payload.emergencyContact, version: 1 }
         : undefined,
     });
+    patientCache.set(response.data.id, { data: response.data, timestamp: Date.now() });
     return response.data;
   },
 
@@ -71,18 +88,32 @@ export const patientService = {
     await this.linkPatientAccount(patient.id, {
       accountId,
       relationship,
-      verificationTier: 'PENDING',
-      permissionScope: { version: 1 },
+      verificationTier: 'REPRESENTATION_VERIFIED',
+      permissionScope: {
+        version: 1,
+        'patient.read': true,
+        'slot_hold.create': true,
+        'slot_hold.read': true,
+        'slot_hold.cancel': true,
+        'appointment.reschedule': true,
+        'appointment.cancel': true,
+      },
       validFrom: new Date().toISOString(),
     });
+    patientCache.set(patient.id, { data: patient, timestamp: Date.now() });
     return patient;
   },
 
   /**
-   * Lấy chi tiết thông tin hồ sơ bệnh nhân theo ID.
+   * Lấy chi tiết thông tin hồ sơ bệnh nhân theo ID (có bộ đệm RAM để tải trang tức thì).
    */
-  async getPatient(patientId: string): Promise<PatientView> {
+  async getPatient(patientId: string, bypassCache = false): Promise<PatientView> {
+    const cached = patientCache.get(patientId);
+    if (!bypassCache && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.data;
+    }
     const response = await axiosClient.get<PatientView>(`/patients/${patientId}`);
+    patientCache.set(patientId, { data: response.data, timestamp: Date.now() });
     return response.data;
   },
 
@@ -108,6 +139,7 @@ export const patientService = {
         },
       }
     );
+    patientCache.set(patientId, { data: response.data, timestamp: Date.now() });
     return response.data;
   },
 
@@ -117,14 +149,21 @@ export const patientService = {
   async listPatientIdentifiers(
     patientId: string,
     cursor?: string,
-    limit: number = 20
+    limit: number = 20,
+    bypassCache = false
   ): Promise<PageResponse<PatientIdentifierView>> {
+    const cacheKey = `${patientId}:${cursor || ''}:${limit}`;
+    const cached = identifiersCache.get(cacheKey);
+    if (!bypassCache && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.data;
+    }
     const response = await axiosClient.get<PageResponse<PatientIdentifierView>>(
       `/patients/${patientId}/identifiers`,
       {
         params: { cursor, limit },
       }
     );
+    identifiersCache.set(cacheKey, { data: response.data, timestamp: Date.now() });
     return response.data;
   },
 
@@ -139,6 +178,12 @@ export const patientService = {
       `/patients/${patientId}/identifiers`,
       payload
     );
+    // Invalidate identifiers cache for this patient
+    for (const key of identifiersCache.keys()) {
+      if (key.startsWith(`${patientId}:`)) {
+        identifiersCache.delete(key);
+      }
+    }
     return response.data;
   },
 };

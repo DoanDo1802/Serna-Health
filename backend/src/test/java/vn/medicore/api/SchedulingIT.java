@@ -546,7 +546,53 @@ class SchedulingIT {
         }
     }
 
-    // ── 14. Practitioner daily max (4 slots/day) enforced ────────────────────
+    // ── 14. Availability preserves reason precedence and cursor paging ───────
+
+    @Test
+    void bookingAvailabilityReturnsReasonsAndCursorPage() throws Exception {
+        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
+        UUID patientId = insertPatient("Availability Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID otherPatientId = insertPatient("Availability Other Patient");
+        AuthSession otherPatientSession = sessionWithPatient(otherPatientId);
+        Instant base = Instant.now().plus(2, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MINUTES);
+
+        UUID ownSlotId = createSlot(admin, base, 2);
+        UUID conflictSlotId = insertActiveSlot(base.plus(10, ChronoUnit.MINUTES), 2, "AFTERNOON");
+        UUID fullSlotId = createSlot(admin, base.plus(60, ChronoUnit.MINUTES), 1);
+        UUID openSlotId = createSlot(admin, base.plus(120, ChronoUnit.MINUTES), 2, "AFTERNOON");
+        createSlotHold(patientSession, ownSlotId, patientId);
+        createSlotHold(otherPatientSession, fullSlotId, otherPatientId);
+
+        MvcResult first = mockMvc.perform(get("/api/v1/booking/availability")
+                        .cookie(patientSession.cookie())
+                        .param("patientId", patientId.toString())
+                        .param("limit", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(ownSlotId.toString()))
+                .andExpect(jsonPath("$.items[0].canCreateHold").value(false))
+                .andExpect(jsonPath("$.items[0].disabledReason").value("ALREADY_BOOKED"))
+                .andExpect(jsonPath("$.items[1].id").value(conflictSlotId.toString()))
+                .andExpect(jsonPath("$.items[1].disabledReason").value("PATIENT_TIME_CONFLICT"))
+                .andExpect(jsonPath("$.items[2].id").value(fullSlotId.toString()))
+                .andExpect(jsonPath("$.items[2].disabledReason").value("SLOT_FULL"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andReturn();
+
+        String cursor = objectMapper.readTree(first.getResponse().getContentAsString()).path("nextCursor").asText();
+        mockMvc.perform(get("/api/v1/booking/availability")
+                        .cookie(patientSession.cookie())
+                        .param("patientId", patientId.toString())
+                        .param("limit", "3")
+                        .param("cursor", cursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(openSlotId.toString()))
+                .andExpect(jsonPath("$.items[0].canCreateHold").value(true))
+                .andExpect(jsonPath("$.items[0].disabledReason").doesNotExist())
+                .andExpect(jsonPath("$.hasMore").value(false));
+    }
+
+    // ── 15. Practitioner daily max (4 slots/day) enforced ────────────────────
 
     @Test
     void practitionerDailyMaxFourSlotsEnforced() throws Exception {
@@ -588,6 +634,17 @@ class SchedulingIT {
                 .andExpect(status().isOk())
                 .andReturn();
         return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString()).path("id").asText());
+    }
+
+    private UUID insertActiveSlot(Instant start, int capacity, String slotSession) {
+        UUID slotId = UUID.randomUUID();
+        jdbc().update("""
+                insert into appointment_slot (id, practitioner_role_id, department_id, room_id, service_id,
+                    session, start_at, end_at, capacity, status, version, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 0, now(), now())
+                """, slotId, practitionerRoleId, departmentId, roomId, serviceId, slotSession,
+                start, start.plus(30, ChronoUnit.MINUTES), capacity);
+        return slotId;
     }
 
     private UUID createSlotHold(AuthSession session, UUID slotId, UUID patientId) throws Exception {

@@ -14,5 +14,6 @@ public interface RescheduleService {
             UUID oldAppointmentId,
             RescheduleAppointmentRequest request,
             long ifMatchVersion,
-            SchedulingAuditContext context);
+            SchedulingAuditContext context,
+            boolean isStaffOverride);
 }

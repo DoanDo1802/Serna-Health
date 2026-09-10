@@ -70,3 +70,23 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.35);
 }
+
+/* Global table overrides to prevent antigravity.css forcing white thead */
+table thead,
+.table-container table thead {
+  background: transparent !important;
+}
+
+table thead th,
+.table-container table thead th {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+/* Ensure disabled form controls have consistent background & opacity across all browsers */
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 1 !important;
+  -webkit-text-fill-color: inherit;
+}

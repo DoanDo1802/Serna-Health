@@ -232,6 +232,76 @@ class RescheduleIT {
     }
 
     @Test
+    void rescheduleAvailabilityMarksCurrentSlotAndExcludesSourceConflict() throws Exception {
+        UUID patientId = insertPatient("Availability Source Exclusion Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID appointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+        Instant sourceStart = jdbc().queryForObject("select start_at from appointment_slot where id = ?", Instant.class, slot80kId);
+        UUID overlapSlotId = UUID.randomUUID();
+        jdbc().update("""
+                insert into appointment_slot (id, practitioner_role_id, department_id, room_id, service_id,
+                    session, start_at, end_at, capacity, status, version, created_at, updated_at)
+                values (?, ?, ?, ?, ?, 'MORNING', ?, ?, 5, 'ACTIVE', 0, now(), now())
+                """, overlapSlotId, practitionerRoleId, departmentId, roomId, service80kId,
+                sourceStart.plus(15, ChronoUnit.MINUTES), sourceStart.plus(45, ChronoUnit.MINUTES));
+
+        MvcResult availability = mockMvc.perform(get("/api/v1/appointments/{appointmentId}/actions/reschedule-availability", appointmentId)
+                        .cookie(patientSession.cookie())
+                        .param("limit", "100"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode items = objectMapper.readTree(availability.getResponse().getContentAsString()).path("items");
+        assertThat(availabilitySlot(items, slot80kId).path("disabledReason").asText()).isEqualTo("CURRENT_APPOINTMENT");
+        assertThat(availabilitySlot(items, overlapSlotId).path("canCreateHold").asBoolean()).isTrue();
+    }
+
+    @Test
+    void rescheduleTargetHoldExcludesOnlySourceAppointment() throws Exception {
+        UUID patientId = insertPatient("Source Exclusion Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+
+        UUID overlappingSlotId = UUID.randomUUID();
+        Instant sourceStart = jdbc().queryForObject("select start_at from appointment_slot where id = ?", Instant.class, slot80kId);
+        jdbc().update("""
+                insert into appointment_slot (id, practitioner_role_id, department_id, room_id, service_id,
+                    session, start_at, end_at, capacity, status, version, created_at, updated_at)
+                values (?, ?, ?, ?, ?, 'MORNING', ?, ?, 5, 'ACTIVE', 0, now(), now())
+                """, overlappingSlotId, practitionerRoleId, departmentId, roomId, service80kId,
+                sourceStart.plus(15, ChronoUnit.MINUTES), sourceStart.plus(45, ChronoUnit.MINUTES));
+
+        mockMvc.perform(post("/api/v1/slot-holds")
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("Idempotency-Key", "generic-overlap-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slotId\":\"%s\",\"patientId\":\"%s\"}".formatted(overlappingSlotId, patientId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("APPOINTMENT_PATIENT_TIME_OVERLAP"));
+
+        MvcResult targetHoldResult = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule-slot-holds", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("Idempotency-Key", "reschedule-overlap-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slotId\":\"%s\"}".formatted(overlappingSlotId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.slotId").value(overlappingSlotId.toString()))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andReturn();
+
+        UUID targetHoldId = UUID.fromString(objectMapper.readTree(targetHoldResult.getResponse().getContentAsString()).path("id").asText());
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "reschedule-overlap-final-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetSlotHoldId\":\"%s\"}".formatted(targetHoldId)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void SC_R1_RESCHEDULE_02_higherDepositWithCapturedTopUpSucceeds() throws Exception {
         UUID patientId = insertPatient("Higher Deposit Patient");
         AuthSession patientSession = sessionWithPatient(patientId);
@@ -482,6 +552,278 @@ class RescheduleIT {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void SC_R1_RESCHEDULE_06_patientSelfServiceRejectedWithin24HoursOfSourceSlot() throws Exception {
+        UUID patientId = insertPatient("Cutoff Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+        moveSlotTo(slot80kId, Instant.now().plus(23, ChronoUnit.HOURS));
+
+        mockMvc.perform(get("/api/v1/appointments/{appointmentId}/actions/reschedule-availability", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .param("limit", "20"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED"));
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule-slot-holds", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("Idempotency-Key", "cutoff-target-hold-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slotId\":\"%s\"}".formatted(targetSlot80kId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED"));
+
+        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "cutoff-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetSlotHoldId\":\"%s\",\"reason\":\"Patient wants change\"}".formatted(targetHoldId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED"));
+
+        assertThat(jdbc().queryForObject("select status from appointment where id = ?", String.class, oldAppointmentId))
+                .isEqualTo("CONFIRMED");
+        assertThat(jdbc().queryForObject("select status from slot_hold where id = ?", String.class, targetHoldId))
+                .isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void patientRescheduleAllowedWhenAppointmentIsOlderThan24HoursButSourceSlotIsLater() throws Exception {
+        UUID patientId = insertPatient("Old Booking Future Slot Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+        jdbc().update("update appointment set created_at = now() - interval '25 hours' where id = ?", oldAppointmentId);
+
+        mockMvc.perform(get("/api/v1/appointments/{appointmentId}/actions/reschedule-availability", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .param("limit", "20"))
+                .andExpect(status().isOk());
+
+        MvcResult targetHoldResult = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule-slot-holds", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("Idempotency-Key", "old-booking-future-slot-hold-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slotId\":\"%s\"}".formatted(targetSlot80kId)))
+                .andExpect(status().isOk())
+                .andReturn();
+        UUID targetHoldId = UUID.fromString(objectMapper.readTree(targetHoldResult.getResponse().getContentAsString()).path("id").asText());
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "old-booking-future-slot-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetSlotHoldId\":\"%s\",\"reason\":\"Patient wants change\"}".formatted(targetHoldId)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void SC_R1_RESCHEDULE_07_patientTopUpRejectedWithin24HoursOfSourceSlot() throws Exception {
+        UUID patientId = insertPatient("TopUp Cutoff Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID oldAppointmentId = createPaidAppointment(patientSession, targetSlot50kId, patientId, new BigDecimal("50000.00"));
+        moveSlotTo(targetSlot50kId, Instant.now().plus(23, ChronoUnit.HOURS));
+        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule-top-up", oldAppointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "topup-cutoff-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetSlotHoldId\":\"%s\"}".formatted(targetHoldId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED"));
+
+        assertThat(jdbc().queryForObject("select count(*) from reschedule_top_up where old_appointment_id = ?", Integer.class, oldAppointmentId))
+                .isZero();
+    }
+
+    @Test
+    void SC_R1_RESCHEDULE_08_staffExceptionAllowedWithin24HoursWithReason() throws Exception {
+        UUID patientId = insertPatient("Staff Exception Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        AuthSession staffSession = session(Set.of(CATALOG_ADMIN_ROLE_ID));
+        UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+        moveSlotTo(slot80kId, Instant.now().plus(23, ChronoUnit.HOURS));
+        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
+                        .cookie(staffSession.cookie())
+                        .header("X-CSRF-Token", staffSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "staff-resched-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetSlotHoldId\":\"%s\",\"reason\":\"Front-desk medical emergency reschedule\"}".formatted(targetHoldId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.differenceDisposition").value("NONE"));
+
+        assertThat(jdbc().queryForObject("select status from appointment where id = ?", String.class, oldAppointmentId))
+                .isEqualTo("RESCHEDULED");
+    }
+
+    @Test
+    void SC_R1_RESCHEDULE_09_staffExceptionRejectedWithin24HoursWithoutReason() throws Exception {
+        UUID patientId = insertPatient("Staff No Reason Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        AuthSession staffSession = session(Set.of(CATALOG_ADMIN_ROLE_ID));
+        UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+        moveSlotTo(slot80kId, Instant.now().plus(23, ChronoUnit.HOURS));
+        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
+                        .cookie(staffSession.cookie())
+                        .header("X-CSRF-Token", staffSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "staff-noreason-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetSlotHoldId\":\"%s\"}".formatted(targetHoldId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_INVALID_REQUEST"));
+    }
+
+    @Test
+    void cancellationUsesSourceSlotCutoffAndQueuesCapturedDepositRefund() throws Exception {
+        UUID patientId = insertPatient("Cancellation Future Slot Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID appointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+        jdbc().update("update appointment set created_at = now() - interval '25 hours' where id = ?", appointmentId);
+        String idempotencyKey = "cancel-old-booking-" + UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"No longer available\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        assertThat(jdbc().queryForObject("select status from deposit_allocation where appointment_id = ?", String.class, appointmentId))
+                .isEqualTo("REFUND_PENDING");
+        UUID allocationId = jdbc().queryForObject(
+                "select id from deposit_allocation where appointment_id = ?", UUID.class, appointmentId);
+        assertThat(jdbc().queryForObject(
+                "select count(*) from outbox_event where aggregate_id = ? and event_type = 'appointment.cancelled.refund_pending.v1'",
+                Integer.class, allocationId)).isEqualTo(1);
+        assertThat(jdbc().queryForObject(
+                "select count(*) from audit_event where action = 'appointment.cancel' and outcome = 'SUCCEEDED' and resource_id = ?",
+                Integer.class, appointmentId)).isEqualTo(1);
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"No longer available\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void cancellationRejectsWithin24HoursAndStaleVersion() throws Exception {
+        UUID patientId = insertPatient("Cancellation Cutoff Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID appointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+        moveSlotTo(slot80kId, Instant.now().plus(23, ChronoUnit.HOURS));
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "cancel-cutoff-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"No longer available\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SELF_SERVICE_CANCEL_WINDOW_CLOSED"));
+
+        moveSlotTo(slot80kId, Instant.now().plus(2, ChronoUnit.DAYS));
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"999\"")
+                        .header("Idempotency-Key", "cancel-stale-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"No longer available\"}"))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(jsonPath("$.code").value("CONCURRENCY_STALE_VERSION"));
+    }
+
+    @Test
+    void cancellationRequiresCsrfAndValidReasonLength() throws Exception {
+        UUID patientId = insertPatient("Cancellation Validation Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID appointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "cancel-no-csrf-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"No longer available\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
+                        .cookie(patientSession.cookie())
+                        .header("X-CSRF-Token", patientSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "cancel-long-reason-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"%s\"}".formatted("x".repeat(501))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_INVALID_REQUEST"));
+    }
+
+    @Test
+    void verifiedRepresentativeWithCancellationScopeCanCancel() throws Exception {
+        UUID patientId = insertPatient("Representative Cancellation Patient");
+        AuthSession ownerSession = sessionWithPatient(patientId);
+        AuthSession representativeSession = session(Set.of(PATIENT_ROLE_ID));
+        UUID appointmentId = createPaidAppointment(ownerSession, slot80kId, patientId, new BigDecimal("80000.00"));
+        jdbc().update("""
+                insert into patient_account_link
+                    (id, patient_id, account_id, relationship, verification_tier, permission_scope,
+                     status, valid_from, version, created_at, updated_at)
+                values (?, ?, ?, 'PARENT', 'REPRESENTATION_VERIFIED',
+                    '{"version":"1","appointment.cancel":true}'::jsonb,
+                    'ACTIVE', now() - interval '1 minute', 0, now(), now())
+                """, UUID.randomUUID(), patientId, representativeSession.accountId());
+
+        mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
+                        .cookie(representativeSession.cookie())
+                        .header("X-CSRF-Token", representativeSession.csrfToken())
+                        .header("If-Match", "\"0\"")
+                        .header("Idempotency-Key", "representative-cancel-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Parent requested cancellation\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    private void moveSlotTo(UUID slotId, Instant startAt) {
+        jdbc().update("update appointment_slot set start_at = ?, end_at = ? where id = ?",
+                startAt, startAt.plus(30, ChronoUnit.MINUTES), slotId);
+    }
+
+    private static JsonNode availabilitySlot(JsonNode items, UUID slotId) {
+        for (JsonNode item : items) {
+            if (slotId.toString().equals(item.path("id").asText())) {
+                return item;
+            }
+        }
+        throw new AssertionError("Availability slot not found: " + slotId);
+    }
+
     private UUID createPaidAppointment(AuthSession session, UUID targetSlotId, UUID patientId, BigDecimal deposit) throws Exception {
         UUID holdId = createSlotHold(session, targetSlotId, patientId);
 
@@ -542,7 +884,7 @@ class RescheduleIT {
                     (id, patient_id, account_id, relationship, verification_tier, permission_scope,
                      status, valid_from, version, created_at, updated_at)
                 values (?, ?, ?, 'OWN', 'IDENTITY_VERIFIED',
-                    '{"version":"1","slot_hold.create":true,"slot_hold.read":true,"slot_hold.cancel":true,"payment_intent.create":true,"payment_intent.read":true,"appointment.reschedule":true}'::jsonb,
+                    '{"version":"1","slot_hold.create":true,"slot_hold.read":true,"slot_hold.cancel":true,"payment_intent.create":true,"payment_intent.read":true,"appointment.reschedule":true,"appointment.cancel":true}'::jsonb,
                     'ACTIVE', now() - interval '1 minute', 0, now(), now())
                 """, UUID.randomUUID(), patientId, accountId);
     }

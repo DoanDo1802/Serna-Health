@@ -2,6 +2,8 @@ package vn.medicore.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -16,6 +18,8 @@ import vn.medicore.common.web.RequestContext;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(InvalidAuthenticationException.class)
     ResponseEntity<ProblemDetail> authentication(InvalidAuthenticationException exception, HttpServletRequest request) {
@@ -40,6 +44,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RescheduleFundingException.class)
     ResponseEntity<ProblemDetail> rescheduleFunding(RescheduleFundingException exception, HttpServletRequest request) {
         return problem(HttpStatus.CONFLICT, exception.code(), "Reschedule funding conflict", request);
+    }
+
+    @ExceptionHandler(RescheduleEligibilityException.class)
+    ResponseEntity<ProblemDetail> rescheduleEligibility(RescheduleEligibilityException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, exception.code(), exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(AppointmentCancellationException.class)
+    ResponseEntity<ProblemDetail> appointmentCancellation(AppointmentCancellationException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, exception.code(), exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(PatientScheduleConflictException.class)
+    ResponseEntity<ProblemDetail> patientScheduleConflict(PatientScheduleConflictException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, exception.code(), exception.getMessage(), request);
     }
 
     @ExceptionHandler(MissingRequestHeaderException.class)
@@ -71,11 +90,31 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({DataIntegrityViolationException.class, IllegalStateException.class})
     ResponseEntity<ProblemDetail> conflict(RuntimeException exception, HttpServletRequest request) {
-        return problem(HttpStatus.CONFLICT, "STATE_CONFLICT", "Domain state conflict", request);
+        log.warn("Conflict error on {} {}: {}", request.getMethod(), request.getRequestURI(), exception.getMessage(), exception);
+        String detail = exception.getMessage() != null && !exception.getMessage().isBlank()
+                ? exception.getMessage()
+                : "Domain state conflict";
+        return problem(HttpStatus.CONFLICT, "STATE_CONFLICT", "Domain state conflict", detail, request);
+    }
+
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    ResponseEntity<ProblemDetail> messageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException exception, HttpServletRequest request) {
+        log.warn("Malformed JSON body on {} {}: {}", request.getMethod(), request.getRequestURI(), exception.getMessage());
+        return problem(HttpStatus.BAD_REQUEST, "VALIDATION_INVALID_REQUEST", "Malformed JSON request body", request);
+    }
+
+    @ExceptionHandler(Exception.class)
+    ResponseEntity<ProblemDetail> internal(Exception exception, HttpServletRequest request) {
+        log.error("Unhandled error on {} {}: {}", request.getMethod(), request.getRequestURI(), exception.getMessage(), exception);
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error", request);
     }
 
     private ResponseEntity<ProblemDetail> problem(HttpStatus status, String code, String title, HttpServletRequest request) {
-        ProblemDetail detail = ProblemDetail.forStatusAndDetail(status, title);
+        return problem(status, code, title, title, request);
+    }
+
+    private ResponseEntity<ProblemDetail> problem(HttpStatus status, String code, String title, String detailMessage, HttpServletRequest request) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(status, detailMessage);
         detail.setType(URI.create("https://medicore.vn/problems/" + code.toLowerCase().replace('_', '-')));
         detail.setTitle(title);
         detail.setProperty("code", code);

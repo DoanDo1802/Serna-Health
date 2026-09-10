@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -14,6 +15,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
+import vn.medicore.dto.SchedulingModels.BookingAvailabilityProjection;
 import vn.medicore.dto.SchedulingModels.BookingCatalog;
 import vn.medicore.dto.SchedulingModels.BookingDepartment;
 import vn.medicore.dto.SchedulingModels.BookingPractitioner;
@@ -68,6 +70,90 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 select * from appointment_slot where status = 'ACTIVE'
                 order by start_at asc, id asc limit :limit offset :offset
                 """, new MapSqlParameterSource("limit", limit).addValue("offset", offset), this::mapAppointmentSlot);
+    }
+
+    @Override
+    public List<BookingAvailabilityProjection> searchBookingAvailability(
+            UUID patientId,
+            Instant now,
+            UUID excludedAppointmentId,
+            UUID currentSlotId,
+            int limit,
+            int offset) {
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("patientId", patientId, Types.OTHER)
+                .addValue("now", ts(now))
+                .addValue("excludedAppointmentId", excludedAppointmentId, Types.OTHER)
+                .addValue("currentSlotId", currentSlotId, Types.OTHER)
+                .addValue("limit", limit)
+                .addValue("offset", offset);
+        return jdbc.query("""
+                with candidate_slots as materialized (
+                    select s.id, s.version, s.practitioner_role_id, s.department_id, s.room_id, s.service_id,
+                        s.session, s.start_at, s.end_at, s.capacity
+                    from appointment_slot s
+                    where s.status = 'ACTIVE' and s.start_at > :now
+                    order by s.start_at asc, s.id asc
+                    limit :limit offset :offset
+                ), patient_reservations as materialized (
+                    select hold.slot_id, slot.start_at, slot.end_at
+                    from slot_hold hold
+                    join appointment_slot slot on slot.id = hold.slot_id
+                    where hold.patient_id = :patientId
+                      and hold.status = 'ACTIVE'
+                      and hold.expires_at > :now
+
+                    union all
+
+                    select appointment.slot_id, slot.start_at, slot.end_at
+                    from appointment
+                    join appointment_slot slot on slot.id = appointment.slot_id
+                    where appointment.patient_id = :patientId
+                      and appointment.status in ('CONFIRMED', 'FULFILLED')
+                      and (cast(:excludedAppointmentId as uuid) is null
+                           or appointment.id <> cast(:excludedAppointmentId as uuid))
+                ), active_hold_counts as (
+                    select hold.slot_id, count(*)::integer as reservation_count
+                    from slot_hold hold
+                    join candidate_slots candidate on candidate.id = hold.slot_id
+                    where hold.status = 'ACTIVE' and hold.expires_at > :now
+                    group by hold.slot_id
+                ), appointment_counts as (
+                    select appointment.slot_id, count(*)::integer as reservation_count
+                    from appointment
+                    join candidate_slots candidate on candidate.id = appointment.slot_id
+                    where appointment.status in ('CONFIRMED', 'FULFILLED')
+                    group by appointment.slot_id
+                ), slot_occupancy as (
+                    select slot_id, sum(reservation_count)::integer as reservation_count
+                    from (
+                        select * from active_hold_counts
+                        union all
+                        select * from appointment_counts
+                    ) counts
+                    group by slot_id
+                )
+                select candidate.id, candidate.version, candidate.practitioner_role_id, candidate.department_id,
+                    candidate.room_id, candidate.service_id, candidate.session, candidate.start_at, candidate.end_at,
+                    case
+                        when cast(:currentSlotId as uuid) is not null
+                             and candidate.id = cast(:currentSlotId as uuid) then 'CURRENT_APPOINTMENT'
+                        when exists (
+                            select 1 from patient_reservations reservation
+                            where reservation.slot_id = candidate.id
+                        ) then 'ALREADY_BOOKED'
+                        when exists (
+                            select 1 from patient_reservations reservation
+                            where reservation.start_at < candidate.end_at
+                              and reservation.end_at > candidate.start_at
+                        ) then 'PATIENT_TIME_CONFLICT'
+                        when coalesce(occupancy.reservation_count, 0) >= candidate.capacity then 'SLOT_FULL'
+                        else null
+                    end as disabled_reason
+                from candidate_slots candidate
+                left join slot_occupancy occupancy on occupancy.slot_id = candidate.id
+                order by candidate.start_at asc, candidate.id asc
+                """, params, this::mapBookingAvailabilityProjection);
     }
 
     @Override
@@ -129,8 +215,100 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
 
     @Override
     public void lockPractitionerDay(UUID practitionerRoleId, String dateIso) {
-        long hash = (practitionerRoleId + dateIso).hashCode();
-        jdbc.getJdbcOperations().execute("select pg_advisory_xact_lock(" + hash + ")");
+        jdbc.queryForObject("select 1 from pg_advisory_xact_lock(hashtextextended(cast(:scope as text), 0))",
+                new MapSqlParameterSource("scope", practitionerRoleId + ":" + dateIso), Integer.class);
+    }
+
+    @Override
+    public void lockPatientSchedule(UUID patientId) {
+        jdbc.queryForObject("select 1 from pg_advisory_xact_lock(hashtextextended(cast(:patientId as text), 0))",
+                new MapSqlParameterSource("patientId", patientId.toString()), Integer.class);
+    }
+
+    @Override
+    public boolean hasPatientScheduleConflict(
+            UUID patientId,
+            Instant startAt,
+            Instant endAt,
+            Instant now,
+            UUID excludedAppointmentId,
+            UUID excludedSlotHoldId) {
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("patientId", patientId, Types.OTHER)
+                .addValue("startAt", ts(startAt))
+                .addValue("endAt", ts(endAt))
+                .addValue("now", ts(now));
+
+        StringBuilder sql = new StringBuilder("""
+                select (
+                    select count(*)
+                    from slot_hold hold
+                    join appointment_slot slot on slot.id = hold.slot_id
+                    where hold.patient_id = :patientId
+                      and hold.status = 'ACTIVE'
+                      and hold.expires_at > :now
+                      and slot.start_at < :endAt
+                      and slot.end_at > :startAt
+                """);
+        if (excludedSlotHoldId != null) {
+            sql.append("      and hold.id <> :excludedSlotHoldId\n");
+            params.addValue("excludedSlotHoldId", excludedSlotHoldId, Types.OTHER);
+        }
+        sql.append("""
+                ) + (
+                    select count(*)
+                    from appointment appointment
+                    join appointment_slot slot on slot.id = appointment.slot_id
+                    where appointment.patient_id = :patientId
+                      and appointment.status in ('CONFIRMED', 'FULFILLED')
+                      and slot.start_at < :endAt
+                      and slot.end_at > :startAt
+                """);
+        if (excludedAppointmentId != null) {
+            sql.append("      and appointment.id <> :excludedAppointmentId\n");
+            params.addValue("excludedAppointmentId", excludedAppointmentId, Types.OTHER);
+        }
+        sql.append(")");
+        return count(sql.toString(), params) > 0;
+    }
+
+    @Override
+    public boolean hasPatientSlotReservation(
+            UUID patientId,
+            UUID slotId,
+            Instant now,
+            UUID excludedAppointmentId,
+            UUID excludedSlotHoldId) {
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("patientId", patientId, Types.OTHER)
+                .addValue("slotId", slotId, Types.OTHER)
+                .addValue("now", ts(now));
+
+        StringBuilder sql = new StringBuilder("""
+                select (
+                    select count(*) from slot_hold
+                    where patient_id = :patientId
+                      and slot_id = :slotId
+                      and status = 'ACTIVE'
+                      and expires_at > :now
+                """);
+        if (excludedSlotHoldId != null) {
+            sql.append("      and id <> :excludedSlotHoldId\n");
+            params.addValue("excludedSlotHoldId", excludedSlotHoldId, Types.OTHER);
+        }
+        sql.append("""
+                ) + (
+                    select count(*) from appointment
+                    where patient_id = :patientId
+                      and slot_id = :slotId
+                      and status in ('CONFIRMED', 'FULFILLED')
+                """);
+        if (excludedAppointmentId != null) {
+            sql.append("      and id <> :excludedAppointmentId\n");
+            params.addValue("excludedAppointmentId", excludedAppointmentId, Types.OTHER);
+        }
+        sql.append(")");
+        return count(sql.toString(), params) > 0;
     }
 
     @Override
@@ -283,6 +461,156 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
         return jdbc.query("select * from appointment where patient_id in (:patientIds) order by created_at desc limit :limit offset :offset",
                 new MapSqlParameterSource().addValue("patientIds", patientIds).addValue("limit", limit).addValue("offset", offset),
                 this::mapAppointment);
+    }
+
+    private static final String PATIENT_APPOINTMENT_PROJECTION_BASE_SQL = """
+            select
+                a.id, a.version, a.patient_id, a.slot_id, a.status, a.rescheduled_from_id, a.rescheduled_to_id,
+                a.created_at, a.updated_at,
+                d.name as department_name, r.name as room_name, srv.name as service_name,
+                p.full_name as practitioner_name, pr.role_code as practitioner_role_code,
+                s.start_at, s.end_at, s.session,
+                coalesce(h.deposit_amount, 0.00) as required_deposit_amount,
+                coalesce(h.currency, 'VND') as currency,
+                coalesce(da.paid_amount, 0.00) as paid_deposit_amount,
+                da.alloc_status,
+                pi.status as payment_intent_status
+            from appointment a
+            join appointment_slot s on a.slot_id = s.id
+            left join slot_hold h on a.slot_hold_id = h.id
+            left join department d on s.department_id = d.id
+            left join room r on s.room_id = r.id
+            left join service srv on s.service_id = srv.id
+            left join practitioner_role pr on s.practitioner_role_id = pr.id
+            left join practitioner p on pr.practitioner_id = p.id
+            left join (
+                select
+                    appointment_id,
+                    sum(case when status in ('ACTIVE', 'REFUND_PENDING', 'TRANSFERRED') then amount else 0 end) as paid_amount,
+                    max(status) as alloc_status
+                from deposit_allocation
+                group by appointment_id
+            ) da on a.id = da.appointment_id
+            left join lateral (
+                select status from payment_intent
+                where (h.id is not null and slot_hold_id = h.id)
+                order by created_at desc limit 1
+            ) pi on true
+            """;
+
+    @Override
+    public List<vn.medicore.dto.SchedulingModels.PatientAppointment> searchPatientAppointments(List<UUID> patientIds, Instant now, int limit, int offset) {
+        if (patientIds == null || patientIds.isEmpty()) {
+            return jdbc.query(PATIENT_APPOINTMENT_PROJECTION_BASE_SQL + " order by a.created_at desc limit :limit offset :offset",
+                    new MapSqlParameterSource().addValue("limit", limit).addValue("offset", offset),
+                    (rs, rowNum) -> mapPatientAppointment(rs, now));
+        }
+        return jdbc.query(PATIENT_APPOINTMENT_PROJECTION_BASE_SQL + " where a.patient_id in (:patientIds) order by a.created_at desc limit :limit offset :offset",
+                new MapSqlParameterSource().addValue("patientIds", patientIds).addValue("limit", limit).addValue("offset", offset),
+                (rs, rowNum) -> mapPatientAppointment(rs, now));
+    }
+
+    @Override
+    public Optional<vn.medicore.dto.SchedulingModels.PatientAppointment> patientAppointmentById(UUID id, Instant now) {
+        return queryOne(PATIENT_APPOINTMENT_PROJECTION_BASE_SQL + " where a.id = :id",
+                new MapSqlParameterSource("id", id),
+                (rs, rowNum) -> mapPatientAppointment(rs, now));
+    }
+
+    private vn.medicore.dto.SchedulingModels.PatientAppointment mapPatientAppointment(ResultSet rs, Instant now) throws SQLException {
+        UUID id = rs.getObject("id", UUID.class);
+        long version = rs.getLong("version");
+        UUID patientId = rs.getObject("patient_id", UUID.class);
+        UUID slotId = rs.getObject("slot_id", UUID.class);
+        String status = rs.getString("status");
+        String departmentName = rs.getString("department_name");
+        String roomName = rs.getString("room_name");
+        String serviceName = rs.getString("service_name");
+        String practitionerName = rs.getString("practitioner_name");
+        String practitionerRoleCode = rs.getString("practitioner_role_code");
+        Instant startAt = instant(rs, "start_at");
+        Instant endAt = instant(rs, "end_at");
+        String session = rs.getString("session");
+
+        BigDecimal requiredDeposit = rs.getBigDecimal("required_deposit_amount");
+        if (requiredDeposit == null) requiredDeposit = BigDecimal.ZERO;
+        BigDecimal paidDeposit = rs.getBigDecimal("paid_deposit_amount");
+        if (paidDeposit == null) paidDeposit = BigDecimal.ZERO;
+        String currency = rs.getString("currency");
+        if (currency == null || currency.isBlank()) currency = "VND";
+
+        String allocStatus = rs.getString("alloc_status");
+        String piStatus = rs.getString("payment_intent_status");
+
+        Instant createdAt = instant(rs, "created_at");
+        Instant updatedAt = instant(rs, "updated_at");
+        UUID rescheduledFromId = rs.getObject("rescheduled_from_id", UUID.class);
+        UUID rescheduledToId = rs.getObject("rescheduled_to_id", UUID.class);
+
+        Instant cutoff = startAt.minus(java.time.Duration.ofHours(24));
+        boolean isBeforeCutoff = now.isBefore(cutoff);
+        boolean isConfirmed = "CONFIRMED".equals(status);
+
+        boolean canCancel;
+        String cancelDisabledReason;
+        if (!isConfirmed) {
+            canCancel = false;
+            cancelDisabledReason = "APPOINTMENT_" + status;
+        } else if (!isBeforeCutoff) {
+            canCancel = false;
+            cancelDisabledReason = "SELF_SERVICE_CANCEL_WINDOW_CLOSED";
+        } else {
+            canCancel = true;
+            cancelDisabledReason = null;
+        }
+
+        boolean canReschedule;
+        String rescheduleDisabledReason;
+        if (!isConfirmed) {
+            canReschedule = false;
+            rescheduleDisabledReason = "APPOINTMENT_" + status;
+        } else if (!isBeforeCutoff) {
+            canReschedule = false;
+            rescheduleDisabledReason = "SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED";
+        } else {
+            canReschedule = true;
+            rescheduleDisabledReason = null;
+        }
+
+        String cancellationOutcome = null;
+        if ("CANCELLED".equals(status)) {
+            if (requiredDeposit.compareTo(BigDecimal.ZERO) == 0) {
+                cancellationOutcome = "NOT_REQUIRED";
+            } else {
+                cancellationOutcome = "REFUND_PENDING";
+            }
+        }
+
+        String depositState;
+        if (requiredDeposit.compareTo(BigDecimal.ZERO) == 0) {
+            depositState = "NOT_REQUIRED";
+        } else if ("REFUND_PENDING".equals(allocStatus) || ("CANCELLED".equals(status) && paidDeposit.compareTo(BigDecimal.ZERO) > 0)) {
+            depositState = "REFUND_PENDING";
+        } else if ("RECONCILIATION_REQUIRED".equals(piStatus)) {
+            depositState = "RECONCILIATION_REQUIRED";
+        } else if (paidDeposit.compareTo(BigDecimal.ZERO) > 0) {
+            depositState = "VERIFIED";
+        } else {
+            depositState = "RECONCILIATION_REQUIRED";
+        }
+
+        String requiredDepositStr = requiredDeposit.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+        String paidDepositStr = paidDeposit.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+
+        return new vn.medicore.dto.SchedulingModels.PatientAppointment(
+                id, version, patientId, slotId, status,
+                departmentName, roomName, serviceName, practitionerName, practitionerRoleCode,
+                startAt, endAt, session,
+                requiredDepositStr, paidDepositStr, currency, depositState,
+                canCancel, cancelDisabledReason, canReschedule, rescheduleDisabledReason,
+                cancellationOutcome, cutoff,
+                rescheduledFromId, rescheduledToId, createdAt, updatedAt
+        );
     }
 
     @Override
@@ -481,6 +809,20 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 rs.getObject("department_id", UUID.class), rs.getObject("room_id", UUID.class), rs.getObject("service_id", UUID.class),
                 rs.getString("session"), instant(rs, "start_at"), instant(rs, "end_at"), rs.getInt("capacity"), rs.getString("status"),
                 rs.getLong("version"), instant(rs, "created_at"), instant(rs, "updated_at"));
+    }
+
+    private BookingAvailabilityProjection mapBookingAvailabilityProjection(ResultSet rs, int rowNum) throws SQLException {
+        return new BookingAvailabilityProjection(
+                rs.getObject("id", UUID.class),
+                rs.getLong("version"),
+                rs.getObject("practitioner_role_id", UUID.class),
+                rs.getObject("department_id", UUID.class),
+                rs.getObject("room_id", UUID.class),
+                rs.getObject("service_id", UUID.class),
+                rs.getString("session"),
+                instant(rs, "start_at"),
+                instant(rs, "end_at"),
+                rs.getString("disabled_reason"));
     }
 
     private SlotHoldJdbcRow mapSlotHoldJdbc(ResultSet rs, int rowNum) throws SQLException {

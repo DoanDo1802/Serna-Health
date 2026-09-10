@@ -353,6 +353,30 @@ schemas:
       items: { type: array, items: { $ref: '#/schemas/AppointmentSlot' } }
       nextCursor: { type: [string, 'null'], maxLength: 1024 }
       hasMore: { type: boolean }
+  BookingAvailabilitySlot:
+    type: object
+    additionalProperties: false
+    required: [id, version, practitionerRoleId, departmentId, roomId, serviceId, session, startAt, endAt, canCreateHold]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      practitionerRoleId: { type: string, format: uuid }
+      departmentId: { type: string, format: uuid }
+      roomId: { type: string, format: uuid }
+      serviceId: { type: string, format: uuid }
+      session: { $ref: '#/schemas/AppointmentSlotSession' }
+      startAt: { type: string, format: date-time }
+      endAt: { type: string, format: date-time }
+      canCreateHold: { type: boolean }
+      disabledReason: { type: [string, 'null'], maxLength: 128 }
+  BookingAvailabilityPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/BookingAvailabilitySlot' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
   BookingCatalog:
     type: object
     additionalProperties: false
@@ -419,6 +443,12 @@ schemas:
     properties:
       slotId: { type: string, format: uuid }
       patientId: { type: string, format: uuid }
+  RescheduleSlotHoldRequest:
+    type: object
+    additionalProperties: false
+    required: [slotId]
+    properties:
+      slotId: { type: string, format: uuid }
   SlotHold:
     type: object
     additionalProperties: false
@@ -520,6 +550,58 @@ schemas:
       status: { $ref: '#/schemas/AppointmentStatus' }
       createdAt: { type: string, format: date-time }
       updatedAt: { type: string, format: date-time }
+
+  DepositState:
+    type: string
+    enum: [VERIFIED, NOT_REQUIRED, RECONCILIATION_REQUIRED, REFUND_PENDING]
+
+  CancelAppointmentRequest:
+    type: object
+    additionalProperties: false
+    properties:
+      reason: { type: string, maxLength: 500 }
+
+  PatientAppointment:
+    type: object
+    additionalProperties: false
+    required: [id, version, patientId, slotId, status, departmentName, roomName, serviceName, practitionerName, practitionerRoleCode, startAt, endAt, session, requiredDepositAmount, paidDepositAmount, currency, depositState, canCancel, canReschedule, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      patientId: { type: string, format: uuid }
+      slotId: { type: string, format: uuid }
+      status: { $ref: '#/schemas/AppointmentStatus' }
+      departmentName: { type: string, maxLength: 200 }
+      roomName: { type: string, maxLength: 200 }
+      serviceName: { type: string, maxLength: 200 }
+      practitionerName: { type: string, maxLength: 200 }
+      practitionerRoleCode: { type: string, maxLength: 64 }
+      startAt: { type: string, format: date-time }
+      endAt: { type: string, format: date-time }
+      session: { $ref: '#/schemas/AppointmentSlotSession' }
+      requiredDepositAmount: { type: string, pattern: '^\d{1,17}(\.\d{2})?$' }
+      paidDepositAmount: { type: string, pattern: '^\d{1,17}(\.\d{2})?$' }
+      currency: { type: string, const: VND }
+      depositState: { $ref: '#/schemas/DepositState' }
+      canCancel: { type: boolean }
+      cancelDisabledReason: { type: [string, 'null'], maxLength: 128 }
+      canReschedule: { type: boolean }
+      rescheduleDisabledReason: { type: [string, 'null'], maxLength: 128 }
+      cancellationOutcome: { type: [string, 'null'], enum: [NOT_REQUIRED, REFUND_PENDING] }
+      cancellationCutoffAt: { type: string, format: date-time }
+      rescheduledFromId: { type: [string, 'null'], format: uuid }
+      rescheduledToId: { type: [string, 'null'], format: uuid }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+
+  PatientAppointmentPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/PatientAppointment' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
 
   RescheduleAppointmentRequest:
     type: object

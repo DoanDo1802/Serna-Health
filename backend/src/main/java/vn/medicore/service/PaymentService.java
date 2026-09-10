@@ -14,7 +14,8 @@ public interface PaymentService {
             UUID targetSlotHoldId,
             long ifMatchVersion,
             String reason,
-            SchedulingAuditContext context);
+            SchedulingAuditContext context,
+            boolean isStaffOverride);
 
     PaymentIntentRow getPaymentIntentForAccess(UUID paymentIntentId);
 

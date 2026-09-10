@@ -6,13 +6,11 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,12 +27,17 @@ import vn.medicore.common.web.RequestContext;
 import vn.medicore.dto.AuthenticatedAccount;
 import vn.medicore.dto.PatientModels.Page;
 import vn.medicore.dto.SchedulingAuditContext;
+import vn.medicore.dto.SchedulingModels.AppointmentRow;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
+import vn.medicore.dto.SchedulingModels.BookingAvailabilitySlot;
+import vn.medicore.dto.SchedulingModels.CancelAppointmentRequest;
 import vn.medicore.dto.SchedulingModels.CreateAppointmentSlotRequest;
 import vn.medicore.dto.SchedulingModels.CreateSlotHoldRequest;
+import vn.medicore.dto.SchedulingModels.CreateRescheduleSlotHoldRequest;
+import vn.medicore.dto.SchedulingModels.PatientAppointment;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
 import vn.medicore.dto.SchedulingModels.UpdateAppointmentSlotRequest;
-import vn.medicore.service.PatientService;
+import vn.medicore.service.SchedulingAccessPolicy;
 import vn.medicore.service.SchedulingService;
 
 @RestController
@@ -42,13 +45,11 @@ import vn.medicore.service.SchedulingService;
 public class SchedulingController {
 
     private final SchedulingService service;
-    private final PatientService patients;
-    private final Clock clock;
+    private final SchedulingAccessPolicy accessPolicy;
 
-    public SchedulingController(SchedulingService service, PatientService patients, Clock clock) {
+    public SchedulingController(SchedulingService service, SchedulingAccessPolicy accessPolicy) {
         this.service = service;
-        this.patients = patients;
-        this.clock = clock;
+        this.accessPolicy = accessPolicy;
     }
 
     @PostMapping("/appointment-slots")
@@ -103,8 +104,29 @@ public class SchedulingController {
     ResponseEntity<vn.medicore.dto.SchedulingModels.BookingCatalog> bookingCatalog(
             @RequestParam UUID patientId,
             @AuthenticationPrincipal AuthenticatedAccount actor) {
-        requireHoldAccess(actor, patientId, "slot_hold.create");
+        accessPolicy.requirePatientAccess(actor, patientId, "slot_hold.create");
         return ResponseEntity.ok(service.bookingCatalog());
+    }
+
+    @GetMapping("/booking/availability")
+    Page<BookingAvailabilitySlot> getBookingAvailability(
+            @RequestParam UUID patientId,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
+            @AuthenticationPrincipal AuthenticatedAccount actor) {
+        accessPolicy.requirePatientAccess(actor, patientId, "slot_hold.create");
+        return service.getBookingAvailability(patientId, cursor, limit);
+    }
+
+    @GetMapping("/appointments/{appointmentId}/actions/reschedule-availability")
+    Page<BookingAvailabilitySlot> getRescheduleAvailability(
+            @PathVariable UUID appointmentId,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
+            @AuthenticationPrincipal AuthenticatedAccount actor) {
+        AppointmentRow appointment = service.getAppointment(appointmentId);
+        accessPolicy.requirePatientAccess(actor, appointment.patientId(), "appointment.reschedule");
+        return service.getRescheduleAvailability(appointmentId, cursor, limit);
     }
 
     @PostMapping("/slot-holds")
@@ -112,8 +134,22 @@ public class SchedulingController {
             @Valid @RequestBody SlotHoldRequest body,
             @AuthenticationPrincipal AuthenticatedAccount actor,
             HttpServletRequest request) {
-        requireHoldAccess(actor, body.patientId(), "slot_hold.create");
+        accessPolicy.requirePatientAccess(actor, body.patientId(), "slot_hold.create");
         SlotHoldRow value = service.createSlotHold(new CreateSlotHoldRequest(body.slotId(), body.patientId()), auditContext(request, actor));
+        return versioned(value, value.version());
+    }
+
+    @PostMapping("/appointments/{appointmentId}/actions/reschedule-slot-holds")
+    ResponseEntity<SlotHoldRow> createRescheduleSlotHold(
+            @PathVariable UUID appointmentId,
+            @Valid @RequestBody RescheduleSlotHoldRequest body,
+            @AuthenticationPrincipal AuthenticatedAccount actor,
+            HttpServletRequest request) {
+        var appointment = service.getAppointment(appointmentId);
+        accessPolicy.requirePatientAccess(actor, appointment.patientId(), "appointment.reschedule");
+        SlotHoldRow value = service.createRescheduleSlotHold(
+                new CreateRescheduleSlotHoldRequest(body.slotId(), appointment.patientId(), appointmentId),
+                auditContext(request, actor));
         return versioned(value, value.version());
     }
 
@@ -123,7 +159,7 @@ public class SchedulingController {
             @AuthenticationPrincipal AuthenticatedAccount actor,
             HttpServletRequest request) {
         SlotHoldRow existing = service.getSlotHoldForAccess(holdId);
-        requireHoldAccess(actor, existing.patientId(), "slot_hold.read");
+        accessPolicy.requirePatientAccess(actor, existing.patientId(), "slot_hold.read");
         SlotHoldRow value = service.getSlotHold(holdId, auditContext(request, actor));
         return versioned(value, value.version());
     }
@@ -136,58 +172,65 @@ public class SchedulingController {
             HttpServletRequest request) {
         SchedulingAuditContext context = auditContext(request, actor);
         SlotHoldRow existing = service.getSlotHoldForAccess(holdId);
-        requireHoldAccess(actor, existing.patientId(), "slot_hold.cancel");
+        accessPolicy.requirePatientAccess(actor, existing.patientId(), "slot_hold.cancel");
         service.cancelSlotHold(holdId, version(ifMatch), context);
         SlotHoldRow value = service.getSlotHold(holdId, context);
         return versioned(value, value.version());
     }
 
     @GetMapping("/appointments")
-    @PreAuthorize("hasAnyAuthority('appointment.read', 'slot_hold.read', 'patient.read')")
-    Page<vn.medicore.dto.SchedulingModels.AppointmentRow> listAppointments(
+    Page<PatientAppointment> listAppointments(
+            @RequestParam(required = false) UUID patientId,
             @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
             @AuthenticationPrincipal AuthenticatedAccount actor) {
-        Instant now = clock.instant();
-        List<UUID> accessiblePatientIds = patients.listAccountPatientLinks(actor.accountId()).stream()
-                .filter(link -> "ACTIVE".equals(link.status())
-                        && !now.isBefore(link.validFrom()) && (link.validTo() == null || now.isBefore(link.validTo())))
-                .map(link -> link.patientId())
-                .toList();
+        boolean isStaff = accessPolicy.isAuthorizedStaff(actor, "practitioner.read");
 
-        boolean isStaff = actor.permissions().contains("appointment_slot.create")
-                || actor.permissions().contains("practitioner.read");
-
-        if (accessiblePatientIds.isEmpty() && !isStaff) {
-            return new Page<>(List.of(), null, false);
+        List<UUID> targetPatientIds;
+        if (patientId != null) {
+            if (!isStaff) {
+                accessPolicy.requirePatientAccess(actor, patientId, "patient.read");
+            }
+            targetPatientIds = List.of(patientId);
+        } else {
+            List<UUID> accessiblePatientIds = accessPolicy.getAccessiblePatientIds(actor);
+            if (accessiblePatientIds.isEmpty() && !isStaff) {
+                return new Page<>(List.of(), null, false);
+            }
+            targetPatientIds = isStaff && accessiblePatientIds.isEmpty() ? null : accessiblePatientIds;
         }
 
-        return service.searchAppointments(isStaff && accessiblePatientIds.isEmpty() ? null : accessiblePatientIds, cursor, limit);
+        return service.searchPatientAppointments(targetPatientIds, cursor, limit);
     }
 
     @GetMapping("/appointments/{appointmentId}")
-    @PreAuthorize("hasAnyAuthority('appointment.read', 'slot_hold.read', 'patient.read')")
-    ResponseEntity<vn.medicore.dto.SchedulingModels.AppointmentRow> getAppointment(
+    ResponseEntity<PatientAppointment> getAppointment(
             @PathVariable UUID appointmentId,
             @AuthenticationPrincipal AuthenticatedAccount actor) {
-        vn.medicore.dto.SchedulingModels.AppointmentRow appointment = service.getAppointment(appointmentId);
-        boolean isStaff = actor.permissions().contains("appointment_slot.create")
-                || actor.permissions().contains("practitioner.read");
+        AppointmentRow appointment = service.getAppointment(appointmentId);
+        boolean isStaff = accessPolicy.isAuthorizedStaff(actor, "practitioner.read");
         if (!isStaff) {
-            requireHoldAccess(actor, appointment.patientId(), "patient.read");
+            accessPolicy.requirePatientAccess(actor, appointment.patientId(), "patient.read");
         }
-        return versioned(appointment, appointment.version());
+        PatientAppointment value = service.getPatientAppointment(appointmentId);
+        return versioned(value, value.version());
     }
 
-    private void requireHoldAccess(AuthenticatedAccount actor, UUID patientId, String schedulingPermission) {
-        Instant now = clock.instant();
-        boolean allowed = patients.listAccountPatientLinks(actor.accountId()).stream().anyMatch(link ->
-                link.patientId().equals(patientId) && "ACTIVE".equals(link.status())
-                        && !now.isBefore(link.validFrom()) && (link.validTo() == null || now.isBefore(link.validTo()))
-                        && ("OWN".equals(link.relationship()) || ("REPRESENTATION_VERIFIED".equals(link.verificationTier())
-                        && (Boolean.TRUE.equals(link.permissionScope().get(schedulingPermission))
-                                || Boolean.TRUE.equals(link.permissionScope().get("patient.read"))))));
-        if (!allowed) throw new AccessDeniedException("Patient access is not granted");
+    @PostMapping("/appointments/{appointmentId}/actions/cancel")
+    ResponseEntity<PatientAppointment> cancelAppointment(
+            @PathVariable UUID appointmentId,
+            @RequestHeader("If-Match") String ifMatch,
+            @Valid @RequestBody(required = false) CancelAppointmentRequest body,
+            @AuthenticationPrincipal AuthenticatedAccount actor,
+            HttpServletRequest request) {
+        AppointmentRow appointment = service.getAppointment(appointmentId);
+        boolean isStaff = accessPolicy.isAuthorizedStaff(actor, "appointment.cancel");
+        if (!isStaff) {
+            accessPolicy.requirePatientAccess(actor, appointment.patientId(), "appointment.cancel");
+        }
+        PatientAppointment value = service.cancelAppointment(
+                appointmentId, version(ifMatch), body != null ? body.reason() : null, auditContext(request, actor), isStaff);
+        return versioned(value, value.version());
     }
 
     private static SchedulingAuditContext auditContext(HttpServletRequest request, AuthenticatedAccount actor) {
@@ -224,5 +267,8 @@ public class SchedulingController {
     }
 
     record SlotHoldRequest(@NotNull UUID slotId, @NotNull UUID patientId) {
+    }
+
+    record RescheduleSlotHoldRequest(@NotNull UUID slotId) {
     }
 }

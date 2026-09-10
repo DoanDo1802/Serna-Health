@@ -6699,6 +6699,168 @@ paths:
         - R1-07
       x-medicore-scenarios: *a5
       x-medicore-idempotent: false
+  /booking/availability:
+    get:
+      tags:
+        - SchedulingPayment
+      summary: Get Booking Availability
+      operationId: getBookingAvailability
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: patientId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: scheduling-payment
+      x-medicore-permission: slot_hold.create
+      x-medicore-audit-action: slot_hold.create
+      x-medicore-stories:
+        - R1-05
+        - R1-06
+        - R1-07
+      x-medicore-scenarios: *a5
+      x-medicore-idempotent: false
+  /appointments/{appointmentId}/actions/reschedule-availability:
+    get:
+      tags:
+        - SchedulingPayment
+      summary: Get Reschedule Availability
+      operationId: getRescheduleAvailability
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingAvailabilityPage"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: scheduling-payment
+      x-medicore-permission: appointment.reschedule
+      x-medicore-audit-action: appointment.reschedule
+      x-medicore-stories:
+        - R1-05
+        - R1-06
+        - R1-07
+      x-medicore-scenarios: *a5
+      x-medicore-idempotent: false
   /slot-holds/{holdId}:
     get:
       tags:
@@ -7249,6 +7411,12 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: patientId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
       security:
         - sessionCookie: []
       responses:
@@ -7264,7 +7432,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/PatientAppointmentPage"
         "400":
           description: Invalid request
           content:
@@ -7345,7 +7513,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PatientAppointment"
         "400":
           description: Invalid request
           content:
@@ -7396,6 +7564,95 @@ paths:
         - R1-07
       x-medicore-scenarios: *a5
       x-medicore-idempotent: false
+  /appointments/{appointmentId}/actions/reschedule-slot-holds:
+    post:
+      tags:
+        - SchedulingPayment
+      summary: Create Reschedule Slot Hold
+      operationId: createRescheduleSlotHold
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlotHold"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: scheduling-payment
+      x-medicore-permission: appointment.reschedule
+      x-medicore-audit-action: appointment.reschedule
+      x-medicore-stories:
+        - R1-05
+        - R1-06
+        - R1-07
+      x-medicore-scenarios: *a5
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RescheduleSlotHoldRequest"
   /appointments/{appointmentId}/actions/reschedule:
     post:
       tags:
@@ -7633,7 +7890,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PatientAppointment"
         "400":
           description: Invalid request
           content:
@@ -7701,7 +7958,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CancelAppointmentRequest"
   /appointments/{appointmentId}/actions/mark-no-show:
     post:
       tags:
@@ -13786,6 +14043,10 @@ components:
       $ref: ./components/domain.yaml#/schemas/AppointmentSlot
     AppointmentSlotPage:
       $ref: ./components/domain.yaml#/schemas/AppointmentSlotPage
+    BookingAvailabilitySlot:
+      $ref: ./components/domain.yaml#/schemas/BookingAvailabilitySlot
+    BookingAvailabilityPage:
+      $ref: ./components/domain.yaml#/schemas/BookingAvailabilityPage
     BookingCatalog:
       $ref: ./components/domain.yaml#/schemas/BookingCatalog
     BookingDepartment:
@@ -13800,6 +14061,8 @@ components:
       $ref: ./components/domain.yaml#/schemas/BookingPractitionerRole
     SlotHoldRequest:
       $ref: ./components/domain.yaml#/schemas/SlotHoldRequest
+    RescheduleSlotHoldRequest:
+      $ref: ./components/domain.yaml#/schemas/RescheduleSlotHoldRequest
     SlotHold:
       $ref: ./components/domain.yaml#/schemas/SlotHold
     PaymentIntentStatus:
@@ -13818,6 +14081,14 @@ components:
       $ref: ./components/domain.yaml#/schemas/AppointmentStatus
     Appointment:
       $ref: ./components/domain.yaml#/schemas/Appointment
+    DepositState:
+      $ref: ./components/domain.yaml#/schemas/DepositState
+    CancelAppointmentRequest:
+      $ref: ./components/domain.yaml#/schemas/CancelAppointmentRequest
+    PatientAppointment:
+      $ref: ./components/domain.yaml#/schemas/PatientAppointment
+    PatientAppointmentPage:
+      $ref: ./components/domain.yaml#/schemas/PatientAppointmentPage
     RescheduleAppointmentRequest:
       $ref: ./components/domain.yaml#/schemas/RescheduleAppointmentRequest
     RescheduleTopUpRequest:

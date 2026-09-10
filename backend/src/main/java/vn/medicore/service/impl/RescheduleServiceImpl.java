@@ -14,8 +14,10 @@ import java.util.stream.Stream;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vn.medicore.common.exception.ResourceNotFoundException;
+import vn.medicore.common.exception.PatientScheduleConflictException;
+import vn.medicore.common.exception.RescheduleEligibilityException;
 import vn.medicore.common.exception.RescheduleFundingException;
+import vn.medicore.common.exception.ResourceNotFoundException;
 import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.dto.AuditModels.AuditEventView;
@@ -75,7 +77,8 @@ public class RescheduleServiceImpl implements RescheduleService {
             UUID oldAppointmentId,
             RescheduleAppointmentRequest request,
             long ifMatchVersion,
-            SchedulingAuditContext context) {
+            SchedulingAuditContext context,
+            boolean isStaffOverride) {
         Instant now = clock.instant();
 
         if (request.targetSlotHoldId() == null) {
@@ -93,11 +96,22 @@ public class RescheduleServiceImpl implements RescheduleService {
             throw new IllegalStateException("Appointment cannot be rescheduled in status: " + initialOldAppointment.status());
         }
 
-        SlotHoldRow initialOldHold = schedulingRepository.slotHoldById(initialOldAppointment.slotHoldId())
-                .orElseThrow(ResourceNotFoundException::new);
         AppointmentSlotRow initialOldSlot = schedulingRepository.appointmentSlotById(initialOldAppointment.slotId())
                 .orElseThrow(ResourceNotFoundException::new);
+        Instant initialCutoff = initialOldSlot.startAt().minus(Duration.ofHours(24));
+        if (!now.isBefore(initialCutoff)) {
+            if (!isStaffOverride) {
+                throw new RescheduleEligibilityException(
+                        "SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED",
+                        "Reschedule window has closed for patient self-service");
+            }
+            if (request.reason() == null || request.reason().isBlank()) {
+                throw new IllegalArgumentException("Mandatory reason required for staff exception reschedule after cutoff");
+            }
+        }
 
+        SlotHoldRow initialOldHold = schedulingRepository.slotHoldById(initialOldAppointment.slotHoldId())
+                .orElseThrow(ResourceNotFoundException::new);
         SlotHoldRow initialTargetHold = schedulingRepository.slotHoldById(request.targetSlotHoldId())
                 .orElseThrow(() -> new ResourceNotFoundException("Target slot hold not found"));
         AppointmentSlotRow initialTargetSlot = schedulingRepository.appointmentSlotById(initialTargetHold.slotId())
@@ -107,16 +121,17 @@ public class RescheduleServiceImpl implements RescheduleService {
         if (!initialOldAppointment.patientId().equals(initialTargetHold.patientId())) {
             throw new IllegalStateException("Target slot hold must be for the same patient");
         }
-
-        // 24-hour late reschedule policy: within 24 hours of appointment start time, reason is required
-        boolean isWithin24Hours = initialOldSlot.startAt().isBefore(now.plus(Duration.ofHours(24)));
-        if (isWithin24Hours) {
-            if (request.reason() == null || request.reason().isBlank()) {
-                throw new IllegalStateException("Mandatory reason required for rescheduling within 24 hours of appointment start");
-            }
+        if (!"ACTIVE".equals(initialTargetSlot.status()) || !initialTargetSlot.startAt().isAfter(now)) {
+            throw new IllegalStateException("Target slot is unavailable");
         }
 
-        // 2. Deadlock-free global lock order: sorted Slot IDs -> sorted Hold IDs -> Appointment -> Top-up Payment
+        if (initialOldSlot.id().equals(initialTargetSlot.id())) {
+            throw new PatientScheduleConflictException(
+                    "APPOINTMENT_PATIENT_DUPLICATE_SLOT", "Reschedule target cannot be current appointment slot");
+        }
+
+        // 2. Deadlock-free global lock order: patient schedule -> sorted Slot IDs -> sorted Hold IDs -> Appointment -> Top-up Payment
+        schedulingRepository.lockPatientSchedule(initialOldAppointment.patientId());
         List<UUID> sortedSlotIds = Stream.of(initialOldSlot.id(), initialTargetSlot.id()).distinct().sorted().toList();
         for (UUID slotId : sortedSlotIds) {
             schedulingRepository.appointmentSlotByIdForUpdate(slotId);
@@ -136,8 +151,34 @@ public class RescheduleServiceImpl implements RescheduleService {
             throw new IllegalStateException("Appointment cannot be rescheduled in status: " + oldAppointment.status());
         }
 
+        Instant lockedCutoff = initialOldSlot.startAt().minus(Duration.ofHours(24));
+        if (!now.isBefore(lockedCutoff)) {
+            if (!isStaffOverride) {
+                throw new RescheduleEligibilityException(
+                        "SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED",
+                        "Reschedule window has closed for patient self-service");
+            }
+            if (request.reason() == null || request.reason().isBlank()) {
+                throw new IllegalArgumentException("Mandatory reason required for staff exception reschedule after cutoff");
+            }
+        }
+
         SlotHoldRow targetHold = schedulingRepository.slotHoldById(request.targetSlotHoldId())
                 .orElseThrow(() -> new ResourceNotFoundException("Target slot hold not found"));
+        AppointmentSlotRow targetSlot = schedulingRepository.appointmentSlotByIdForUpdate(targetHold.slotId())
+                .orElseThrow(ResourceNotFoundException::new);
+        if (!"ACTIVE".equals(targetSlot.status()) || !targetSlot.startAt().isAfter(now)) {
+            throw new IllegalStateException("Target slot is unavailable");
+        }
+        if (schedulingRepository.hasPatientScheduleConflict(
+                oldAppointment.patientId(), targetSlot.startAt(), targetSlot.endAt(), now,
+                oldAppointment.id(), targetHold.id())) {
+            String code = schedulingRepository.hasPatientSlotReservation(
+                    oldAppointment.patientId(), targetSlot.id(), now, oldAppointment.id(), targetHold.id())
+                    ? "APPOINTMENT_PATIENT_DUPLICATE_SLOT"
+                    : "APPOINTMENT_PATIENT_TIME_OVERLAP";
+            throw new PatientScheduleConflictException(code, "Patient already has a conflicting appointment or active hold");
+        }
         if (!"ACTIVE".equals(targetHold.status())) {
             throw new IllegalStateException("Target slot hold is not active");
         }
@@ -150,9 +191,9 @@ public class RescheduleServiceImpl implements RescheduleService {
         }
 
         // Check target slot capacity
-        schedulingRepository.expireActiveHolds(initialTargetSlot.id(), now);
-        int activeCount = schedulingRepository.countActiveHoldsAndAppointments(initialTargetSlot.id(), now);
-        if (activeCount > initialTargetSlot.capacity()) {
+        schedulingRepository.expireActiveHolds(targetSlot.id(), now);
+        int activeCount = schedulingRepository.countActiveHoldsAndAppointments(targetSlot.id(), now);
+        if (activeCount > targetSlot.capacity()) {
             throw new IllegalStateException("Target slot capacity exhausted");
         }
 
@@ -254,7 +295,7 @@ public class RescheduleServiceImpl implements RescheduleService {
                 newAppointmentId,
                 oldAppointment.patientId(),
                 targetHold.id(),
-                initialTargetSlot.id(),
+                targetSlot.id(),
                 oldAppointment.id(),
                 null,
                 "CONFIRMED",
@@ -419,7 +460,7 @@ public class RescheduleServiceImpl implements RescheduleService {
         rescheduleOutbox.put("newAppointmentId", newAppointmentId.toString());
         rescheduleOutbox.put("patientId", oldAppointment.patientId().toString());
         rescheduleOutbox.put("oldSlotId", initialOldSlot.id().toString());
-        rescheduleOutbox.put("newSlotId", initialTargetSlot.id().toString());
+        rescheduleOutbox.put("newSlotId", targetSlot.id().toString());
         rescheduleOutbox.put("depositTransferId", depositTransferId.toString());
         rescheduleOutbox.put("transferredAmount", transferredAmount.toPlainString());
         rescheduleOutbox.put("differenceDisposition", differenceDisposition);

@@ -107,6 +107,12 @@ public interface SchedulingModels {
             UUID patientId
     ) {}
 
+    record CreateRescheduleSlotHoldRequest(
+            UUID slotId,
+            UUID patientId,
+            UUID sourceAppointmentId
+    ) {}
+
     record BookingCatalog(
             List<BookingDepartment> departments,
             List<BookingRoom> rooms,
@@ -155,5 +161,74 @@ public interface SchedulingModels {
             UUID refundPendingAllocationId,
             String currency,
             Instant rescheduledAt
+    ) {}
+
+    // --- Portal-Specific Projections & Commands ---
+
+    record PatientAppointment(
+            UUID id,
+            long version,
+            UUID patientId,
+            UUID slotId,
+            String status,
+            String departmentName,
+            String roomName,
+            String serviceName,
+            String practitionerName,
+            String practitionerRoleCode,
+            Instant startAt,
+            Instant endAt,
+            String session,
+            String requiredDepositAmount,
+            String paidDepositAmount,
+            String currency,
+            String depositState,
+            boolean canCancel,
+            String cancelDisabledReason,
+            boolean canReschedule,
+            String rescheduleDisabledReason,
+            String cancellationOutcome,
+            Instant cancellationCutoffAt,
+            UUID rescheduledFromId,
+            UUID rescheduledToId,
+            Instant createdAt,
+            Instant updatedAt
+    ) {}
+
+    record BookingAvailabilitySlot(
+            UUID id,
+            long version,
+            UUID practitionerRoleId,
+            UUID departmentId,
+            UUID roomId,
+            UUID serviceId,
+            String session,
+            Instant startAt,
+            Instant endAt,
+            boolean canCreateHold,
+            String disabledReason
+    ) {}
+
+    record BookingAvailabilityProjection(
+            UUID id,
+            long version,
+            UUID practitionerRoleId,
+            UUID departmentId,
+            UUID roomId,
+            UUID serviceId,
+            String session,
+            Instant startAt,
+            Instant endAt,
+            String disabledReason
+    ) {
+        public BookingAvailabilitySlot toSlot() {
+            return new BookingAvailabilitySlot(
+                    id, version, practitionerRoleId, departmentId, roomId, serviceId,
+                    session, startAt, endAt, disabledReason == null, disabledReason);
+        }
+    }
+
+    record CancelAppointmentRequest(
+            @jakarta.validation.constraints.Size(max = 500) String reason
     ) {}
 }

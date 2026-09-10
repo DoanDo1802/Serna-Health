@@ -6905,6 +6905,184 @@ paths:
         - SC-R1-RESCHEDULE-01
         - SC-R1-RESCHEDULE-02
       x-medicore-idempotent: false
+  /booking/availability:
+    get:
+      tags:
+        - SchedulingPayment
+      summary: Get Booking Availability
+      operationId: getBookingAvailability
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: patientId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: scheduling-payment
+      x-medicore-permission: slot_hold.create
+      x-medicore-audit-action: slot_hold.create
+      x-medicore-stories:
+        - R1-05
+        - R1-06
+        - R1-07
+      x-medicore-scenarios:
+        - SC-R1-BOOK-01
+        - SC-R1-BOOK-02
+        - SC-R1-BOOK-03
+        - SC-R1-BOOK-04
+        - SC-R1-PAY-01
+        - SC-R1-PAY-02
+        - SC-R1-RESCHEDULE-01
+        - SC-R1-RESCHEDULE-02
+      x-medicore-idempotent: false
+  /appointments/{appointmentId}/actions/reschedule-availability:
+    get:
+      tags:
+        - SchedulingPayment
+      summary: Get Reschedule Availability
+      operationId: getRescheduleAvailability
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingAvailabilityPage'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: scheduling-payment
+      x-medicore-permission: appointment.reschedule
+      x-medicore-audit-action: appointment.reschedule
+      x-medicore-stories:
+        - R1-05
+        - R1-06
+        - R1-07
+      x-medicore-scenarios:
+        - SC-R1-BOOK-01
+        - SC-R1-BOOK-02
+        - SC-R1-BOOK-03
+        - SC-R1-BOOK-04
+        - SC-R1-PAY-01
+        - SC-R1-PAY-02
+        - SC-R1-RESCHEDULE-01
+        - SC-R1-RESCHEDULE-02
+      x-medicore-idempotent: false
   /slot-holds/{holdId}:
     get:
       tags:
@@ -7503,6 +7681,12 @@ paths:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
+        - name: patientId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
       security:
         - sessionCookie: []
       responses:
@@ -7518,7 +7702,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/PatientAppointmentPage'
         '400':
           description: Invalid request
           content:
@@ -7607,7 +7791,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PatientAppointment'
         '400':
           description: Invalid request
           content:
@@ -7666,6 +7850,103 @@ paths:
         - SC-R1-RESCHEDULE-01
         - SC-R1-RESCHEDULE-02
       x-medicore-idempotent: false
+  /appointments/{appointmentId}/actions/reschedule-slot-holds:
+    post:
+      tags:
+        - SchedulingPayment
+      summary: Create Reschedule Slot Hold
+      operationId: createRescheduleSlotHold
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlotHold'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: scheduling-payment
+      x-medicore-permission: appointment.reschedule
+      x-medicore-audit-action: appointment.reschedule
+      x-medicore-stories:
+        - R1-05
+        - R1-06
+        - R1-07
+      x-medicore-scenarios:
+        - SC-R1-BOOK-01
+        - SC-R1-BOOK-02
+        - SC-R1-BOOK-03
+        - SC-R1-BOOK-04
+        - SC-R1-PAY-01
+        - SC-R1-PAY-02
+        - SC-R1-RESCHEDULE-01
+        - SC-R1-RESCHEDULE-02
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RescheduleSlotHoldRequest'
   /appointments/{appointmentId}/actions/reschedule:
     post:
       tags:
@@ -7919,7 +8200,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/PatientAppointment'
         '400':
           description: Invalid request
           content:
@@ -7995,7 +8276,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CancelAppointmentRequest'
   /appointments/{appointmentId}/actions/mark-no-show:
     post:
       tags:
@@ -15262,6 +15543,73 @@ components:
           maxLength: 1024
         hasMore:
           type: boolean
+    BookingAvailabilitySlot:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - practitionerRoleId
+        - departmentId
+        - roomId
+        - serviceId
+        - session
+        - startAt
+        - endAt
+        - canCreateHold
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        practitionerRoleId:
+          type: string
+          format: uuid
+        departmentId:
+          type: string
+          format: uuid
+        roomId:
+          type: string
+          format: uuid
+        serviceId:
+          type: string
+          format: uuid
+        session:
+          $ref: '#/components/schemas/AppointmentSlotSession'
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        canCreateHold:
+          type: boolean
+        disabledReason:
+          type:
+            - string
+            - 'null'
+          maxLength: 128
+    BookingAvailabilityPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingAvailabilitySlot'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
     BookingCatalog:
       type: object
       additionalProperties: false
@@ -15384,6 +15732,15 @@ components:
           type: string
           format: uuid
         patientId:
+          type: string
+          format: uuid
+    RescheduleSlotHoldRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - slotId
+      properties:
+        slotId:
           type: string
           format: uuid
     SlotHold:
@@ -15655,6 +16012,153 @@ components:
         updatedAt:
           type: string
           format: date-time
+    DepositState:
+      type: string
+      enum:
+        - VERIFIED
+        - NOT_REQUIRED
+        - RECONCILIATION_REQUIRED
+        - REFUND_PENDING
+    CancelAppointmentRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+    PatientAppointment:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - patientId
+        - slotId
+        - status
+        - departmentName
+        - roomName
+        - serviceName
+        - practitionerName
+        - practitionerRoleCode
+        - startAt
+        - endAt
+        - session
+        - requiredDepositAmount
+        - paidDepositAmount
+        - currency
+        - depositState
+        - canCancel
+        - canReschedule
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        patientId:
+          type: string
+          format: uuid
+        slotId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/AppointmentStatus'
+        departmentName:
+          type: string
+          maxLength: 200
+        roomName:
+          type: string
+          maxLength: 200
+        serviceName:
+          type: string
+          maxLength: 200
+        practitionerName:
+          type: string
+          maxLength: 200
+        practitionerRoleCode:
+          type: string
+          maxLength: 64
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        session:
+          $ref: '#/components/schemas/AppointmentSlotSession'
+        requiredDepositAmount:
+          type: string
+          pattern: ^\d{1,17}(\.\d{2})?$
+        paidDepositAmount:
+          type: string
+          pattern: ^\d{1,17}(\.\d{2})?$
+        currency:
+          type: string
+          const: VND
+        depositState:
+          $ref: '#/components/schemas/DepositState'
+        canCancel:
+          type: boolean
+        cancelDisabledReason:
+          type:
+            - string
+            - 'null'
+          maxLength: 128
+        canReschedule:
+          type: boolean
+        rescheduleDisabledReason:
+          type:
+            - string
+            - 'null'
+          maxLength: 128
+        cancellationOutcome:
+          type:
+            - string
+            - 'null'
+          enum:
+            - NOT_REQUIRED
+            - REFUND_PENDING
+        cancellationCutoffAt:
+          type: string
+          format: date-time
+        rescheduledFromId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        rescheduledToId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PatientAppointmentPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatientAppointment'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
     RescheduleAppointmentRequest:
       type: object
       additionalProperties: false

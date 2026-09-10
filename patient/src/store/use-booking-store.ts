@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   AppointmentSlotRow,
+  BookingAvailabilitySlot,
   BookingDepartment,
   BookingPhase,
   BookingPractitioner,
@@ -10,6 +11,8 @@ import {
   EnrichedAppointmentSlot,
   AppointmentSlotSession,
   PaymentIntentRow,
+  RescheduleAppointmentResponse,
+  RescheduleContext,
   SlotHoldRow,
 } from '@/types/scheduling';
 import { schedulingService } from '@/services/scheduling-service';
@@ -24,6 +27,8 @@ export type BookingErrorType =
   | 'HOLD_EXPIRED'
   | 'PAYMENT_FAILED'
   | 'RECONCILIATION_REQUIRED'
+  | 'RESCHEDULE_WINDOW_CLOSED'
+  | 'CONCURRENCY_STALE'
   | 'RATE_LIMITED'
   | 'NETWORK_ERROR'
   | 'UNKNOWN';
@@ -49,7 +54,7 @@ interface BookingState {
   practitioners: BookingPractitioner[];
   practitionerRoles: Map<string, BookingPractitionerRole>;
   filters: BookingFilters;
-  rawSlots: AppointmentSlotRow[];
+  rawSlots: (AppointmentSlotRow | BookingAvailabilitySlot)[];
   enrichedSlots: EnrichedAppointmentSlot[];
   selectedSlot: EnrichedAppointmentSlot | null;
   currentHold: SlotHoldRow | null;
@@ -59,6 +64,11 @@ interface BookingState {
   paymentIdempotencyKey: string | null;
   mockPaymentIdempotencyKey: string | null;
   mockPaymentOutcome: 'SUCCEEDED' | 'FAILED' | null;
+  rescheduleContext: RescheduleContext | null;
+  rescheduleReason: string;
+  rescheduleSubmitIdempotencyKey: string | null;
+  rescheduleResult: RescheduleAppointmentResponse | null;
+  isSubmittingReschedule: boolean;
   isLoadingCatalogs: boolean;
   isLoadingSlots: boolean;
   isHolding: boolean;
@@ -79,12 +89,25 @@ interface BookingState {
   createSlotHold: (slot: EnrichedAppointmentSlot) => Promise<boolean>;
   createPaymentIntent: () => Promise<boolean>;
   simulateMockPaymentOutcome: (outcome: 'SUCCEEDED' | 'FAILED') => Promise<boolean>;
+  startRescheduleMode: (context: RescheduleContext) => Promise<boolean>;
+  cancelRescheduleMode: () => Promise<boolean>;
+  setRescheduleReason: (reason: string) => void;
+  createRescheduleTopUp: () => Promise<boolean>;
+  submitReschedule: () => Promise<RescheduleAppointmentResponse | null>;
   refreshBookingStatus: () => Promise<void>;
+  releaseCurrentHold: () => Promise<boolean>;
   resetBookingFlow: () => void;
   clearError: () => void;
 }
 
-const getTodayDateString = (): string => new Date().toISOString().split('T')[0];
+const toLocalDateString = (d: Date = new Date()): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getTodayDateString = (): string => toLocalDateString(new Date());
 
 const createIdempotencyKey = (): string => crypto.randomUUID();
 
@@ -96,8 +119,32 @@ const errorFrom = (err: unknown, fallback: string): BookingErrorInfo => {
   if (value.status === 403 || value.code === 'ACCESS_DENIED') {
     return { type: 'ACCESS_DENIED', message: 'Bạn không có quyền thực hiện thao tác này cho hồ sơ bệnh nhân.', statusCode: 403 };
   }
+  if (value.code === 'SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED') {
+    return { type: 'RESCHEDULE_WINDOW_CLOSED', message: 'Đã quá thời hạn tự đổi lịch (trước giờ khám 24 giờ). Vui lòng liên hệ quầy tiếp đón để được hỗ trợ.', statusCode: 409 };
+  }
+  if (value.status === 412 || value.code === 'CONCURRENCY_STALE_VERSION') {
+    return { type: 'CONCURRENCY_STALE', message: 'Thông tin lịch khám đã thay đổi. Đã tải lại dữ liệu; vui lòng kiểm tra và thử lại.', statusCode: 412 };
+  }
+  if (value.code === 'IDEMPOTENCY_KEY_REUSED') {
+    return { type: 'CONCURRENCY_STALE', message: 'Thao tác trước đã thay đổi. Vui lòng chọn lại ca khám hoặc thử lại.', statusCode: 409 };
+  }
+  if (value.code === 'PAYMENT_TOP_UP_REQUIRED' || value.code === 'PAYMENT_TOP_UP_INVALID' || value.code === 'PAYMENT_TOP_UP_NOT_REQUIRED') {
+    return { type: 'PAYMENT_FAILED', message: 'Trạng thái thanh toán chênh lệch đã thay đổi. Vui lòng kiểm tra lại trước khi xác nhận đổi lịch.', statusCode: 409 };
+  }
+  if (value.code === 'APPOINTMENT_PATIENT_DUPLICATE_SLOT' || value.code === 'APPOINTMENT_PATIENT_TIME_OVERLAP') {
+    return { type: 'SLOT_UNAVAILABLE', message: 'Ca khám mới bị trùng lịch hiện có. Vui lòng chọn ca khác.', statusCode: 409 };
+  }
   if (value.status === 409) {
-    return { type: 'SLOT_UNAVAILABLE', message: 'Ca khám hoặc phiên giữ chỗ không còn khả dụng. Vui lòng chọn lại.', statusCode: 409 };
+    if (value.message === 'Slot is fully booked') {
+      return { type: 'SLOT_UNAVAILABLE', message: 'Ca khám này đã hết chỗ tiếp nhận. Vui lòng chọn ca khác.', statusCode: 409 };
+    }
+    if (value.message === 'Slot is unavailable') {
+      return { type: 'SLOT_UNAVAILABLE', message: 'Ca khám đã qua thời gian tiếp nhận hoặc tạm ngưng. Vui lòng chọn ca khác.', statusCode: 409 };
+    }
+    const msg = value.message && value.message !== 'Domain state conflict'
+      ? value.message
+      : 'Ca khám hoặc phiên giữ chỗ không còn khả dụng. Vui lòng chọn lại.';
+    return { type: 'SLOT_UNAVAILABLE', message: msg, statusCode: 409 };
   }
   if (value.status === 429) {
     return { type: 'RATE_LIMITED', message: 'Thao tác quá nhanh. Vui lòng thử lại sau ít phút.', statusCode: 429 };
@@ -128,12 +175,74 @@ const bookingPhaseFromState = (hold: SlotHoldRow | null, intent: PaymentIntentRo
   return hold ? 'HOLD_EXPIRED' : 'IDLE';
 };
 
+const projectSlots = (
+  state: Pick<BookingState, 'departments' | 'rooms' | 'services' | 'practitioners' | 'practitionerRoles' | 'filters'>,
+  rawSlots: (AppointmentSlotRow | BookingAvailabilitySlot)[]
+): EnrichedAppointmentSlot[] => {
+  const deptMap = new Map(state.departments.map((department) => [department.id, department.name]));
+  const roomMap = new Map(state.rooms.map((room) => [room.id, room.name]));
+  const serviceMap = new Map(state.services.map((service) => [service.id, service.name]));
+  const practitionerMap = new Map<string, { name: string; title: string }>();
+  state.practitionerRoles.forEach((role, roleId) => {
+    const practitioner = state.practitioners.find((item) => item.id === role.practitionerId);
+    if (practitioner) practitionerMap.set(roleId, {
+      name: practitioner.fullName.startsWith('BS') ? practitioner.fullName : `BS ${practitioner.fullName}`,
+      title: role.roleCode || 'Bác sĩ chuyên khoa',
+    });
+  });
+
+  return rawSlots.map<EnrichedAppointmentSlot>((slot) => {
+    const service = state.services.find((item) => item.id === slot.serviceId);
+    const start = new Date(slot.startAt);
+    const end = new Date(slot.endAt);
+    const formatTime = (value: Date) => value.toLocaleTimeString('vi-VN', {
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+    const isPast = start.getTime() <= Date.now();
+    const canCreateHold = isPast ? false : ('canCreateHold' in slot ? slot.canCreateHold : true);
+    const disabledReason = isPast
+      ? 'SLOT_PAST'
+      : ('disabledReason' in slot ? slot.disabledReason : undefined);
+
+    return {
+      id: slot.id, version: slot.version, practitionerRoleId: slot.practitionerRoleId,
+      departmentId: slot.departmentId, roomId: slot.roomId, serviceId: slot.serviceId,
+      session: slot.session, startAt: slot.startAt, endAt: slot.endAt,
+      capacity: 'capacity' in slot ? slot.capacity : 1,
+      status: 'status' in slot ? slot.status : 'ACTIVE',
+      createdAt: 'createdAt' in slot ? slot.createdAt : '',
+      updatedAt: 'updatedAt' in slot ? slot.updatedAt : '',
+      departmentName: deptMap.get(slot.departmentId) || 'Khoa Khám Bệnh',
+      roomName: roomMap.get(slot.roomId) || 'Phòng Khám',
+      serviceName: serviceMap.get(slot.serviceId) || 'Khám Tổng Quát',
+      practitionerName: practitionerMap.get(slot.practitionerRoleId)?.name || 'Bác sĩ phụ trách ca',
+      practitionerTitle: practitionerMap.get(slot.practitionerRoleId)?.title || 'Bác sĩ chuyên khoa',
+      priceAmount: service?.priceAmount ?? 0, priceCurrency: service?.priceCurrency ?? 'VND',
+      checkInStart: formatTime(new Date(start.getTime() - 60 * 60 * 1000)),
+      checkInEnd: formatTime(new Date(end.getTime() - 30 * 60 * 1000)),
+      canCreateHold,
+      disabledReason,
+    };
+  }).filter((slot) => {
+    if (state.filters.departmentId !== 'ALL' && slot.departmentId !== state.filters.departmentId) return false;
+    if (state.filters.serviceId !== 'ALL' && slot.serviceId !== state.filters.serviceId) return false;
+    if (state.filters.practitionerId !== 'ALL'
+      && state.practitionerRoles.get(slot.practitionerRoleId)?.practitionerId !== state.filters.practitionerId) return false;
+    if (state.filters.date) {
+      const slotLocalDate = toLocalDateString(new Date(slot.startAt));
+      if (slotLocalDate !== state.filters.date) return false;
+    }
+    return state.filters.session === 'ALL' || slot.session === state.filters.session;
+  });
+};
+
 export const useBookingStore = create<BookingState>((set, get) => ({
   departments: [], rooms: [], services: [], practitioners: [], practitionerRoles: new Map(),
   filters: { departmentId: 'ALL', serviceId: 'ALL', practitionerId: 'ALL', date: getTodayDateString(), session: 'ALL' },
   rawSlots: [], enrichedSlots: [], selectedSlot: null,
   currentHold: null, currentPaymentIntent: null, bookingPhase: 'IDLE',
   holdIdempotencyKey: null, paymentIdempotencyKey: null, mockPaymentIdempotencyKey: null, mockPaymentOutcome: null,
+  rescheduleContext: null, rescheduleReason: '', rescheduleSubmitIdempotencyKey: null, rescheduleResult: null, isSubmittingReschedule: false,
   isLoadingCatalogs: false, isLoadingSlots: false, isHolding: false, isCreatingPaymentIntent: false, isSimulatingPayment: false,
   error: null, errorInfo: null,
 
@@ -155,8 +264,44 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       set({ errorInfo, error: errorInfo.message, isLoadingCatalogs: false, isLoadingSlots: false });
       return;
     }
-    await get().loadCatalogs();
-    if (!get().errorInfo) await get().loadSlots();
+
+    // Fetch catalog and slots in parallel to halve load time.
+    set({ isLoadingCatalogs: true, isLoadingSlots: true, error: null, errorInfo: null, selectedSlot: null });
+
+    const rescheduleAppointmentId = get().rescheduleContext?.originalAppointment?.id;
+    try {
+      const [catalog, slotsResponse] = await Promise.all([
+        schedulingService.getBookingCatalog(patientId),
+        rescheduleAppointmentId
+          ? schedulingService.getRescheduleAvailability(rescheduleAppointmentId, { limit: 100 })
+          : schedulingService.getBookingAvailability({ patientId, limit: 100 }),
+      ]);
+      const next = {
+        ...get(),
+        departments: catalog.departments,
+        rooms: catalog.rooms,
+        services: catalog.services,
+        practitioners: catalog.practitioners,
+        practitionerRoles: new Map(catalog.practitionerRoles.map((role) => [role.id, role])),
+      };
+      const rawSlots = slotsResponse.items || [];
+      set({
+        departments: next.departments,
+        rooms: next.rooms,
+        services: next.services,
+        practitioners: next.practitioners,
+        practitionerRoles: next.practitionerRoles,
+        rawSlots,
+        enrichedSlots: projectSlots(next, rawSlots),
+        isLoadingCatalogs: false,
+        isLoadingSlots: false,
+        error: null,
+        errorInfo: null,
+      });
+    } catch (err) {
+      const errorInfo = errorFrom(err, 'Không thể tải dữ liệu đặt khám.');
+      set({ errorInfo, error: errorInfo.message, isLoadingCatalogs: false, isLoadingSlots: false });
+    }
   },
 
   loadCatalogs: async () => {
@@ -177,56 +322,57 @@ export const useBookingStore = create<BookingState>((set, get) => ({
   },
 
   loadSlots: async () => {
-    set({ isLoadingSlots: true, error: null });
+    set({ isLoadingSlots: true, error: null, errorInfo: null });
     try {
-      const response = await schedulingService.searchAppointmentSlots();
-      const rawSlots = (response.items || []).filter((slot) => slot.status === 'ACTIVE');
-      const { departments, rooms, services, practitioners, practitionerRoles, filters } = get();
-      const deptMap = new Map(departments.map((department) => [department.id, department.name]));
-      const roomMap = new Map(rooms.map((room) => [room.id, room.name]));
-      const serviceMap = new Map(services.map((service) => [service.id, service.name]));
-      const practitionerMap = new Map<string, { name: string; title: string }>();
-      practitionerRoles.forEach((role, roleId) => {
-        const practitioner = practitioners.find((item) => item.id === role.practitionerId);
-        if (practitioner) practitionerMap.set(roleId, { name: practitioner.fullName.startsWith('BS') ? practitioner.fullName : `BS ${practitioner.fullName}`, title: role.roleCode || 'Bác sĩ chuyên khoa' });
+      const patientId = usePatientStore.getState().activePatientId;
+      const rescheduleAppointmentId = get().rescheduleContext?.originalAppointment?.id;
+      const response = patientId
+        ? (rescheduleAppointmentId
+            ? await schedulingService.getRescheduleAvailability(rescheduleAppointmentId, { limit: 100 })
+            : await schedulingService.getBookingAvailability({ patientId, limit: 100 }))
+        : await schedulingService.searchAppointmentSlots();
+      const rawSlots = patientId
+        ? response.items || []
+        : (response.items || []).filter((slot): slot is AppointmentSlotRow =>
+            'status' in slot && slot.status === 'ACTIVE');
+      const state = get();
+      set({
+        rawSlots,
+        enrichedSlots: projectSlots(state, rawSlots),
+        isLoadingSlots: false,
+        error: null,
+        errorInfo: null,
       });
-      const enriched = rawSlots.map<EnrichedAppointmentSlot>((slot) => {
-        const service = services.find((item) => item.id === slot.serviceId);
-        const start = new Date(slot.startAt);
-        const end = new Date(slot.endAt);
-        const formatTime = (value: Date) => value.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
-        return {
-          ...slot,
-          departmentName: deptMap.get(slot.departmentId) || 'Khoa Khám Bệnh',
-          roomName: roomMap.get(slot.roomId) || 'Phòng Khám',
-          serviceName: serviceMap.get(slot.serviceId) || 'Khám Tổng Quát',
-          practitionerName: practitionerMap.get(slot.practitionerRoleId)?.name || 'Bác sĩ phụ trách ca',
-          practitionerTitle: practitionerMap.get(slot.practitionerRoleId)?.title || 'Bác sĩ chuyên khoa',
-          priceAmount: service?.priceAmount ?? 0,
-          priceCurrency: service?.priceCurrency ?? 'VND',
-          checkInStart: formatTime(new Date(start.getTime() - 60 * 60 * 1000)),
-          checkInEnd: formatTime(new Date(end.getTime() - 30 * 60 * 1000)),
-        };
-      }).filter((slot) => {
-        if (filters.departmentId !== 'ALL' && slot.departmentId !== filters.departmentId) return false;
-        if (filters.serviceId !== 'ALL' && slot.serviceId !== filters.serviceId) return false;
-        if (filters.practitionerId !== 'ALL' && practitionerRoles.get(slot.practitionerRoleId)?.practitionerId !== filters.practitionerId) return false;
-        if (filters.date && slot.startAt.split('T')[0] !== filters.date) return false;
-        return filters.session === 'ALL' || slot.session === filters.session;
-      });
-      set({ rawSlots, enrichedSlots: enriched, isLoadingSlots: false, error: null, errorInfo: null });
     } catch (err) {
       const errorInfo = errorFrom(err, 'Không thể tải danh sách ca khám.');
       set({ errorInfo, error: errorInfo.message, isLoadingSlots: false });
     }
   },
 
-  setDepartmentFilter: (departmentId) => { set((state) => ({ filters: { ...state.filters, departmentId } })); void get().loadSlots(); },
-  setServiceFilter: (serviceId) => { set((state) => ({ filters: { ...state.filters, serviceId } })); void get().loadSlots(); },
-  setPractitionerFilter: (practitionerId) => { set((state) => ({ filters: { ...state.filters, practitionerId } })); void get().loadSlots(); },
-  setDateFilter: (date) => { set((state) => ({ filters: { ...state.filters, date } })); void get().loadSlots(); },
-  setSessionFilter: (session) => { set((state) => ({ filters: { ...state.filters, session } })); void get().loadSlots(); },
-  resetFilters: () => { set({ filters: { departmentId: 'ALL', serviceId: 'ALL', practitionerId: 'ALL', date: '', session: 'ALL' } }); void get().loadSlots(); },
+  setDepartmentFilter: (departmentId) => set((state) => {
+    const filters = { ...state.filters, departmentId };
+    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
+  }),
+  setServiceFilter: (serviceId) => set((state) => {
+    const filters = { ...state.filters, serviceId };
+    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
+  }),
+  setPractitionerFilter: (practitionerId) => set((state) => {
+    const filters = { ...state.filters, practitionerId };
+    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
+  }),
+  setDateFilter: (date) => set((state) => {
+    const filters = { ...state.filters, date };
+    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
+  }),
+  setSessionFilter: (session) => set((state) => {
+    const filters = { ...state.filters, session };
+    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
+  }),
+  resetFilters: () => set((state) => {
+    const filters = { departmentId: 'ALL', serviceId: 'ALL', practitionerId: 'ALL', date: '', session: 'ALL' as const };
+    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
+  }),
   selectSlot: (selectedSlot) => set({ selectedSlot }),
 
   createSlotHold: async (slot) => {
@@ -236,16 +382,23 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       set({ errorInfo, error: errorInfo.message });
       return false;
     }
-    const key = get().holdIdempotencyKey || createIdempotencyKey();
+    const key = createIdempotencyKey();
     set({ isHolding: true, bookingPhase: 'CREATING_HOLD', holdIdempotencyKey: key, error: null, errorInfo: null, selectedSlot: slot });
     try {
-      const hold = await schedulingService.createSlotHold({ slotId: slot.id, patientId }, { idempotencyKey: key });
+      const rescheduleContext = get().rescheduleContext;
+      const hold = rescheduleContext
+        ? await schedulingService.createRescheduleSlotHold(
+          rescheduleContext.originalAppointment.id,
+          slot.id,
+          { idempotencyKey: key }
+        )
+        : await schedulingService.createSlotHold({ slotId: slot.id, patientId }, { idempotencyKey: key });
       const phase: BookingPhase = hold.status === 'ACTIVE' ? 'HOLD_ACTIVE' : 'HOLD_EXPIRED';
       set({ currentHold: hold, isHolding: false, bookingPhase: phase });
       return hold.status === 'ACTIVE';
     } catch (err) {
       const errorInfo = errorFrom(err, 'Không thể giữ chỗ ca khám.');
-      set({ errorInfo, error: errorInfo.message, isHolding: false, bookingPhase: 'IDLE' });
+      set({ errorInfo, error: null, isHolding: false, bookingPhase: 'IDLE', holdIdempotencyKey: null });
       if (errorInfo.type === 'SLOT_UNAVAILABLE') {
         set({ selectedSlot: null });
         void get().loadSlots();
@@ -331,5 +484,235 @@ export const useBookingStore = create<BookingState>((set, get) => ({
     }
   },
 
-  resetBookingFlow: () => set({ selectedSlot: null, currentHold: null, currentPaymentIntent: null, bookingPhase: 'IDLE', holdIdempotencyKey: null, paymentIdempotencyKey: null, mockPaymentIdempotencyKey: null, mockPaymentOutcome: null, isHolding: false, isCreatingPaymentIntent: false, isSimulatingPayment: false, error: null, errorInfo: null }),
+  startRescheduleMode: async (context) => {
+    await get().releaseCurrentHold();
+    const { currentHold } = get();
+    if (currentHold?.status === 'ACTIVE') {
+      return false;
+    }
+    get().resetBookingFlow();
+    set({
+      rescheduleContext: context,
+      rescheduleReason: '',
+      rescheduleSubmitIdempotencyKey: null,
+      rescheduleResult: null,
+      isSubmittingReschedule: false,
+      error: null,
+      errorInfo: null,
+    });
+    await get().initBooking();
+    return true;
+  },
+
+  cancelRescheduleMode: async () => {
+    await get().releaseCurrentHold();
+    const { currentHold } = get();
+    if (currentHold?.status === 'ACTIVE') {
+      return false;
+    }
+    get().resetBookingFlow();
+    set({
+      rescheduleContext: null,
+      rescheduleReason: '',
+      rescheduleSubmitIdempotencyKey: null,
+      rescheduleResult: null,
+      isSubmittingReschedule: false,
+    });
+    return true;
+  },
+
+  setRescheduleReason: (reason) => {
+    set({ rescheduleReason: reason, rescheduleSubmitIdempotencyKey: null });
+  },
+
+  createRescheduleTopUp: async () => {
+    const { rescheduleContext, currentHold, rescheduleReason } = get();
+    if (!rescheduleContext || !currentHold || currentHold.status !== 'ACTIVE') {
+      const errorInfo = { type: 'HOLD_EXPIRED' as const, message: 'Phiên giữ chỗ không hợp lệ hoặc đã hết hạn.' };
+      set({ errorInfo, error: errorInfo.message });
+      return false;
+    }
+    const key = get().paymentIdempotencyKey || createIdempotencyKey();
+    set({ isCreatingPaymentIntent: true, bookingPhase: 'CREATING_PAYMENT_INTENT', paymentIdempotencyKey: key, error: null, errorInfo: null });
+    try {
+      const intent = await schedulingService.createRescheduleTopUpIntent(
+        rescheduleContext.originalAppointment.id,
+        { targetSlotHoldId: currentHold.id, reason: rescheduleReason || undefined },
+        rescheduleContext.originalAppointment.version,
+        { idempotencyKey: key }
+      );
+      set({
+        currentPaymentIntent: intent,
+        isCreatingPaymentIntent: false,
+        bookingPhase: paymentPhase(intent),
+        mockPaymentIdempotencyKey: null,
+        mockPaymentOutcome: null,
+      });
+      if (intent.status === 'SUCCEEDED') {
+        await get().refreshBookingStatus();
+      }
+      return true;
+    } catch (err) {
+      const errorInfo = errorFrom(err, 'Không thể tạo yêu cầu thanh toán chênh lệch.');
+      set({ errorInfo, error: errorInfo.message, isCreatingPaymentIntent: false, bookingPhase: 'HOLD_ACTIVE' });
+      return false;
+    }
+  },
+
+  submitReschedule: async () => {
+    const { rescheduleContext, currentHold, currentPaymentIntent, rescheduleReason } = get();
+    if (!rescheduleContext || !currentHold || currentHold.status !== 'ACTIVE') {
+      const errorInfo = { type: 'HOLD_EXPIRED' as const, message: 'Phiên giữ chỗ đã hết hiệu lực. Vui lòng chọn lại ca khám.' };
+      set({ errorInfo, error: errorInfo.message });
+      return null;
+    }
+
+    const sourceDeposit =
+      rescheduleContext.originalHold?.depositAmount ??
+      ('paidDepositAmount' in rescheduleContext.originalAppointment
+        ? parseFloat(rescheduleContext.originalAppointment.paidDepositAmount)
+        : undefined);
+    if (sourceDeposit === undefined) {
+      const errorInfo = { type: 'SLOT_UNAVAILABLE' as const, message: 'Chưa có dữ liệu cọc ca hiện tại. Vui lòng tải lại lịch hẹn trước khi đổi lịch.' };
+      set({ errorInfo, error: errorInfo.message });
+      return null;
+    }
+    const targetDeposit = currentHold.depositAmount;
+    if (targetDeposit > sourceDeposit) {
+      if (!currentPaymentIntent || currentPaymentIntent.status !== 'SUCCEEDED') {
+        const errorInfo = { type: 'PAYMENT_FAILED' as const, message: 'Cần thanh toán đủ khoản chênh lệch trước khi xác nhận đổi lịch.' };
+        set({ errorInfo, error: errorInfo.message });
+        return null;
+      }
+    }
+
+    const key = get().rescheduleSubmitIdempotencyKey || createIdempotencyKey();
+    set({ isSubmittingReschedule: true, rescheduleSubmitIdempotencyKey: key, error: null, errorInfo: null });
+
+    try {
+      const result = await schedulingService.rescheduleAppointment(
+        rescheduleContext.originalAppointment.id,
+        {
+          targetSlotHoldId: currentHold.id,
+          reason: rescheduleReason || undefined,
+          topUpPaymentIntentId: currentPaymentIntent?.id,
+        },
+        rescheduleContext.originalAppointment.version,
+        { idempotencyKey: key }
+      );
+      set({
+        currentHold: null,
+        currentPaymentIntent: null,
+        selectedSlot: null,
+        holdIdempotencyKey: null,
+        paymentIdempotencyKey: null,
+        mockPaymentIdempotencyKey: null,
+        mockPaymentOutcome: null,
+        rescheduleSubmitIdempotencyKey: null,
+        isSubmittingReschedule: false,
+        rescheduleResult: result,
+        bookingPhase: 'SUCCEEDED',
+      });
+      return result;
+    } catch (err) {
+      const errorInfo = errorFrom(err, 'Không thể hoàn tất đổi lịch khám.');
+      set({
+        errorInfo,
+        error: errorInfo.message,
+        isSubmittingReschedule: false,
+      });
+      if (errorInfo.statusCode === 412) {
+        try {
+          const fresh = await schedulingService.getAppointment(rescheduleContext.originalAppointment.id);
+          set((state) => ({
+            currentPaymentIntent: null,
+            paymentIdempotencyKey: null,
+            mockPaymentIdempotencyKey: null,
+            mockPaymentOutcome: null,
+            rescheduleSubmitIdempotencyKey: null,
+            rescheduleContext: state.rescheduleContext ? {
+              ...state.rescheduleContext,
+              originalAppointment: {
+                ...state.rescheduleContext.originalAppointment,
+                version: fresh.version,
+                status: fresh.status,
+              },
+            } : null,
+          }));
+        } catch {
+          // ignore
+        }
+      }
+      return null;
+    }
+  },
+
+  releaseCurrentHold: async () => {
+    const { currentHold, currentPaymentIntent } = get();
+    if (!currentHold) {
+      return true;
+    }
+    if (currentHold.status !== 'ACTIVE') {
+      set({
+        currentHold: null,
+        currentPaymentIntent: null,
+        selectedSlot: null,
+        holdIdempotencyKey: null,
+        paymentIdempotencyKey: null,
+        mockPaymentIdempotencyKey: null,
+        mockPaymentOutcome: null,
+        rescheduleSubmitIdempotencyKey: null,
+        bookingPhase: 'IDLE',
+      });
+      return true;
+    }
+    if (currentPaymentIntent?.status === 'SUCCEEDED') {
+      const errorInfo = {
+        type: 'RECONCILIATION_REQUIRED' as const,
+        message: 'Thanh toán đã thành công. Không thể tự giải phóng phiên giữ chỗ; vui lòng cập nhật trạng thái đặt lịch.',
+      };
+      set({ errorInfo, error: errorInfo.message });
+      return false;
+    }
+    try {
+      await schedulingService.cancelSlotHold(currentHold.id, currentHold.version, {
+        idempotencyKey: createIdempotencyKey(),
+      });
+    } catch (err) {
+      const errorInfo = errorFrom(err, 'Không thể giải phóng phiên giữ chỗ. Máy chủ sẽ tự hết hạn phiên này.');
+      set({ errorInfo, error: errorInfo.message });
+      return false;
+    }
+    set({
+      currentHold: null,
+      currentPaymentIntent: null,
+      selectedSlot: null,
+      holdIdempotencyKey: null,
+      paymentIdempotencyKey: null,
+      mockPaymentIdempotencyKey: null,
+      mockPaymentOutcome: null,
+      rescheduleSubmitIdempotencyKey: null,
+      bookingPhase: 'IDLE',
+    });
+    return true;
+  },
+
+  resetBookingFlow: () => set({
+    selectedSlot: null,
+    currentHold: null,
+    currentPaymentIntent: null,
+    bookingPhase: 'IDLE',
+    holdIdempotencyKey: null,
+    paymentIdempotencyKey: null,
+    mockPaymentIdempotencyKey: null,
+    mockPaymentOutcome: null,
+    rescheduleSubmitIdempotencyKey: null,
+    rescheduleResult: null,
+    isHolding: false,
+    isCreatingPaymentIntent: false,
+    isSimulatingPayment: false,
+    isSubmittingReschedule: false,
+    error: null,
+    errorInfo: null,
+  }),
 }));
