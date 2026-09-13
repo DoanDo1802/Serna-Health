@@ -53,7 +53,7 @@ public class RescheduleController {
         RescheduleAppointmentResponse response = rescheduleService.rescheduleAppointment(
                 appointmentId, body, version, context, isStaff);
         return ResponseEntity.ok()
-                .eTag(Long.toString(response.newAppointmentVersion()))
+                .eTag(Long.toString(response.oldAppointmentVersion()))
                 .body(response);
     }
 

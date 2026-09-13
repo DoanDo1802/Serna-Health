@@ -1,6 +1,8 @@
 package vn.medicore.config;
 
 import java.time.Clock;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -13,6 +15,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import vn.medicore.common.exception.ProblemResponseWriter;
 import vn.medicore.controller.SessionAuthenticationFilter;
+import vn.medicore.controller.TabSessionContextResolver;
 import vn.medicore.service.IdentityAccessService;
 
 @Configuration(proxyBeanMethods = false)
@@ -23,8 +26,9 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             IdentityAccessService identityAccess,
-            AuthProperties properties,
-            ProblemResponseWriter problems) throws Exception {
+            TabSessionContextResolver tabSessionContexts,
+            ProblemResponseWriter problems,
+            @Value("${medicore.web.cors.allowed-origins}") List<String> corsAllowedOrigins) throws Exception {
         return http
                 .authorizeHttpRequests(authorize -> authorize
                         .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR, jakarta.servlet.DispatcherType.FORWARD).permitAll()
@@ -43,8 +47,6 @@ public class SecurityConfig {
                                 "/api/v1/auth/password-recovery-challenges",
                                 "/api/v1/auth/password-resets")
                         .permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/appointment-slots", "/api/v1/appointment-slots/*")
-                        .permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/payments/*")
                         .permitAll()
                         .anyRequest().authenticated())
@@ -53,16 +55,16 @@ public class SecurityConfig {
                                 problems.write(request, response, HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required"))
                         .accessDeniedHandler((request, response, exception) ->
                                 problems.write(request, response, HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Access denied")))
-                .addFilterBefore(new SessionAuthenticationFilter(identityAccess, properties, problems), AnonymousAuthenticationFilter.class)
+                .addFilterBefore(new SessionAuthenticationFilter(identityAccess, tabSessionContexts, problems), AnonymousAuthenticationFilter.class)
                 .httpBasic(httpBasic -> httpBasic.disable())
                 .formLogin(form -> form.disable())
                 .logout(logout -> logout.disable())
                 .cors(cors -> cors.configurationSource(request -> {
                     var config = new org.springframework.web.cors.CorsConfiguration();
-                    config.setAllowedOriginPatterns(java.util.List.of("http://localhost:3000", "http://127.0.0.1:3000", "https://*.medicore.vn"));
-                    config.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-                    config.setAllowedHeaders(java.util.List.of("*"));
-                    config.setExposedHeaders(java.util.List.of("X-CSRF-Token", "ETag", "Set-Cookie"));
+                    config.setAllowedOrigins(corsAllowedOrigins);
+                    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+                    config.setAllowedHeaders(List.of("*"));
+                    config.setExposedHeaders(List.of("X-CSRF-Token", "ETag", "X-Request-Id", "X-Correlation-Id"));
                     config.setAllowCredentials(true);
                     return config;
                 }))

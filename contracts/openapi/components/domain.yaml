@@ -102,6 +102,124 @@ schemas:
       effectiveFrom: { type: string, format: date-time }
       effectiveTo: { type: [string, 'null'], format: date-time }
       reason: { type: string, minLength: 1, maxLength: 500 }
+  PersonnelType:
+    type: string
+    enum: [DOCTOR, STAFF]
+  PractitionerGender:
+    type: string
+    enum: [MALE, FEMALE, OTHER, UNSPECIFIED]
+  DoctorProfessionalProfileInput:
+    type: object
+    additionalProperties: false
+    required: [phone, dateOfBirth, gender, address, professionalTitle, academicDegree, specialtyDesignation, licenseNumber, licensingAuthority, licenseIssuedOn, yearsExperience]
+    properties:
+      phone: { type: string, pattern: '^[+][1-9][0-9]{7,14}$', maxLength: 16 }
+      dateOfBirth: { type: string, format: date }
+      gender: { $ref: '#/schemas/PractitionerGender' }
+      address: { type: string, minLength: 1, maxLength: 1000 }
+      professionalTitle: { type: string, minLength: 1, maxLength: 200 }
+      academicDegree: { type: string, minLength: 1, maxLength: 200 }
+      specialtyDesignation: { type: string, minLength: 1, maxLength: 200 }
+      licenseNumber: { type: string, minLength: 1, maxLength: 128 }
+      licensingAuthority: { type: string, minLength: 1, maxLength: 200 }
+      licenseIssuedOn: { type: string, format: date }
+      licenseExpiresOn: { type: [string, 'null'], format: date }
+      yearsExperience: { type: integer, minimum: 0, maximum: 80 }
+      biography: { type: [string, 'null'], maxLength: 4000 }
+      avatarUrl: { type: [string, 'null'], format: uri, maxLength: 2048 }
+  PersonnelProvisionRequest:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        required: [type, email, initialPassword, staffCode, fullName, departmentId, doctorProfile]
+        properties:
+          type: { const: DOCTOR }
+          email: { type: string, format: email, maxLength: 320 }
+          initialPassword: { type: string, format: password, minLength: 6, maxLength: 128, writeOnly: true }
+          staffCode: { type: string, minLength: 1, maxLength: 64 }
+          fullName: { type: string, minLength: 1, maxLength: 200 }
+          departmentId: { type: string, format: uuid }
+          doctorProfile: { $ref: '#/schemas/DoctorProfessionalProfileInput' }
+      - type: object
+        additionalProperties: false
+        required: [type, email, initialPassword, staffCode, fullName]
+        properties:
+          type: { const: STAFF }
+          email: { type: string, format: email, maxLength: 320 }
+          initialPassword: { type: string, format: password, minLength: 6, maxLength: 128, writeOnly: true }
+          staffCode: { type: string, minLength: 1, maxLength: 64 }
+          fullName: { type: string, minLength: 1, maxLength: 200 }
+  PersonnelUpdateRequest:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        required: [type, staffCode, fullName, departmentId, doctorProfile]
+        properties:
+          type: { const: DOCTOR }
+          staffCode: { type: string, minLength: 1, maxLength: 64 }
+          fullName: { type: string, minLength: 1, maxLength: 200 }
+          departmentId: { type: string, format: uuid }
+          doctorProfile: { $ref: '#/schemas/DoctorProfessionalProfileInput' }
+      - type: object
+        additionalProperties: false
+        required: [type, staffCode, fullName]
+        properties:
+          type: { const: STAFF }
+          staffCode: { type: string, minLength: 1, maxLength: 64 }
+          fullName: { type: string, minLength: 1, maxLength: 200 }
+  DoctorProfessionalProfile:
+    type: object
+    additionalProperties: false
+    required: [version, phone, dateOfBirth, gender, address, professionalTitle, academicDegree, specialtyDesignation, licenseNumber, licensingAuthority, licenseIssuedOn, yearsExperience, createdAt, updatedAt]
+    properties:
+      version: { type: integer, format: int64, minimum: 0 }
+      phone: { type: string, maxLength: 16 }
+      dateOfBirth: { type: string, format: date }
+      gender: { $ref: '#/schemas/PractitionerGender' }
+      address: { type: string, maxLength: 1000 }
+      professionalTitle: { type: string, maxLength: 200 }
+      academicDegree: { type: string, maxLength: 200 }
+      specialtyDesignation: { type: string, maxLength: 200 }
+      licenseNumber: { type: string, maxLength: 128 }
+      licensingAuthority: { type: string, maxLength: 200 }
+      licenseIssuedOn: { type: string, format: date }
+      licenseExpiresOn: { type: [string, 'null'], format: date }
+      yearsExperience: { type: integer, minimum: 0, maximum: 80 }
+      biography: { type: [string, 'null'], maxLength: 4000 }
+      avatarUrl: { type: [string, 'null'], format: uri, maxLength: 2048 }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+  Personnel:
+    type: object
+    additionalProperties: false
+    required: [accountId, accountVersion, type, displayEmail, accountStatus, staffCode, fullName, active, createdAt, updatedAt]
+    properties:
+      accountId: { type: string, format: uuid }
+      accountVersion: { type: integer, format: int64, minimum: 0 }
+      type: { $ref: '#/schemas/PersonnelType' }
+      displayEmail: { type: string, format: email, maxLength: 320 }
+      accountStatus: { $ref: '#/schemas/AccountStatus' }
+      practitionerId: { type: [string, 'null'], format: uuid }
+      practitionerVersion: { type: [integer, 'null'], format: int64, minimum: 0 }
+      staffCode: { type: string, maxLength: 64 }
+      fullName: { type: string, maxLength: 200 }
+      active: { type: boolean }
+      departmentId: { type: [string, 'null'], format: uuid }
+      practitionerRoleId: { type: [string, 'null'], format: uuid }
+      accountRoleAssignmentId: { type: string, format: uuid }
+      doctorProfile: { anyOf: [{ $ref: '#/schemas/DoctorProfessionalProfile' }, { type: 'null' }] }
+      deactivatedAt: { type: [string, 'null'], format: date-time }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+  PersonnelPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/Personnel' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
   BreakGlassGrantRequest:
     type: object
     additionalProperties: false
@@ -138,14 +256,19 @@ schemas:
   Session:
     type: object
     additionalProperties: false
-    required: [accountId, status, authenticatedAt, lastSeenAt, idleExpiresAt, absoluteExpiresAt, permissions]
+    required: [accountId, displayEmail, status, authenticatedAt, lastSeenAt, idleExpiresAt, absoluteExpiresAt, roleCodes, permissions]
     properties:
       accountId: { type: string, format: uuid }
+      displayEmail: { type: string, format: email, maxLength: 320 }
       status: { $ref: '#/schemas/SessionStatus' }
       authenticatedAt: { type: string, format: date-time }
       lastSeenAt: { type: string, format: date-time }
       idleExpiresAt: { type: string, format: date-time }
       absoluteExpiresAt: { type: string, format: date-time }
+      roleCodes:
+        type: array
+        uniqueItems: true
+        items: { type: string, pattern: '^[A-Z][A-Z0-9_]*$', maxLength: 64 }
       permissions:
         type: array
         uniqueItems: true
@@ -305,6 +428,9 @@ schemas:
   AppointmentSlotStatus:
     type: string
     enum: [ACTIVE, CANCELLED, REPLACED]
+  WorkScheduleStatus:
+    type: string
+    enum: [ACTIVE, CANCELLED]
   SlotHoldStatus:
     type: string
     enum: [ACTIVE, CONSUMED, EXPIRED, RELEASED]
@@ -380,6 +506,17 @@ schemas:
   BookingCatalog:
     type: object
     additionalProperties: false
+    required: [departments, services]
+    properties:
+      departments:
+        type: array
+        items: { $ref: '#/schemas/BookingDepartment' }
+      services:
+        type: array
+        items: { $ref: '#/schemas/BookingService' }
+  RescheduleCatalog:
+    type: object
+    additionalProperties: false
     required: [departments, rooms, services, practitioners, practitionerRoles]
     properties:
       departments:
@@ -436,13 +573,130 @@ schemas:
       id: { type: string, format: uuid }
       practitionerId: { type: string, format: uuid }
       roleCode: { $ref: '#/schemas/PractitionerRoleCode' }
+  WorkSchedule:
+    type: object
+    additionalProperties: false
+    required: [id, bookingSessionId, practitionerRoleId, departmentId, roomId, serviceId, localDate, session, capacity, status, version, slotId, reservedCapacity, remainingCapacity, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      bookingSessionId: { type: string, format: uuid }
+      practitionerRoleId: { type: string, format: uuid }
+      departmentId: { type: string, format: uuid }
+      roomId: { type: string, format: uuid }
+      serviceId: { type: string, format: uuid }
+      localDate: { type: string, format: date }
+      session: { $ref: '#/schemas/AppointmentSlotSession' }
+      capacity: { type: integer, minimum: 1, maximum: 100 }
+      status: { $ref: '#/schemas/WorkScheduleStatus' }
+      version: { type: integer, format: int64, minimum: 0 }
+      slotId: { type: string, format: uuid }
+      reservedCapacity: { type: integer, minimum: 0 }
+      remainingCapacity: { type: integer, minimum: 0 }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+  WorkSchedulePage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/WorkSchedule' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+  CreateWorkScheduleRequest:
+    type: object
+    additionalProperties: false
+    required: [practitionerRoleId, departmentId, roomId, serviceId, localDate, session, capacity]
+    properties:
+      practitionerRoleId: { type: string, format: uuid }
+      departmentId: { type: string, format: uuid }
+      roomId: { type: string, format: uuid }
+      serviceId: { type: string, format: uuid }
+      localDate: { type: string, format: date }
+      session: { $ref: '#/schemas/AppointmentSlotSession' }
+      capacity: { type: integer, minimum: 1, maximum: 100 }
+  UpdateWorkScheduleRequest:
+    type: object
+    additionalProperties: false
+    properties:
+      practitionerRoleId: { type: string, format: uuid }
+      departmentId: { type: string, format: uuid }
+      roomId: { type: string, format: uuid }
+      serviceId: { type: string, format: uuid }
+      localDate: { type: string, format: date }
+      session: { $ref: '#/schemas/AppointmentSlotSession' }
+      capacity: { type: integer, minimum: 1, maximum: 100 }
+  WorkScheduleCatalog:
+    type: object
+    additionalProperties: false
+    required: [departments, rooms, services]
+    properties:
+      departments:
+        type: array
+        items: { $ref: '#/schemas/BookingDepartment' }
+      rooms:
+        type: array
+        items: { $ref: '#/schemas/BookingRoom' }
+      services:
+        type: array
+        items: { $ref: '#/schemas/BookingService' }
+  BookingSessionAvailability:
+    type: object
+    additionalProperties: false
+    required: [id, version, departmentId, serviceId, localDate, session, startAt, endAt, totalCapacity, reservedCapacity, remainingCapacity, canCreateHold]
+    properties:
+      id: { type: string, format: uuid, description: Patient-selectable booking session ID; not an appointment slot ID. }
+      version: { type: integer, format: int64, minimum: 0 }
+      departmentId: { type: string, format: uuid }
+      serviceId: { type: string, format: uuid }
+      localDate: { type: string, format: date }
+      session: { $ref: '#/schemas/AppointmentSlotSession' }
+      startAt: { type: string, format: date-time }
+      endAt: { type: string, format: date-time }
+      totalCapacity: { type: integer, minimum: 0 }
+      reservedCapacity: { type: integer, minimum: 0 }
+      remainingCapacity: { type: integer, minimum: 0 }
+      canCreateHold: { type: boolean }
+      disabledReason: { type: [string, 'null'], maxLength: 128 }
+  BookingSessionAvailabilityPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/BookingSessionAvailability' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
   SlotHoldRequest:
     type: object
     additionalProperties: false
-    required: [slotId, patientId]
+    required: [bookingSessionId, patientId]
     properties:
-      slotId: { type: string, format: uuid }
+      bookingSessionId: { type: string, format: uuid }
       patientId: { type: string, format: uuid }
+  BookingHoldAssignment:
+    type: object
+    additionalProperties: false
+    required: [practitionerName, roomName, startAt, endAt, session]
+    properties:
+      practitionerName: { type: string, maxLength: 200 }
+      roomName: { type: string, maxLength: 200 }
+      startAt: { type: string, format: date-time }
+      endAt: { type: string, format: date-time }
+      session: { $ref: '#/schemas/AppointmentSlotSession' }
+  CreatedSlotHold:
+    type: object
+    additionalProperties: false
+    required: [id, version, patientId, expiresAt, depositAmount, currency, status, createdAt, updatedAt, assignment]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      patientId: { type: string, format: uuid }
+      expiresAt: { type: string, format: date-time }
+      depositAmount: { type: number, minimum: 0, multipleOf: 0.01 }
+      currency: { type: string, const: VND }
+      status: { $ref: '#/schemas/SlotHoldStatus' }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+      assignment: { $ref: '#/schemas/BookingHoldAssignment' }
   RescheduleSlotHoldRequest:
     type: object
     additionalProperties: false

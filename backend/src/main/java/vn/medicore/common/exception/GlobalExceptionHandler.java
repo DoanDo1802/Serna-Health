@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.medicore.common.web.RequestContext;
@@ -31,8 +32,8 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Access denied", request);
     }
 
-    @ExceptionHandler(ResourceNotFoundException.class)
-    ResponseEntity<ProblemDetail> notFound(ResourceNotFoundException exception, HttpServletRequest request) {
+    @ExceptionHandler({ResourceNotFoundException.class, NoResourceFoundException.class})
+    ResponseEntity<ProblemDetail> notFound(Exception exception, HttpServletRequest request) {
         return problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "Resource not found", request);
     }
 

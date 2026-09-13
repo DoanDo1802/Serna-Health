@@ -26,6 +26,12 @@ public interface CatalogRepository {
 
     int updateDepartment(DepartmentRow row, long expectedVersion);
 
+    int countRoomsByDepartmentId(UUID departmentId);
+
+    int countPersonnelByDepartmentId(UUID departmentId);
+
+    int deleteDepartment(UUID departmentId, long expectedVersion);
+
     // ---- Room ----
 
     void insertRoom(RoomRow row);
@@ -76,6 +82,28 @@ public interface CatalogRepository {
 
     int updatePractitioner(PractitionerRow row, long expectedVersion);
 
+    Optional<PractitionerView> practitionerByAccountId(UUID accountId);
+
+    Optional<PractitionerView> practitionerByStaffCode(String staffCode);
+
+    List<UUID> listPersonnelAccountIds(String type, Boolean active, int limit, int offset);
+
+    void insertPersonnelMember(PersonnelMemberRow row);
+
+    Optional<PersonnelMemberRow> personnelMemberByAccountId(UUID accountId);
+
+    Optional<PersonnelMemberRow> personnelMemberByStaffCode(String staffCode);
+
+    int updatePersonnelMember(PersonnelMemberRow row, long expectedVersion);
+
+    void insertPractitionerProfile(PractitionerProfileRow row);
+
+    Optional<PractitionerProfileRow> practitionerProfileByPractitionerId(UUID practitionerId);
+
+    int updatePractitionerProfile(PractitionerProfileRow row, long expectedVersion);
+
+    void revokeActivePractitionerRoles(UUID practitionerId, UUID actorId, Instant now, String reason);
+
     // ---- PractitionerRole ----
 
     void insertPractitionerRole(PractitionerRoleRow row);
@@ -83,6 +111,8 @@ public interface CatalogRepository {
     Optional<PractitionerRoleView> practitionerRoleById(UUID id);
 
     Optional<PractitionerRoleView> practitionerRoleByIdForUpdate(UUID id);
+
+    int updatePractitionerRole(PractitionerRoleRow row, long expectedVersion);
 
     List<PractitionerRoleView> listPractitionerRoles(UUID practitionerId, UUID departmentId, String status, int limit, int offset);
 
@@ -141,6 +171,37 @@ public interface CatalogRepository {
             String staffCode,
             String fullName,
             boolean active,
+            long version,
+            Instant createdAt,
+            Instant updatedAt) {
+    }
+
+    record PersonnelMemberRow(
+            UUID accountId,
+            String staffCode,
+            String fullName,
+            boolean active,
+            long version,
+            Instant createdAt,
+            Instant updatedAt) {
+    }
+
+    record PractitionerProfileRow(
+            UUID practitionerId,
+            String phone,
+            java.time.LocalDate dateOfBirth,
+            String gender,
+            String address,
+            String professionalTitle,
+            String academicDegree,
+            String specialtyDesignation,
+            String licenseNumber,
+            String licensingAuthority,
+            java.time.LocalDate licenseIssuedOn,
+            java.time.LocalDate licenseExpiresOn,
+            int yearsExperience,
+            String biography,
+            String avatarUrl,
             long version,
             Instant createdAt,
             Instant updatedAt) {

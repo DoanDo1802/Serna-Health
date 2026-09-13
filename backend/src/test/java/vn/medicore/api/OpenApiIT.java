@@ -32,7 +32,7 @@ import vn.medicore.MediCoreApplication;
 @ActiveProfiles("test")
 class OpenApiIT {
 
-    private static final int EXPECTED_OPERATION_COUNT = 159; // Booking availability and cancel appointment added.
+    private static final int EXPECTED_OPERATION_COUNT = 174; // V24 work-schedule, aggregate booking, reschedule-catalog, activateDepartment, and deleteDepartment operations added.
 
     @Container
     @ServiceConnection
@@ -81,6 +81,7 @@ class OpenApiIT {
                         "registerAccount",
                         "createPatient",
                         "createSlotHold",
+                        "getRescheduleCatalog",
                         "receivePaymentWebhook",
                         "checkInAppointment",
                         "finalizeClinicalNoteVersion",
@@ -96,10 +97,12 @@ class OpenApiIT {
                         "createRescheduleSlotHold",
                         "createRescheduleTopUp",
                         "getBookingAvailability",
-                        "cancelAppointment");
+                        "cancelAppointment",
+                        "activateDepartment",
+                        "deleteDepartment");
         assertThat(paths.path("/booking/availability").path("get")
                 .at("/responses/200/content/application~1json/schema/$ref").asText())
-                .endsWith("/BookingAvailabilityPage");
+                .endsWith("/BookingSessionAvailabilityPage");
         assertThat(paths.path("/appointments/{appointmentId}/actions/cancel").path("post")
                 .at("/responses/200/content/application~1json/schema/$ref").asText())
                 .endsWith("/PatientAppointment");
@@ -113,7 +116,8 @@ class OpenApiIT {
                 .at("/responses/200/content/application~1json/schema/$ref").asText())
                 .endsWith("/AppointmentSlotPage");
         assertThat(paths.path("/appointment-slots/{slotId}").path("get").path("security").isArray()).isTrue();
-        assertThat(paths.path("/appointment-slots/{slotId}").path("get").path("security")).isEmpty();
+        assertThat(paths.path("/appointment-slots/{slotId}").path("get").path("security").toString())
+                .contains("sessionCookie");
         assertThat(paths.path("/slot-holds").path("post")
                 .at("/requestBody/content/application~1json/schema/$ref").asText())
                 .endsWith("/SlotHoldRequest");
@@ -151,7 +155,7 @@ class OpenApiIT {
         assertThat(document.at("/components/schemas/AppointmentSlotPage/properties/items/items/$ref").asText())
                 .endsWith("/AppointmentSlot");
         assertThat(document.at("/components/schemas/SlotHoldRequest/required")).extracting(JsonNode::asText)
-                .containsExactly("slotId", "patientId");
+                .containsExactly("bookingSessionId", "patientId");
         assertThat(document.at("/components/schemas/AppointmentSlotSession/enum")).extracting(JsonNode::asText)
                 .containsExactly("MORNING", "AFTERNOON");
         assertThat(document.at("/components/schemas/AppointmentSlotStatus/enum")).extracting(JsonNode::asText)

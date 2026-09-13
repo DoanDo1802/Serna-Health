@@ -27,7 +27,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.filter.OncePerRequestFilter;
 import vn.medicore.common.exception.ProblemResponseWriter;
 import vn.medicore.common.web.RequestContext;
-import vn.medicore.config.AuthProperties;
 import vn.medicore.service.impl.IdempotencyServiceImpl;
 import vn.medicore.service.impl.IdempotencyServiceImpl.IdempotencyConflictException;
 import vn.medicore.service.impl.IdempotencyServiceImpl.Reservation;
@@ -40,11 +39,13 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             "POST /api/v1/auth/registrations", "POST /api/v1/auth/email-verifications",
             "DELETE /api/v1/auth/sessions", "POST /api/v1/auth/password-resets",
             "POST /api/v1/admin/accounts/{id}/actions/change-status", "POST /api/v1/admin/roles",
-            "POST /api/v1/admin/accounts/{id}/role-assignments", "POST /api/v1/patients/{id}/break-glass-grants",
+            "POST /api/v1/admin/accounts/{id}/role-assignments", "POST /api/v1/admin/personnel",
+            "POST /api/v1/admin/personnel/{id}/actions/deactivate", "POST /api/v1/patients/{id}/break-glass-grants",
             "POST /api/v1/departments", "POST /api/v1/rooms", "POST /api/v1/services",
             "POST /api/v1/services/{id}/prices", "POST /api/v1/practitioners", "POST /api/v1/practitioners/{id}/roles",
             "POST /api/v1/patients", "POST /api/v1/patients/self", "POST /api/v1/patients/{id}/identifiers", "POST /api/v1/patients/{id}/account-links",
             "POST /api/v1/appointment-slots", "POST /api/v1/appointment-slots/{id}/actions/cancel",
+            "POST /api/v1/admin/work-schedules", "POST /api/v1/admin/work-schedules/{id}/actions/cancel",
             "POST /api/v1/slot-holds", "DELETE /api/v1/slot-holds/{id}",
             "POST /api/v1/slot-holds/{id}/payment-intents", "POST /api/v1/mock-payment-intents/{id}/actions/simulate",
             "POST /api/v1/appointments/{id}/actions/reschedule-slot-holds",
@@ -53,17 +54,17 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             "POST /api/v1/appointments/{id}/actions/cancel");
 
     private final IdempotencyServiceImpl idempotency;
-    private final AuthProperties properties;
+    private final TabSessionContextResolver contexts;
     private final ProblemResponseWriter problems;
     private final TransactionTemplate transactions;
 
     public IdempotencyFilter(
             IdempotencyServiceImpl idempotency,
-            AuthProperties properties,
+            TabSessionContextResolver contexts,
             ProblemResponseWriter problems,
             TransactionTemplate transactions) {
         this.idempotency = idempotency;
-        this.properties = properties;
+        this.contexts = contexts;
         this.problems = problems;
         this.transactions = transactions;
     }
@@ -198,7 +199,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     }
 
     private String principalScope(HttpServletRequest request) {
-        String session = cookie(request, properties.session().cookieName());
+        String session = contexts.resolve(request).map(TabSessionContextResolver.SessionContext::sessionToken).orElse(null);
         String value = session == null ? "ip:" + request.getRemoteAddr() : "session:" + session;
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -208,11 +209,6 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         }
     }
 
-    private static String cookie(HttpServletRequest request, String name) {
-        if (request.getCookies() == null) return null;
-        for (var cookie : request.getCookies()) if (name.equals(cookie.getName())) return cookie.getValue();
-        return null;
-    }
 
     private static void restoreTraceContext(HttpServletRequest request, Reservation reservation) {
         Map<String, List<String>> headers = reservation.responseHeaders();

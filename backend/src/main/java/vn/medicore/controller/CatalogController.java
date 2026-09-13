@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -86,6 +87,22 @@ public class CatalogController {
             @AuthenticationPrincipal AuthenticatedAccount principal, @RequestHeader("If-Match") String ifMatch) {
         DepartmentView view = catalog.deactivateDepartment(id, version(ifMatch), auditContext(request, principal));
         return versioned(view, view.version());
+    }
+
+    @PostMapping("/departments/{id}/actions/activate")
+    @PreAuthorize("hasAuthority('department.update')")
+    ResponseEntity<DepartmentView> activateDepartment(HttpServletRequest request, @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedAccount principal, @RequestHeader("If-Match") String ifMatch) {
+        DepartmentView view = catalog.activateDepartment(id, version(ifMatch), auditContext(request, principal));
+        return versioned(view, view.version());
+    }
+
+    @DeleteMapping("/departments/{id}")
+    @PreAuthorize("hasAuthority('department.update')")
+    ResponseEntity<Void> deleteDepartment(HttpServletRequest request, @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedAccount principal, @RequestHeader("If-Match") String ifMatch) {
+        catalog.deleteDepartment(id, version(ifMatch), auditContext(request, principal));
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/rooms")

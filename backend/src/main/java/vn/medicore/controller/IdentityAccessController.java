@@ -17,7 +17,6 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -48,10 +47,15 @@ public class IdentityAccessController {
 
     private final IdentityAccessService identityAccess;
     private final AuthProperties properties;
+    private final TabSessionContextResolver contexts;
 
-    public IdentityAccessController(IdentityAccessService identityAccess, AuthProperties properties) {
+    public IdentityAccessController(
+            IdentityAccessService identityAccess,
+            AuthProperties properties,
+            TabSessionContextResolver contexts) {
         this.identityAccess = identityAccess;
         this.properties = properties;
+        this.contexts = contexts;
     }
 
     @PostMapping("/auth/registrations")
@@ -81,9 +85,11 @@ public class IdentityAccessController {
     ResponseEntity<SessionView> loginWithPassword(
             HttpServletRequest request,
             @Valid @RequestBody PasswordLoginRequest body) {
+        TabSessionContextResolver.SessionContext context = contexts.require(request);
         SessionIssue issue = identityAccess.loginWithPassword(
-                body.email(), body.password(), RequestContext.requestId(request), request.getRemoteAddr(), request.getHeader("User-Agent"));
-        return sessionResponse(issue);
+                body.email(), body.password(), context.value(), RequestContext.requestId(request), request.getRemoteAddr(),
+                request.getHeader("User-Agent"));
+        return sessionResponse(issue, context.value());
     }
 
     @PostMapping("/auth/otp-challenges")
@@ -99,31 +105,36 @@ public class IdentityAccessController {
     ResponseEntity<SessionView> loginWithOtp(
             HttpServletRequest request,
             @Valid @RequestBody OtpLoginRequest body) {
+        TabSessionContextResolver.SessionContext context = contexts.require(request);
         SessionIssue issue = identityAccess.loginWithOtp(
-                body.email(), body.code(), RequestContext.requestId(request), request.getRemoteAddr(), request.getHeader("User-Agent"));
-        return sessionResponse(issue);
+                body.email(), body.code(), context.value(), RequestContext.requestId(request), request.getRemoteAddr(),
+                request.getHeader("User-Agent"));
+        return sessionResponse(issue, context.value());
     }
 
     @GetMapping("/auth/session")
-    ResponseEntity<SessionView> currentSession(@CookieValue(name = "${medicore.auth.session.cookie-name:MEDICORE_SESSION}", required = false) String sessionToken) {
-        return identityAccess.currentSession(sessionToken).map(ResponseEntity::ok)
+    ResponseEntity<SessionView> currentSession(HttpServletRequest request) {
+        return contexts.resolve(request)
+                .flatMap(context -> identityAccess.currentSession(context.sessionToken(), context.value()))
+                .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.status(401).build());
     }
 
     @DeleteMapping("/auth/session")
-    ResponseEntity<Void> logoutCurrent(
-            HttpServletRequest request,
-            @CookieValue(name = "${medicore.auth.session.cookie-name:MEDICORE_SESSION}", required = false) String sessionToken) {
-        identityAccess.logoutCurrent(sessionToken, "USER_LOGOUT", RequestContext.requestId(request), RequestContext.correlationId(request));
-        return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, expiredCookie().toString()).build();
+    ResponseEntity<Void> logoutCurrent(HttpServletRequest request) {
+        TabSessionContextResolver.SessionContext context = contexts.require(request);
+        identityAccess.logoutCurrent(context.sessionToken(), context.value(), "USER_LOGOUT",
+                RequestContext.requestId(request), RequestContext.correlationId(request));
+        return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, expiredCookie(context.value()).toString()).build();
     }
 
     @DeleteMapping("/auth/sessions")
     ResponseEntity<Void> logoutAll(
             HttpServletRequest request,
             @AuthenticationPrincipal AuthenticatedAccount principal) {
+        TabSessionContextResolver.SessionContext context = contexts.require(request);
         identityAccess.logoutAll(principal.accountId(), "USER_REVOKED_ALL", auditContext(request, principal));
-        return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, expiredCookie().toString()).build();
+        return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, expiredCookie(context.value()).toString()).build();
     }
 
     @PostMapping("/auth/password-recovery-challenges")
@@ -269,8 +280,8 @@ public class IdentityAccessController {
                 RequestContext.correlationId(request));
     }
 
-    private ResponseEntity<SessionView> sessionResponse(SessionIssue issue) {
-        ResponseCookie cookie = ResponseCookie.from(properties.session().cookieName(), issue.sessionToken())
+    private ResponseEntity<SessionView> sessionResponse(SessionIssue issue, String tabContext) {
+        ResponseCookie cookie = ResponseCookie.from(contexts.cookieName(tabContext), issue.sessionToken())
                 .httpOnly(true)
                 .secure(properties.session().secureCookie())
                 .path("/")
@@ -283,8 +294,8 @@ public class IdentityAccessController {
                 .body(issue.session());
     }
 
-    private ResponseCookie expiredCookie() {
-        return ResponseCookie.from(properties.session().cookieName(), "")
+    private ResponseCookie expiredCookie(String tabContext) {
+        return ResponseCookie.from(contexts.cookieName(tabContext), "")
                 .httpOnly(true)
                 .secure(properties.session().secureCookie())
                 .path("/")

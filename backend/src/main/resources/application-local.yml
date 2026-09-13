@@ -27,6 +27,7 @@ medicore:
       max-issues-per-hour: 10000
     secret-hash-key: ${MEDICORE_AUTH_SECRET_HASH_KEY}
     session:
+      cookie-name-prefix: MEDICORE_SESSION_
       secure-cookie: false
   payment:
     mock-enabled: true

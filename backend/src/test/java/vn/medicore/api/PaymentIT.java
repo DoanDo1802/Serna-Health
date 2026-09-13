@@ -41,6 +41,8 @@ import vn.medicore.service.PaymentProviderAdapter;
 @ActiveProfiles("test")
 class PaymentIT {
 
+    private static final String TAB_CONTEXT = "TabContextHashValue001";
+
     private static final UUID CATALOG_ADMIN_ROLE_ID = UUID.fromString("01980000-0000-7000-8000-000000000004");
     private static final UUID PATIENT_ROLE_ID = UUID.fromString("01980000-0000-7000-8000-000000000005");
 
@@ -127,7 +129,7 @@ class PaymentIT {
 
         // 2. Create payment intent
         MvcResult intentResult = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -143,7 +145,7 @@ class PaymentIT {
 
         // 3. Simulate mock payment outcome via simulation endpoint
         mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", intentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "sim-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -170,7 +172,7 @@ class PaymentIT {
 
         // 5. Query payment-intent API
         mockMvc.perform(get("/api/v1/payment-intents/{intentId}", intentId)
-                        .cookie(patientSession.cookie()))
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCEEDED"));
     }
@@ -183,7 +185,7 @@ class PaymentIT {
         UUID intentId = createPaymentIntent(patientSession, holdId);
 
         mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", intentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "sim-failed-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -206,7 +208,7 @@ class PaymentIT {
         UUID intentId = createPaymentIntent(patientSession, holdId);
 
         mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", intentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("Idempotency-Key", "sim-no-csrf-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"outcome\":\"SUCCEEDED\"}"))
@@ -215,7 +217,7 @@ class PaymentIT {
         AuthSession unprivilegedSession = session(Set.of());
         linkPatientToAccount(patientId, unprivilegedSession.accountId());
         mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", intentId)
-                        .cookie(unprivilegedSession.cookie())
+                        .cookie(unprivilegedSession.cookie()).header("X-MediCore-Tab-Context", unprivilegedSession.context())
                         .header("X-CSRF-Token", unprivilegedSession.csrfToken())
                         .header("Idempotency-Key", "sim-no-permission-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -236,7 +238,7 @@ class PaymentIT {
 
         for (int attempt = 0; attempt < 2; attempt++) {
             mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", intentId)
-                            .cookie(patientSession.cookie())
+                            .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                             .header("X-CSRF-Token", patientSession.csrfToken())
                             .header("Idempotency-Key", idempotencyKey)
                             .contentType(MediaType.APPLICATION_JSON)
@@ -260,7 +262,7 @@ class PaymentIT {
         UUID holdId = createSlotHold(patientSession, freeSlotId, patientId);
 
         MvcResult intentResult = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "intent-zero-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -287,7 +289,7 @@ class PaymentIT {
         UUID holdId = createSlotHold(patientSession, slotId, patientId);
 
         MvcResult intentResult = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -341,7 +343,7 @@ class PaymentIT {
         UUID holdId = createSlotHold(patientSession, slotId, patientId);
 
         MvcResult intentResult = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -414,7 +416,7 @@ class PaymentIT {
         UUID holdId = createSlotHold(patientSession, slotId, patientId);
 
         MvcResult intentResult = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -461,7 +463,7 @@ class PaymentIT {
         UUID holdId = createSlotHold(patientSession, slotId, patientId);
 
         MvcResult intentResult = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -522,7 +524,7 @@ class PaymentIT {
         UUID holdId = createSlotHold(patientSession, slotId, patientId);
 
         MvcResult intentResult = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -572,7 +574,7 @@ class PaymentIT {
         UUID holdId = createSlotHold(patientSession, slotId, patientId);
 
         MvcResult intentResult = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -622,14 +624,14 @@ class PaymentIT {
 
         // Other session cannot create payment intent on owner's hold
         mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(otherSession.cookie())
+                        .cookie(otherSession.cookie()).header("X-MediCore-Tab-Context", otherSession.context())
                         .header("X-CSRF-Token", otherSession.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isForbidden());
 
         // Owner can create intent
         MvcResult intentResult = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(ownerSession.cookie())
+                        .cookie(ownerSession.cookie()).header("X-MediCore-Tab-Context", ownerSession.context())
                         .header("X-CSRF-Token", ownerSession.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -639,19 +641,19 @@ class PaymentIT {
 
         // Other session cannot read owner's intent
         mockMvc.perform(get("/api/v1/payment-intents/{intentId}", intentId)
-                        .cookie(otherSession.cookie()))
+                        .cookie(otherSession.cookie()).header("X-MediCore-Tab-Context", otherSession.context()))
                 .andExpect(status().isForbidden());
 
         // Owner can read intent
         mockMvc.perform(get("/api/v1/payment-intents/{intentId}", intentId)
-                        .cookie(ownerSession.cookie()))
+                        .cookie(ownerSession.cookie()).header("X-MediCore-Tab-Context", ownerSession.context()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(intentId.toString()));
     }
 
     private UUID createPaymentIntent(AuthSession session, UUID holdId) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(session.cookie())
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -659,21 +661,33 @@ class PaymentIT {
         return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString()).path("id").asText());
     }
 
-    private UUID createSlotHold(AuthSession session, UUID targetSlotId, UUID patientId) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/v1/slot-holds")
-                        .cookie(session.cookie())
-                        .header("X-CSRF-Token", session.csrfToken())
-                        .header("Idempotency-Key", "hold-" + UUID.randomUUID())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slotId\":\"%s\",\"patientId\":\"%s\"}".formatted(targetSlotId, patientId)))
-                .andExpect(status().isOk())
-                .andReturn();
-        return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString()).path("id").asText());
+    private UUID createSlotHold(AuthSession session, UUID targetSlotId, UUID patientId) {
+        UUID holdId = UUID.randomUUID();
+        BigDecimal depositAmount = jdbc().queryForObject("""
+                select least(price.amount, 100000.00)
+                from appointment_slot slot
+                join lateral (
+                    select amount
+                    from service_price
+                    where service_id = slot.service_id
+                      and currency = 'VND'
+                      and effective_from <= now()
+                      and (effective_to is null or effective_to > now())
+                    order by effective_from desc, id desc
+                    limit 1
+                ) price on true
+                where slot.id = ?
+                """, BigDecimal.class, targetSlotId);
+        jdbc().update("""
+                insert into slot_hold (id, slot_id, patient_id, expires_at, deposit_amount, currency, status, version, created_at, updated_at)
+                values (?, ?, ?, now() + interval '5 minutes', ?, 'VND', 'ACTIVE', 0, now(), now())
+                """, holdId, targetSlotId, patientId, depositAmount);
+        return holdId;
     }
 
     private UUID createResource(AuthSession session, String method, String path, String body) throws Exception {
         MvcResult result = mockMvc.perform(post(path)
-                        .cookie(session.cookie())
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "fixture-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -726,17 +740,18 @@ class PaymentIT {
                     """, UUID.randomUUID(), accountId, roleId, accountId);
         }
         jdbc.update("""
-                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, status,
+                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, tab_context_hash, status,
                     authenticated_at, last_seen_at, absolute_expires_at, version)
-                values (?, ?, ?, ?, 'ACTIVE', now(), now(), now() + interval '1 hour', 0)
+                values (?, ?, ?, ?, ?, 'ACTIVE', now(), now(), now() + interval '1 hour', 0)
                 """, sessionId, accountId,
-                secretHasher.hash("SESSION", rawSession), secretHasher.hash("CSRF", csrfToken));
-        return new AuthSession(accountId, sessionId, new MockCookie("MEDICORE_SESSION", rawSession), csrfToken);
+                secretHasher.hash("SESSION", rawSession), secretHasher.hash("CSRF", csrfToken),
+                secretHasher.hash("SESSION_CONTEXT", TAB_CONTEXT));
+        return new AuthSession(accountId, sessionId, new MockCookie("MEDICORE_SESSION_" + TAB_CONTEXT, rawSession), csrfToken, TAB_CONTEXT);
     }
 
     private JdbcTemplate jdbc() {
         return new JdbcTemplate(dataSource);
     }
 
-    private record AuthSession(UUID accountId, UUID sessionId, MockCookie cookie, String csrfToken) {}
+    private record AuthSession(UUID accountId, UUID sessionId, MockCookie cookie, String csrfToken, String context) {}
 }

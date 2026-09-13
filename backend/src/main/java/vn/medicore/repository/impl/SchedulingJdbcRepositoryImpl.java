@@ -6,6 +6,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,11 +18,17 @@ import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
 import vn.medicore.dto.SchedulingModels.BookingAvailabilityProjection;
 import vn.medicore.dto.SchedulingModels.BookingCatalog;
+import vn.medicore.dto.SchedulingModels.RescheduleCatalog;
+import vn.medicore.dto.SchedulingModels.BookingSessionAvailabilityProjection;
+import vn.medicore.dto.SchedulingModels.BookingSessionRow;
 import vn.medicore.dto.SchedulingModels.BookingDepartment;
 import vn.medicore.dto.SchedulingModels.BookingPractitioner;
 import vn.medicore.dto.SchedulingModels.BookingPractitionerRole;
 import vn.medicore.dto.SchedulingModels.BookingRoom;
 import vn.medicore.dto.SchedulingModels.BookingService;
+import vn.medicore.dto.SchedulingModels.WorkScheduleCandidate;
+import vn.medicore.dto.SchedulingModels.WorkScheduleCatalog;
+import vn.medicore.dto.SchedulingModels.WorkScheduleRow;
 import vn.medicore.dto.SchedulingModels.SlotHoldJdbcRow;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
 import vn.medicore.repository.SchedulingRepository;
@@ -48,8 +55,19 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
     @Override
     public void updateAppointmentSlot(AppointmentSlotRow row, long expectedVersion) {
         int rows = jdbc.update("""
-                update appointment_slot set capacity = :capacity, status = :status, version = :version,
-                    updated_at = :updatedAt where id = :id and version = :expectedVersion
+                update appointment_slot set
+                    practitioner_role_id = :practitionerRoleId,
+                    department_id = :departmentId,
+                    room_id = :roomId,
+                    service_id = :serviceId,
+                    session = :session,
+                    start_at = :startAt,
+                    end_at = :endAt,
+                    capacity = :capacity,
+                    status = :status,
+                    version = :version,
+                    updated_at = :updatedAt
+                where id = :id and version = :expectedVersion
                 """, slotParams(row).addValue("expectedVersion", expectedVersion));
         if (rows == 0) throw new StaleVersionException();
     }
@@ -167,6 +185,34 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                   and d.effective_from <= :now and (d.effective_to is null or d.effective_to > :now)
                 order by d.name, d.id
                 """, params, (rs, row) -> new BookingDepartment(rs.getObject("id", UUID.class), rs.getString("name")));
+        List<BookingService> services = jdbc.query("""
+                select distinct s.id, s.name, price.amount, price.currency
+                from appointment_slot slot
+                join service s on s.id = slot.service_id
+                join lateral (
+                    select amount, currency from service_price
+                    where service_id = s.id and effective_from <= :now
+                      and (effective_to is null or effective_to > :now)
+                    order by effective_from desc, id desc limit 1
+                ) price on true
+                where slot.status = 'ACTIVE' and slot.start_at > :now and s.active
+                order by s.name, s.id
+                """, params, (rs, row) -> new BookingService(rs.getObject("id", UUID.class), rs.getString("name"),
+                rs.getBigDecimal("amount"), rs.getString("currency")));
+        return new BookingCatalog(departments, services);
+    }
+
+    @Override
+    public RescheduleCatalog rescheduleCatalog(Instant now) {
+        MapSqlParameterSource params = new MapSqlParameterSource("now", ts(now));
+        List<BookingDepartment> departments = jdbc.query("""
+                select distinct d.id, d.name
+                from appointment_slot slot
+                join department d on d.id = slot.department_id
+                where slot.status = 'ACTIVE' and slot.start_at > :now and d.active
+                  and d.effective_from <= :now and (d.effective_to is null or d.effective_to > :now)
+                order by d.name, d.id
+                """, params, (rs, row) -> new BookingDepartment(rs.getObject("id", UUID.class), rs.getString("name")));
         List<BookingRoom> rooms = jdbc.query("""
                 select distinct r.id, r.department_id, r.name
                 from appointment_slot slot
@@ -210,13 +256,298 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 order by role.id
                 """, params, (rs, row) -> new BookingPractitionerRole(rs.getObject("id", UUID.class),
                 rs.getObject("practitioner_id", UUID.class), rs.getString("role_code")));
-        return new BookingCatalog(departments, rooms, services, practitioners, practitionerRoles);
+        return new RescheduleCatalog(departments, rooms, services, practitioners, practitionerRoles);
+    }
+
+    @Override
+    public WorkScheduleCatalog workScheduleCatalog(Instant now) {
+        MapSqlParameterSource params = new MapSqlParameterSource("now", ts(now));
+        List<BookingDepartment> departments = jdbc.query("""
+                select d.id, d.name
+                from department d
+                where d.active and d.effective_from <= :now and (d.effective_to is null or d.effective_to > :now)
+                order by d.name, d.id
+                """, params, (rs, row) -> new BookingDepartment(rs.getObject("id", UUID.class), rs.getString("name")));
+        List<BookingRoom> rooms = jdbc.query("""
+                select r.id, r.department_id, r.name
+                from room r
+                join department d on d.id = r.department_id
+                where r.active and d.active and d.effective_from <= :now
+                  and (d.effective_to is null or d.effective_to > :now)
+                order by r.name, r.id
+                """, params, (rs, row) -> new BookingRoom(rs.getObject("id", UUID.class),
+                rs.getObject("department_id", UUID.class), rs.getString("name")));
+        List<BookingService> services = jdbc.query("""
+                select s.id, s.name, price.amount, price.currency
+                from service s
+                join lateral (
+                    select amount, currency from service_price
+                    where service_id = s.id and effective_from <= :now
+                      and (effective_to is null or effective_to > :now)
+                    order by effective_from desc, id desc limit 1
+                ) price on true
+                where s.active
+                order by s.name, s.id
+                """, params, (rs, row) -> new BookingService(rs.getObject("id", UUID.class), rs.getString("name"),
+                rs.getBigDecimal("amount"), rs.getString("currency")));
+        return new WorkScheduleCatalog(departments, rooms, services);
+    }
+
+    @Override
+    public boolean isWorkScheduleConfigurationAvailable(
+            UUID practitionerRoleId,
+            UUID departmentId,
+            UUID roomId,
+            UUID serviceId,
+            Instant now) {
+        return count("""
+                select count(*)
+                from practitioner_role role
+                join practitioner practitioner on practitioner.id = role.practitioner_id
+                join department department on department.id = :departmentId
+                join room room on room.id = :roomId and room.department_id = department.id
+                join service service on service.id = :serviceId
+                where role.id = :practitionerRoleId
+                  and role.department_id = department.id
+                  and role.status = 'ACTIVE'
+                  and role.effective_from <= :now
+                  and (role.effective_to is null or role.effective_to > :now)
+                  and practitioner.active
+                  and department.active
+                  and department.effective_from <= :now
+                  and (department.effective_to is null or department.effective_to > :now)
+                  and room.active
+                  and service.active
+                  and exists (
+                      select 1 from service_price price
+                      where price.service_id = service.id
+                        and price.currency = 'VND'
+                        and price.effective_from <= :now
+                        and (price.effective_to is null or price.effective_to > :now)
+                  )
+                """, new MapSqlParameterSource()
+                .addValue("practitionerRoleId", practitionerRoleId)
+                .addValue("departmentId", departmentId)
+                .addValue("roomId", roomId)
+                .addValue("serviceId", serviceId)
+                .addValue("now", ts(now))) == 1;
+    }
+
+    @Override
+    public Optional<BookingSessionRow> activeBookingSessionByBucketForUpdate(
+            UUID departmentId, UUID serviceId, LocalDate localDate, String session) {
+        return queryOne("""
+                select * from booking_session
+                where department_id = :departmentId and service_id = :serviceId and local_date = :localDate
+                  and session = :session and status = 'ACTIVE'
+                for update
+                """, new MapSqlParameterSource()
+                .addValue("departmentId", departmentId)
+                .addValue("serviceId", serviceId)
+                .addValue("localDate", localDate)
+                .addValue("session", session), this::mapBookingSession);
+    }
+
+    @Override
+    public void insertBookingSession(BookingSessionRow row) {
+        jdbc.update("""
+                insert into booking_session(id, department_id, service_id, local_date, session, start_at, end_at,
+                    status, version, created_at, updated_at)
+                values (:id, :departmentId, :serviceId, :localDate, :session, :startAt, :endAt,
+                    :status, :version, :createdAt, :updatedAt)
+                """, bookingSessionParams(row));
+    }
+
+    @Override
+    public Optional<BookingSessionRow> bookingSessionById(UUID id) {
+        return queryOne("select * from booking_session where id = :id", new MapSqlParameterSource("id", id), this::mapBookingSession);
+    }
+
+    @Override
+    public Optional<BookingSessionRow> activeBookingSessionByIdForUpdate(UUID id) {
+        return queryOne("select * from booking_session where id = :id and status = 'ACTIVE' for update",
+                new MapSqlParameterSource("id", id), this::mapBookingSession);
+    }
+
+    @Override
+    public void insertWorkSchedule(WorkScheduleRow row) {
+        jdbc.update("""
+                insert into work_schedule(id, booking_session_id, practitioner_role_id, room_id, capacity,
+                    status, version, created_at, updated_at)
+                values (:id, :bookingSessionId, :practitionerRoleId, :roomId, :capacity,
+                    :status, :version, :createdAt, :updatedAt)
+                """, workScheduleParams(row));
+    }
+
+    @Override
+    public void linkAppointmentSlotToWorkSchedule(UUID slotId, UUID workScheduleId) {
+        int rows = jdbc.update("update appointment_slot set work_schedule_id = :workScheduleId where id = :slotId",
+                new MapSqlParameterSource("slotId", slotId).addValue("workScheduleId", workScheduleId));
+        if (rows != 1) throw new IllegalStateException("Work schedule slot cannot be linked");
+    }
+
+    @Override
+    public void updateWorkSchedule(WorkScheduleRow row, long expectedVersion) {
+        int rows = jdbc.update("""
+                update work_schedule set
+                    booking_session_id = :bookingSessionId,
+                    practitioner_role_id = :practitionerRoleId,
+                    room_id = :roomId,
+                    capacity = :capacity,
+                    status = :status,
+                    version = :version,
+                    updated_at = :updatedAt
+                where id = :id and version = :expectedVersion
+                """, workScheduleParams(row).addValue("expectedVersion", expectedVersion));
+        if (rows == 0) throw new StaleVersionException();
+    }
+
+    @Override
+    public Optional<WorkScheduleRow> workScheduleById(UUID id, Instant now) {
+        return queryOne(workScheduleProjection() + " where ws.id = :id",
+                new MapSqlParameterSource("id", id).addValue("now", ts(now)), this::mapWorkSchedule);
+    }
+
+    @Override
+    public Optional<WorkScheduleRow> workScheduleByIdForUpdate(UUID id, Instant now) {
+        return queryOne(workScheduleProjection() + " where ws.id = :id for update",
+                new MapSqlParameterSource("id", id).addValue("now", ts(now)), this::mapWorkSchedule);
+    }
+
+    @Override
+    public List<WorkScheduleRow> searchWorkSchedules(LocalDate fromDate, LocalDate toDate, int limit, int offset, Instant now) {
+        return jdbc.query(workScheduleProjection() + """
+                where (:fromDate is null or bs.local_date >= :fromDate)
+                  and (:toDate is null or bs.local_date <= :toDate)
+                order by bs.local_date asc, bs.session asc, ws.id asc
+                limit :limit offset :offset
+                """, new MapSqlParameterSource()
+                .addValue("fromDate", fromDate)
+                .addValue("toDate", toDate)
+                .addValue("now", ts(now))
+                .addValue("limit", limit)
+                .addValue("offset", offset), this::mapWorkSchedule);
+    }
+
+    @Override
+    public List<BookingSessionAvailabilityProjection> searchBookingSessionAvailability(
+            UUID patientId, UUID departmentId, UUID serviceId, LocalDate localDate, String session,
+            Instant now, int limit, int offset) {
+        return jdbc.query("""
+                select bs.id, bs.version, bs.department_id, bs.service_id, bs.local_date, bs.session, bs.start_at, bs.end_at,
+                    coalesce(sum(case when ws.status = 'ACTIVE' and slot.status = 'ACTIVE'
+                          and practitioner.active and role.status = 'ACTIVE'
+                          and role.effective_from <= :now and (role.effective_to is null or role.effective_to > :now)
+                          and department.active and department.effective_from <= :now
+                          and (department.effective_to is null or department.effective_to > :now)
+                          and room.active and service.active and price.service_id is not null
+                        then slot.capacity else 0 end), 0)::integer as total_capacity,
+                    coalesce(sum(case when ws.status = 'ACTIVE' and slot.status = 'ACTIVE'
+                          and practitioner.active and role.status = 'ACTIVE'
+                          and role.effective_from <= :now and (role.effective_to is null or role.effective_to > :now)
+                          and department.active and department.effective_from <= :now
+                          and (department.effective_to is null or department.effective_to > :now)
+                          and room.active and service.active and price.service_id is not null
+                        then (select count(*) from slot_hold h where h.slot_id = slot.id and h.status = 'ACTIVE' and h.expires_at > :now)
+                           + (select count(*) from appointment a where a.slot_id = slot.id and a.status in ('CONFIRMED', 'FULFILLED'))
+                        else 0 end), 0)::integer as reserved_capacity,
+                    case
+                      when bs.start_at <= :now then 'SLOT_PAST'
+                      when exists (
+                        select 1 from slot_hold h join appointment_slot s on s.id = h.slot_id
+                        where h.patient_id = :patientId and h.status = 'ACTIVE' and h.expires_at > :now
+                          and s.start_at < bs.end_at and s.end_at > bs.start_at
+                      ) then 'PATIENT_TIME_CONFLICT'
+                      when exists (
+                        select 1 from appointment a join appointment_slot s on s.id = a.slot_id
+                        where a.patient_id = :patientId and a.status in ('CONFIRMED', 'FULFILLED')
+                          and s.start_at < bs.end_at and s.end_at > bs.start_at
+                      ) then 'PATIENT_TIME_CONFLICT'
+                      else null
+                    end as disabled_reason
+                from booking_session bs
+                left join work_schedule ws on ws.booking_session_id = bs.id
+                left join appointment_slot slot on slot.work_schedule_id = ws.id
+                left join practitioner_role role on role.id = ws.practitioner_role_id
+                left join practitioner practitioner on practitioner.id = role.practitioner_id
+                left join room room on room.id = ws.room_id and room.department_id = bs.department_id
+                left join department department on department.id = bs.department_id
+                left join service service on service.id = bs.service_id
+                left join lateral (
+                    select service_id from service_price
+                    where service_id = bs.service_id and currency = 'VND' and effective_from <= :now
+                      and (effective_to is null or effective_to > :now)
+                    order by effective_from desc, id desc limit 1
+                ) price on true
+                where bs.status = 'ACTIVE'
+                  and (cast(:departmentId as uuid) is null or bs.department_id = cast(:departmentId as uuid))
+                  and (cast(:serviceId as uuid) is null or bs.service_id = cast(:serviceId as uuid))
+                  and (cast(:localDate as date) is null or bs.local_date = cast(:localDate as date))
+                  and (cast(:session as text) is null or bs.session = cast(:session as text))
+                group by bs.id
+                order by bs.start_at asc, bs.id asc
+                limit :limit offset :offset
+                """, new MapSqlParameterSource()
+                .addValue("patientId", patientId)
+                .addValue("departmentId", departmentId)
+                .addValue("serviceId", serviceId)
+                .addValue("localDate", localDate)
+                .addValue("session", session)
+                .addValue("now", ts(now))
+                .addValue("limit", limit)
+                .addValue("offset", offset), this::mapBookingSessionAvailability);
+    }
+
+    @Override
+    public List<WorkScheduleCandidate> workScheduleCandidatesForBookingSession(UUID bookingSessionId, Instant now) {
+        return jdbc.query("""
+                select ws.id as work_schedule_id, ws.booking_session_id, ws.practitioner_role_id, ws.room_id,
+                    bs.local_date, bs.session as booking_session_session,
+                    ws.capacity as work_schedule_capacity, ws.status as work_schedule_status,
+                    ws.version as work_schedule_version, ws.created_at as work_schedule_created_at,
+                    ws.updated_at as work_schedule_updated_at, slot.id as slot_id, slot.department_id, slot.service_id,
+                    slot.session as slot_session, slot.start_at, slot.end_at, slot.capacity as slot_capacity,
+                    slot.status as slot_status, slot.version as slot_version, slot.created_at as slot_created_at,
+                    slot.updated_at as slot_updated_at, p.full_name as practitioner_name, r.name as room_name,
+                    (select count(*) from slot_hold h where h.slot_id = slot.id and h.status = 'ACTIVE' and h.expires_at > :now)
+                    + (select count(*) from appointment a where a.slot_id = slot.id and a.status in ('CONFIRMED', 'FULFILLED')) as reserved_capacity
+                from work_schedule ws
+                join booking_session bs on bs.id = ws.booking_session_id
+                join appointment_slot slot on slot.work_schedule_id = ws.id
+                join practitioner_role role on role.id = ws.practitioner_role_id
+                join practitioner p on p.id = role.practitioner_id
+                join room r on r.id = ws.room_id and r.department_id = bs.department_id
+                join department d on d.id = bs.department_id
+                join service service on service.id = bs.service_id
+                join lateral (
+                    select service_id from service_price
+                    where service_id = bs.service_id and currency = 'VND' and effective_from <= :now
+                      and (effective_to is null or effective_to > :now)
+                    order by effective_from desc, id desc limit 1
+                ) price on true
+                where ws.booking_session_id = :bookingSessionId and ws.status = 'ACTIVE'
+                  and slot.status = 'ACTIVE' and slot.start_at > :now
+                  and p.active and role.status = 'ACTIVE'
+                  and role.effective_from <= :now and (role.effective_to is null or role.effective_to > :now)
+                  and d.active and d.effective_from <= :now and (d.effective_to is null or d.effective_to > :now)
+                  and r.active and service.active
+                order by slot.id asc
+                for update of ws, slot
+                """, new MapSqlParameterSource("bookingSessionId", bookingSessionId).addValue("now", ts(now)),
+                this::mapWorkScheduleCandidate);
     }
 
     @Override
     public void lockPractitionerDay(UUID practitionerRoleId, String dateIso) {
         jdbc.queryForObject("select 1 from pg_advisory_xact_lock(hashtextextended(cast(:scope as text), 0))",
                 new MapSqlParameterSource("scope", practitionerRoleId + ":" + dateIso), Integer.class);
+    }
+
+    @Override
+    public void lockBookingSessionBucket(UUID departmentId, UUID serviceId, LocalDate localDate, String session) {
+        jdbc.queryForObject("select 1 from pg_advisory_xact_lock(hashtextextended(cast(:scope as text), 0))",
+                new MapSqlParameterSource("scope", departmentId + ":" + serviceId + ":" + localDate + ":" + session),
+                Integer.class);
     }
 
     @Override
@@ -789,6 +1120,33 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
         }
     }
 
+    private static String workScheduleProjection() {
+        return """
+                select ws.id, ws.booking_session_id, ws.practitioner_role_id, ws.room_id, ws.capacity, ws.status,
+                    ws.version, ws.created_at, ws.updated_at, slot.id as slot_id,
+                    bs.department_id, bs.service_id, bs.local_date, bs.session,
+                    coalesce((select count(*) from slot_hold h where h.slot_id = slot.id and h.status = 'ACTIVE' and h.expires_at > :now)
+                      + (select count(*) from appointment a where a.slot_id = slot.id and a.status in ('CONFIRMED', 'FULFILLED')), 0)::integer as reserved_capacity
+                from work_schedule ws
+                join appointment_slot slot on slot.work_schedule_id = ws.id
+                join booking_session bs on bs.id = ws.booking_session_id
+                """;
+    }
+
+    private static MapSqlParameterSource bookingSessionParams(BookingSessionRow row) {
+        return new MapSqlParameterSource().addValue("id", row.id()).addValue("departmentId", row.departmentId())
+                .addValue("serviceId", row.serviceId()).addValue("localDate", row.localDate()).addValue("session", row.session())
+                .addValue("startAt", ts(row.startAt())).addValue("endAt", ts(row.endAt())).addValue("status", row.status())
+                .addValue("version", row.version()).addValue("createdAt", ts(row.createdAt())).addValue("updatedAt", ts(row.updatedAt()));
+    }
+
+    private static MapSqlParameterSource workScheduleParams(WorkScheduleRow row) {
+        return new MapSqlParameterSource().addValue("id", row.id()).addValue("bookingSessionId", row.bookingSessionId())
+                .addValue("practitionerRoleId", row.practitionerRoleId()).addValue("roomId", row.roomId())
+                .addValue("capacity", row.capacity()).addValue("status", row.status()).addValue("version", row.version())
+                .addValue("createdAt", ts(row.createdAt())).addValue("updatedAt", ts(row.updatedAt()));
+    }
+
     private static MapSqlParameterSource slotParams(AppointmentSlotRow row) {
         return new MapSqlParameterSource().addValue("id", row.id()).addValue("practitionerRoleId", row.practitionerRoleId())
                 .addValue("departmentId", row.departmentId()).addValue("roomId", row.roomId()).addValue("serviceId", row.serviceId())
@@ -802,6 +1160,50 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 .addValue("expiresAt", ts(row.expiresAt())).addValue("depositAmount", row.depositAmount()).addValue("currency", row.currency())
                 .addValue("status", row.status()).addValue("version", row.version()).addValue("createdAt", ts(row.createdAt()))
                 .addValue("updatedAt", ts(row.updatedAt()));
+    }
+
+    private BookingSessionRow mapBookingSession(ResultSet rs, int rowNum) throws SQLException {
+        return new BookingSessionRow(rs.getObject("id", UUID.class), rs.getObject("department_id", UUID.class),
+                rs.getObject("service_id", UUID.class), rs.getObject("local_date", LocalDate.class), rs.getString("session"),
+                instant(rs, "start_at"), instant(rs, "end_at"), rs.getString("status"), rs.getLong("version"),
+                instant(rs, "created_at"), instant(rs, "updated_at"));
+    }
+
+    private WorkScheduleRow mapWorkSchedule(ResultSet rs, int rowNum) throws SQLException {
+        int reserved = rs.getInt("reserved_capacity");
+        int capacity = rs.getInt("capacity");
+        return new WorkScheduleRow(rs.getObject("id", UUID.class), rs.getObject("booking_session_id", UUID.class),
+                rs.getObject("practitioner_role_id", UUID.class), rs.getObject("room_id", UUID.class), capacity,
+                rs.getString("status"), rs.getLong("version"), instant(rs, "created_at"), instant(rs, "updated_at"),
+                rs.getObject("slot_id", UUID.class), reserved, Math.max(0, capacity - reserved),
+                rs.getObject("department_id", UUID.class), rs.getObject("service_id", UUID.class),
+                rs.getObject("local_date", LocalDate.class), rs.getString("session"));
+    }
+
+    private BookingSessionAvailabilityProjection mapBookingSessionAvailability(ResultSet rs, int rowNum) throws SQLException {
+        return new BookingSessionAvailabilityProjection(rs.getObject("id", UUID.class), rs.getLong("version"),
+                rs.getObject("department_id", UUID.class), rs.getObject("service_id", UUID.class),
+                rs.getObject("local_date", LocalDate.class), rs.getString("session"), instant(rs, "start_at"), instant(rs, "end_at"),
+                rs.getInt("total_capacity"), rs.getInt("reserved_capacity"), rs.getString("disabled_reason"));
+    }
+
+    private WorkScheduleCandidate mapWorkScheduleCandidate(ResultSet rs, int rowNum) throws SQLException {
+        WorkScheduleRow schedule = new WorkScheduleRow(
+                rs.getObject("work_schedule_id", UUID.class), rs.getObject("booking_session_id", UUID.class),
+                rs.getObject("practitioner_role_id", UUID.class), rs.getObject("room_id", UUID.class),
+                rs.getInt("work_schedule_capacity"), rs.getString("work_schedule_status"), rs.getLong("work_schedule_version"),
+                instant(rs, "work_schedule_created_at"), instant(rs, "work_schedule_updated_at"),
+                rs.getObject("slot_id", UUID.class), rs.getInt("reserved_capacity"),
+                Math.max(0, rs.getInt("work_schedule_capacity") - rs.getInt("reserved_capacity")),
+                rs.getObject("department_id", UUID.class), rs.getObject("service_id", UUID.class),
+                rs.getObject("local_date", LocalDate.class), rs.getString("slot_session"));
+        AppointmentSlotRow slot = new AppointmentSlotRow(rs.getObject("slot_id", UUID.class),
+                rs.getObject("practitioner_role_id", UUID.class), rs.getObject("department_id", UUID.class),
+                rs.getObject("room_id", UUID.class), rs.getObject("service_id", UUID.class), rs.getString("slot_session"),
+                instant(rs, "start_at"), instant(rs, "end_at"), rs.getInt("slot_capacity"), rs.getString("slot_status"),
+                rs.getLong("slot_version"), instant(rs, "slot_created_at"), instant(rs, "slot_updated_at"));
+        return new WorkScheduleCandidate(schedule, slot, rs.getInt("reserved_capacity"),
+                rs.getString("practitioner_name"), rs.getString("room_name"));
     }
 
     private AppointmentSlotRow mapAppointmentSlot(ResultSet rs, int rowNum) throws SQLException {

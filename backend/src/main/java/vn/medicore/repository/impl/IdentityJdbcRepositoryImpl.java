@@ -219,21 +219,21 @@ public class IdentityJdbcRepositoryImpl implements IdentityRepository {
     @Override
     public void insertSession(SessionRow session) {
         update("""
-                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, status,
+                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, tab_context_hash, status,
                     authenticated_at, last_seen_at, absolute_expires_at, source_ip_hash, user_agent_hash)
-                values (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
                 """, session.id(), session.accountId(), session.sessionTokenHash(), session.csrfTokenHash(),
-                session.authenticatedAt(), session.lastSeenAt(), session.absoluteExpiresAt(),
+                session.tabContextHash(), session.authenticatedAt(), session.lastSeenAt(), session.absoluteExpiresAt(),
                 session.sourceIpHash(), session.userAgentHash());
     }
 
     @Override
-    public Optional<SessionRow> activeSession(String sessionTokenHash) {
+    public Optional<SessionRow> activeSession(String sessionTokenHash, String tabContextHash) {
         return queryOne("""
-                select id, account_id, session_token_hash, csrf_token_hash, authenticated_at, last_seen_at,
+                select id, account_id, session_token_hash, csrf_token_hash, tab_context_hash, authenticated_at, last_seen_at,
                     absolute_expires_at, source_ip_hash, user_agent_hash
-                from account_session where session_token_hash = ? and status = 'ACTIVE'
-                """, this::sessionRow, sessionTokenHash);
+                from account_session where session_token_hash = ? and tab_context_hash = ? and status = 'ACTIVE'
+                """, this::sessionRow, sessionTokenHash, tabContextHash);
     }
 
     @Override
@@ -247,11 +247,11 @@ public class IdentityJdbcRepositoryImpl implements IdentityRepository {
     }
 
     @Override
-    public void revokeSessionByHash(String sessionTokenHash, Instant now, String reason) {
+    public void revokeSessionByHash(String sessionTokenHash, String tabContextHash, Instant now, String reason) {
         update("""
                 update account_session set status = 'REVOKED', revoked_at = ?, revoke_reason = ?, version = version + 1
-                where session_token_hash = ? and status = 'ACTIVE'
-                """, now, reason, sessionTokenHash);
+                where session_token_hash = ? and tab_context_hash = ? and status = 'ACTIVE'
+                """, now, reason, sessionTokenHash, tabContextHash);
     }
 
     @Override
@@ -297,6 +297,12 @@ public class IdentityJdbcRepositoryImpl implements IdentityRepository {
     @Override
     public Optional<RoleView> role(UUID id) {
         return queryOne("select id, code, name, active, version, created_at from role where id = ?", this::roleViewWithoutPermissions, id)
+                .map(role -> new RoleView(role.id(), role.version(), role.code(), role.name(), role.active(), permissionIds(role.id()), role.createdAt()));
+    }
+
+    @Override
+    public Optional<RoleView> activeRoleByCode(String code) {
+        return queryOne("select id, code, name, active, version, created_at from role where code = ? and active", this::roleViewWithoutPermissions, code)
                 .map(role -> new RoleView(role.id(), role.version(), role.code(), role.name(), role.active(), permissionIds(role.id()), role.createdAt()));
     }
 
@@ -349,6 +355,29 @@ public class IdentityJdbcRepositoryImpl implements IdentityRepository {
     }
 
     @Override
+    public void revokeActiveAssignments(UUID accountId, UUID actorId, Instant now, String reason) {
+        update("""
+                update account_role_assignment
+                set status = 'REVOKED',
+                    effective_to = case when effective_from < ? then ? else effective_to end,
+                    revoked_at = ?, revoked_by_account_id = ?, revoke_reason = ?,
+                    version = version + 1
+                where account_id = ? and status = 'ACTIVE'
+                """, now, now, now, actorId, reason, accountId);
+    }
+
+    @Override
+    public int updateAssignmentDepartment(UUID assignmentId, UUID departmentId, long expectedVersion) {
+        int updated = update("""
+                update account_role_assignment
+                set department_id = ?, version = version + 1
+                where id = ? and version = ? and status = 'ACTIVE'
+                """, departmentId, assignmentId, expectedVersion);
+        if (updated != 1) throw new StaleVersionException();
+        return updated;
+    }
+
+    @Override
     public Set<String> effectivePermissions(UUID accountId, Instant at) {
         return Set.copyOf(jdbc.queryForList("""
                 select distinct p.action from account_role_assignment a
@@ -383,6 +412,16 @@ public class IdentityJdbcRepositoryImpl implements IdentityRepository {
                 """, UUID.class, sqlArgs(new Object[]{accountId, at, at}));
     }
 
+    @Override
+    public Set<String> effectiveRoleCodes(UUID accountId, Instant at) {
+        return Set.copyOf(jdbc.queryForList("""
+                select distinct r.code from account_role_assignment a
+                join role r on r.id = a.role_id and r.active
+                where a.account_id = ? and a.status = 'ACTIVE' and a.effective_from <= ?
+                  and (a.effective_to is null or a.effective_to > ?)
+                """, String.class, sqlArgs(new Object[]{accountId, at, at})));
+    }
+
     private Set<UUID> permissionIds(UUID roleId) {
         return jdbc.queryForList("select permission_id from role_permission where role_id = ?", UUID.class, roleId)
                 .stream().collect(Collectors.toUnmodifiableSet());
@@ -397,8 +436,9 @@ public class IdentityJdbcRepositoryImpl implements IdentityRepository {
 
     private SessionRow sessionRow(ResultSet rs, int row) throws SQLException {
         return new SessionRow(uuid(rs, "id"), uuid(rs, "account_id"), rs.getString("session_token_hash"),
-                rs.getString("csrf_token_hash"), instant(rs, "authenticated_at"), instant(rs, "last_seen_at"),
-                instant(rs, "absolute_expires_at"), rs.getString("source_ip_hash"), rs.getString("user_agent_hash"));
+                rs.getString("csrf_token_hash"), rs.getString("tab_context_hash"), instant(rs, "authenticated_at"),
+                instant(rs, "last_seen_at"), instant(rs, "absolute_expires_at"), rs.getString("source_ip_hash"),
+                rs.getString("user_agent_hash"));
     }
 
     private AccountView accountView(ResultSet rs, int row) throws SQLException {

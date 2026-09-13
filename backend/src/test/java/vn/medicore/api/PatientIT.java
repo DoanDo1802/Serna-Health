@@ -36,6 +36,8 @@ import vn.medicore.config.SecretHasher;
 @ActiveProfiles("test")
 class PatientIT {
 
+    private static final String TAB_CONTEXT = "TabContextHashValue001";
+
     private static final UUID PATIENT_ADMINISTRATOR_ROLE_ID = UUID.fromString("01980000-0000-7000-8000-000000000005");
 
     @Container
@@ -51,7 +53,7 @@ class PatientIT {
     void patientCreateRequiresCsrfBeforeIdempotencyReservation() throws Exception {
         AuthSession administrator = patientAdministrator();
         mockMvc.perform(post("/api/v1/patients")
-                        .cookie(administrator.cookie())
+                        .cookie(administrator.cookie()).header("X-MediCore-Tab-Context", administrator.context())
                         .header("Idempotency-Key", "patient-csrf-key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(patientBody("CSRF Patient", "1990-01-01", null, null)))
@@ -65,7 +67,7 @@ class PatientIT {
     void listsCurrentAccountsPatientLinksFromLiteralRoute() throws Exception {
         AuthSession session = session(Set.of());
         MvcResult created = mockMvc.perform(post("/api/v1/patients/self")
-                        .cookie(session.cookie())
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "patient-self-link-key")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -74,7 +76,7 @@ class PatientIT {
                 .andReturn();
         UUID patientId = UUID.fromString(objectMapper.readTree(created.getResponse().getContentAsString()).path("id").asText());
 
-        mockMvc.perform(get("/api/v1/patients/account-links").cookie(session.cookie()))
+        mockMvc.perform(get("/api/v1/patients/account-links").cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].accountId").value(session.accountId().toString()))
                 .andExpect(jsonPath("$[0].patientId").value(patientId.toString()))
@@ -82,23 +84,23 @@ class PatientIT {
                 .andExpect(jsonPath("$[0].verificationTier").value("PENDING"))
                 .andExpect(jsonPath("$[0].status").value("ACTIVE"));
 
-        mockMvc.perform(get("/api/v1/patients/%s".formatted(patientId)).cookie(session.cookie()))
+        mockMvc.perform(get("/api/v1/patients/%s".formatted(patientId)).cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(patientId.toString()));
-        mockMvc.perform(get("/api/v1/patients/%s/identifiers".formatted(patientId)).cookie(session.cookie()))
+        mockMvc.perform(get("/api/v1/patients/%s/identifiers".formatted(patientId)).cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items").isArray());
 
         AuthSession unrelated = session(Set.of());
-        mockMvc.perform(get("/api/v1/patients/%s".formatted(patientId)).cookie(unrelated.cookie()))
+        mockMvc.perform(get("/api/v1/patients/%s".formatted(patientId)).cookie(unrelated.cookie()).header("X-MediCore-Tab-Context", unrelated.context()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
-        mockMvc.perform(get("/api/v1/patients/%s/identifiers".formatted(patientId)).cookie(unrelated.cookie()))
+        mockMvc.perform(get("/api/v1/patients/%s/identifiers".formatted(patientId)).cookie(unrelated.cookie()).header("X-MediCore-Tab-Context", unrelated.context()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
         AuthSession administrator = patientAdministrator();
-        mockMvc.perform(get("/api/v1/patients/%s".formatted(patientId)).cookie(administrator.cookie()))
+        mockMvc.perform(get("/api/v1/patients/%s".formatted(patientId)).cookie(administrator.cookie()).header("X-MediCore-Tab-Context", administrator.context()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(patientId.toString()));
 
@@ -110,7 +112,7 @@ class PatientIT {
     void createOwnPatientAcceptsVersionedEmergencyContactAndRejectsInvalidContact() throws Exception {
         AuthSession validSession = session(Set.of());
         MvcResult created = mockMvc.perform(post("/api/v1/patients/self")
-                        .cookie(validSession.cookie())
+                        .cookie(validSession.cookie()).header("X-MediCore-Tab-Context", validSession.context())
                         .header("X-CSRF-Token", validSession.csrfToken())
                         .header("Idempotency-Key", "patient-self-contact-valid")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -132,7 +134,7 @@ class PatientIT {
 
         AuthSession invalidSession = session(Set.of());
         mockMvc.perform(post("/api/v1/patients/self")
-                        .cookie(invalidSession.cookie())
+                        .cookie(invalidSession.cookie()).header("X-MediCore-Tab-Context", invalidSession.context())
                         .header("X-CSRF-Token", invalidSession.csrfToken())
                         .header("Idempotency-Key", "patient-self-contact-invalid")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -151,7 +153,7 @@ class PatientIT {
         String key = "patient-replay-key";
         String body = patientBody("Trace Patient", "1990-01-01", "0901234567", "trace@example.com");
         MvcResult first = mockMvc.perform(post("/api/v1/patients")
-                        .cookie(administrator.cookie())
+                        .cookie(administrator.cookie()).header("X-MediCore-Tab-Context", administrator.context())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("X-Request-Id", "patient-request")
                         .header("X-Correlation-Id", "patient-correlation")
@@ -165,7 +167,7 @@ class PatientIT {
         String firstBody = first.getResponse().getContentAsString();
 
         mockMvc.perform(post("/api/v1/patients")
-                        .cookie(administrator.cookie())
+                        .cookie(administrator.cookie()).header("X-MediCore-Tab-Context", administrator.context())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("X-Request-Id", "other-request")
                         .header("X-Correlation-Id", "other-correlation")
@@ -192,7 +194,7 @@ class PatientIT {
         AuthSession administrator = patientAdministrator();
         UUID firstPatientId = createPatient(administrator, "Duplicate Person", "1990-01-01", "0901888999", "one@example.com");
         UUID secondPatientId = createPatient(administrator, "Duplicate Person", "1990-01-01", "0901888999", "two@example.com");
-        JsonNode page = body(get("/api/v1/patient-duplicate-candidates?status=PENDING").cookie(administrator.cookie()));
+        JsonNode page = body(get("/api/v1/patient-duplicate-candidates?status=PENDING").cookie(administrator.cookie()).header("X-MediCore-Tab-Context", administrator.context()));
         JsonNode candidate = null;
         for (JsonNode value : page.path("items")) {
             if (value.path("sourcePatientId").asText().equals(firstPatientId.toString())
@@ -206,7 +208,7 @@ class PatientIT {
         assertThat(candidate).isNotNull();
         UUID candidateId = UUID.fromString(candidate.path("id").asText());
         mockMvc.perform(post("/api/v1/patient-duplicate-candidates/%s/actions/review".formatted(candidateId))
-                        .cookie(administrator.cookie())
+                        .cookie(administrator.cookie()).header("X-MediCore-Tab-Context", administrator.context())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("If-Match", "\"0\"")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -224,7 +226,7 @@ class PatientIT {
         AuthSession administrator = patientAdministrator();
         UUID patientId = createPatient(administrator, "Identifier Patient", "1991-01-01", null, null);
         MvcResult result = mockMvc.perform(post("/api/v1/patients/%s/identifiers".formatted(patientId))
-                        .cookie(administrator.cookie())
+                        .cookie(administrator.cookie()).header("X-MediCore-Tab-Context", administrator.context())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("Idempotency-Key", "patient-identifier-key")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -241,7 +243,7 @@ class PatientIT {
 
     private UUID createPatient(AuthSession session, String name, String dob, String phone, String email) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/patients")
-                        .cookie(session.cookie())
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "patient-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -276,11 +278,12 @@ class PatientIT {
                     """, UUID.randomUUID(), accountId, roleId, accountId);
         }
         jdbc().update("""
-                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, status,
+                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, tab_context_hash, status,
                     authenticated_at, last_seen_at, absolute_expires_at, version)
-                values (?, ?, ?, ?, 'ACTIVE', now(), now(), now() + interval '1 hour', 0)
-                """, sessionId, accountId, secretHasher.hash("SESSION", rawSession), secretHasher.hash("CSRF", csrfToken));
-        return new AuthSession(accountId, sessionId, new MockCookie("MEDICORE_SESSION", rawSession), csrfToken);
+                values (?, ?, ?, ?, ?, 'ACTIVE', now(), now(), now() + interval '1 hour', 0)
+                """, sessionId, accountId, secretHasher.hash("SESSION", rawSession), secretHasher.hash("CSRF", csrfToken),
+                secretHasher.hash("SESSION_CONTEXT", TAB_CONTEXT));
+        return new AuthSession(accountId, sessionId, new MockCookie("MEDICORE_SESSION_" + TAB_CONTEXT, rawSession), csrfToken, TAB_CONTEXT);
     }
 
     private static String patientBody(String fullName, String dateOfBirth, String phone, String email) {
@@ -297,6 +300,6 @@ class PatientIT {
         return new JdbcTemplate(dataSource);
     }
 
-    private record AuthSession(UUID accountId, UUID sessionId, MockCookie cookie, String csrfToken) {
+    private record AuthSession(UUID accountId, UUID sessionId, MockCookie cookie, String csrfToken, String context) {
     }
 }

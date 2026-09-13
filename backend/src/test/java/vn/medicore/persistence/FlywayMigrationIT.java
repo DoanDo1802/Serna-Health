@@ -82,9 +82,56 @@ class FlywayMigrationIT {
                     "deposit_allocation",
                     "deposit_transfer",
                     "deposit_transfer_leg",
-                    "reschedule_top_up");
-            assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("5");
-            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("61");
+                    "reschedule_top_up",
+                    // V23 personnel provisioning
+                    "personnel_member",
+                    "practitioner_profile",
+                    // V24 aggregate booking and doctor schedules
+                    "booking_session",
+                    "work_schedule");
+            assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("6");
+            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("67");
+            assertThat(singleValue(statement, """
+                    select count(*) from permission
+                    where action in ('work_schedule.create', 'work_schedule.read',
+                        'work_schedule.update', 'work_schedule.cancel')
+                    """)).isEqualTo("4");
+            assertThat(singleValue(statement, """
+                    select count(*) from role_permission rp
+                    join permission p on p.id = rp.permission_id
+                    where rp.role_id = '01980000-0000-7000-8000-000000000001'
+                      and p.action in ('work_schedule.create', 'work_schedule.read',
+                        'work_schedule.update', 'work_schedule.cancel')
+                    """)).isEqualTo("4");
+            assertThat(singleValue(statement, """
+                    select count(*) from information_schema.columns
+                    where table_schema = 'public' and table_name = 'appointment_slot'
+                      and column_name = 'work_schedule_id' and data_type = 'uuid'
+                    """)).isEqualTo("1");
+            assertThat(singleValue(statement, """
+                    select count(*) from pg_constraint
+                    where conrelid = 'appointment_slot'::regclass
+                      and confrelid = 'work_schedule'::regclass
+                    """)).isEqualTo("1");
+            assertThat(singleValue(statement, """
+                    select count(*) from pg_indexes
+                    where schemaname = 'public' and indexname in (
+                        'ux_booking_session_active_bucket', 'ix_booking_session_active_start',
+                        'ix_work_schedule_active_session', 'ix_work_schedule_active_role',
+                        'ux_appointment_slot_work_schedule', 'ix_appointment_slot_active_work_schedule')
+                    """)).isEqualTo("6");
+            assertThat(singleValue(statement, """
+                    select indexdef from pg_indexes
+                    where schemaname = 'public' and indexname = 'ux_booking_session_active_bucket'
+                    """)).contains("status").contains("ACTIVE");
+            assertThat(singleValue(statement, """
+                    select indexdef from pg_indexes
+                    where schemaname = 'public' and indexname = 'ux_appointment_slot_work_schedule'
+                    """)).contains("WHERE (work_schedule_id IS NOT NULL)");
+            assertThat(singleValue(statement, """
+                    select count(*) from flyway_schema_history
+                    where version = '24' and description = 'work schedule booking session' and success
+                    """)).isEqualTo("1");
             assertThat(singleValue(statement, """
                     select count(*) from pg_constraint
                     where conname in ('ck_patient_identifier_verification_source', 'ck_patient_account_link_scope',
@@ -135,7 +182,7 @@ class FlywayMigrationIT {
     }
 
     private void assertDepositTransferIsAppendOnly(Statement statement) throws SQLException {
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.executeUpdate("truncate deposit_transfer"))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.executeUpdate("truncate deposit_transfer cascade"))
                 .isInstanceOf(SQLException.class)
                 .hasMessageContaining("deposit_transfer rows are append-only");
     }

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,11 +31,20 @@ import vn.medicore.dto.SchedulingAuditContext;
 import vn.medicore.dto.SchedulingModels.AppointmentRow;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
 import vn.medicore.dto.SchedulingModels.BookingAvailabilitySlot;
+import vn.medicore.dto.SchedulingModels.BookingSessionAvailability;
 import vn.medicore.dto.SchedulingModels.CancelAppointmentRequest;
 import vn.medicore.dto.SchedulingModels.CreateAppointmentSlotRequest;
+import vn.medicore.dto.SchedulingModels.CreateBookingSessionHoldRequest;
 import vn.medicore.dto.SchedulingModels.CreateSlotHoldRequest;
+import vn.medicore.dto.SchedulingModels.CreateSlotHoldResponse;
+import vn.medicore.dto.SchedulingModels.BookingCatalog;
+import vn.medicore.dto.SchedulingModels.CreateWorkScheduleRequest;
+import vn.medicore.dto.SchedulingModels.UpdateWorkScheduleRequest;
+import vn.medicore.dto.SchedulingModels.WorkScheduleCatalog;
+import vn.medicore.dto.SchedulingModels.WorkScheduleRow;
 import vn.medicore.dto.SchedulingModels.CreateRescheduleSlotHoldRequest;
 import vn.medicore.dto.SchedulingModels.PatientAppointment;
+import vn.medicore.dto.SchedulingModels.RescheduleCatalog;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
 import vn.medicore.dto.SchedulingModels.UpdateAppointmentSlotRequest;
 import vn.medicore.service.SchedulingAccessPolicy;
@@ -76,12 +86,14 @@ public class SchedulingController {
     }
 
     @GetMapping("/appointment-slots/{slotId}")
+    @PreAuthorize("hasAuthority('appointment_slot.read')")
     ResponseEntity<AppointmentSlotRow> getAppointmentSlot(@PathVariable UUID slotId) {
         AppointmentSlotRow value = service.getAppointmentSlot(slotId);
         return versioned(value, value.version());
     }
 
     @GetMapping("/appointment-slots")
+    @PreAuthorize("hasAuthority('appointment_slot.read')")
     Page<AppointmentSlotRow> searchAppointmentSlots(
             @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit) {
@@ -100,6 +112,64 @@ public class SchedulingController {
         return versioned(value, value.version());
     }
 
+    @GetMapping("/admin/work-schedules/catalog")
+    @PreAuthorize("hasAuthority('work_schedule.read')")
+    WorkScheduleCatalog workScheduleCatalog() {
+        return service.workScheduleCatalog();
+    }
+
+    @GetMapping("/admin/work-schedules")
+    @PreAuthorize("hasAuthority('work_schedule.read')")
+    Page<WorkScheduleRow> searchWorkSchedules(
+            @RequestParam(required = false) LocalDate fromDate,
+            @RequestParam(required = false) LocalDate toDate,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit) {
+        return service.searchWorkSchedules(fromDate, toDate, cursor, limit);
+    }
+
+    @GetMapping("/admin/work-schedules/{scheduleId}")
+    @PreAuthorize("hasAuthority('work_schedule.read')")
+    ResponseEntity<WorkScheduleRow> getWorkSchedule(@PathVariable UUID scheduleId) {
+        WorkScheduleRow value = service.getWorkSchedule(scheduleId);
+        return versioned(value, value.version());
+    }
+
+    @PostMapping("/admin/work-schedules")
+    @PreAuthorize("hasAuthority('work_schedule.create')")
+    ResponseEntity<WorkScheduleRow> createWorkSchedule(
+            @Valid @RequestBody WorkScheduleRequest body,
+            @AuthenticationPrincipal AuthenticatedAccount actor,
+            HttpServletRequest request) {
+        WorkScheduleRow value = service.createWorkSchedule(body.toCommand(), auditContext(request, actor));
+        return versioned(value, value.version());
+    }
+
+    @PatchMapping("/admin/work-schedules/{scheduleId}")
+    @PreAuthorize("hasAuthority('work_schedule.update')")
+    ResponseEntity<WorkScheduleRow> updateWorkSchedule(
+            @PathVariable UUID scheduleId,
+            @Valid @RequestBody UpdateWorkScheduleBody body,
+            @RequestHeader("If-Match") String ifMatch,
+            @AuthenticationPrincipal AuthenticatedAccount actor,
+            HttpServletRequest request) {
+        WorkScheduleRow value = service.updateWorkSchedule(
+                scheduleId, body.toCommand(), version(ifMatch), auditContext(request, actor));
+        return versioned(value, value.version());
+    }
+
+    @PostMapping("/admin/work-schedules/{scheduleId}/actions/cancel")
+    @PreAuthorize("hasAuthority('work_schedule.cancel')")
+    ResponseEntity<WorkScheduleRow> cancelWorkSchedule(
+            @PathVariable UUID scheduleId,
+            @RequestHeader("If-Match") String ifMatch,
+            @AuthenticationPrincipal AuthenticatedAccount actor,
+            HttpServletRequest request) {
+        service.cancelWorkSchedule(scheduleId, version(ifMatch), auditContext(request, actor));
+        WorkScheduleRow value = service.getWorkSchedule(scheduleId);
+        return versioned(value, value.version());
+    }
+
     @GetMapping("/booking/catalog")
     ResponseEntity<vn.medicore.dto.SchedulingModels.BookingCatalog> bookingCatalog(
             @RequestParam UUID patientId,
@@ -109,13 +179,17 @@ public class SchedulingController {
     }
 
     @GetMapping("/booking/availability")
-    Page<BookingAvailabilitySlot> getBookingAvailability(
+    Page<BookingSessionAvailability> getBookingAvailability(
             @RequestParam UUID patientId,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(required = false) UUID serviceId,
+            @RequestParam(required = false) LocalDate date,
+            @RequestParam(required = false) String session,
             @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
             @AuthenticationPrincipal AuthenticatedAccount actor) {
         accessPolicy.requirePatientAccess(actor, patientId, "slot_hold.create");
-        return service.getBookingAvailability(patientId, cursor, limit);
+        return service.getBookingAvailability(patientId, departmentId, serviceId, date, session, cursor, limit);
     }
 
     @GetMapping("/appointments/{appointmentId}/actions/reschedule-availability")
@@ -129,13 +203,23 @@ public class SchedulingController {
         return service.getRescheduleAvailability(appointmentId, cursor, limit);
     }
 
+    @GetMapping("/appointments/{appointmentId}/actions/reschedule-catalog")
+    ResponseEntity<RescheduleCatalog> rescheduleCatalog(
+            @PathVariable UUID appointmentId,
+            @AuthenticationPrincipal AuthenticatedAccount actor) {
+        AppointmentRow appointment = service.getAppointment(appointmentId);
+        accessPolicy.requirePatientAccess(actor, appointment.patientId(), "appointment.reschedule");
+        return ResponseEntity.ok(service.rescheduleCatalog());
+    }
+
     @PostMapping("/slot-holds")
-    ResponseEntity<SlotHoldRow> createSlotHold(
+    ResponseEntity<CreateSlotHoldResponse> createSlotHold(
             @Valid @RequestBody SlotHoldRequest body,
             @AuthenticationPrincipal AuthenticatedAccount actor,
             HttpServletRequest request) {
         accessPolicy.requirePatientAccess(actor, body.patientId(), "slot_hold.create");
-        SlotHoldRow value = service.createSlotHold(new CreateSlotHoldRequest(body.slotId(), body.patientId()), auditContext(request, actor));
+        CreateSlotHoldResponse value = service.createBookingSessionHold(
+                new CreateBookingSessionHoldRequest(body.bookingSessionId(), body.patientId()), auditContext(request, actor));
         return versioned(value, value.version());
     }
 
@@ -266,7 +350,35 @@ public class SchedulingController {
     record CapacityRequest(@Min(1) @Max(100) int capacity) {
     }
 
-    record SlotHoldRequest(@NotNull UUID slotId, @NotNull UUID patientId) {
+    record UpdateWorkScheduleBody(
+            UUID practitionerRoleId,
+            UUID departmentId,
+            UUID roomId,
+            UUID serviceId,
+            LocalDate localDate,
+            String session,
+            @Min(1) @Max(100) Integer capacity) {
+        UpdateWorkScheduleRequest toCommand() {
+            return new UpdateWorkScheduleRequest(
+                    practitionerRoleId, departmentId, roomId, serviceId, localDate, session, capacity);
+        }
+    }
+
+    record SlotHoldRequest(@NotNull UUID bookingSessionId, @NotNull UUID patientId) {
+    }
+
+    record WorkScheduleRequest(
+            @NotNull UUID practitionerRoleId,
+            @NotNull UUID departmentId,
+            @NotNull UUID roomId,
+            @NotNull UUID serviceId,
+            @NotNull LocalDate localDate,
+            @NotBlank String session,
+            @Min(1) @Max(100) int capacity) {
+        CreateWorkScheduleRequest toCommand() {
+            return new CreateWorkScheduleRequest(
+                    practitionerRoleId, departmentId, roomId, serviceId, localDate, session, capacity);
+        }
     }
 
     record RescheduleSlotHoldRequest(@NotNull UUID slotId) {

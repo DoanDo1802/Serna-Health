@@ -2,12 +2,19 @@ package vn.medicore.repository;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
 import vn.medicore.dto.SchedulingModels.BookingAvailabilityProjection;
 import vn.medicore.dto.SchedulingModels.BookingCatalog;
+import vn.medicore.dto.SchedulingModels.RescheduleCatalog;
+import vn.medicore.dto.SchedulingModels.BookingSessionAvailabilityProjection;
+import vn.medicore.dto.SchedulingModels.BookingSessionRow;
+import vn.medicore.dto.SchedulingModels.WorkScheduleCandidate;
+import vn.medicore.dto.SchedulingModels.WorkScheduleCatalog;
+import vn.medicore.dto.SchedulingModels.WorkScheduleRow;
 import vn.medicore.dto.SchedulingModels.SlotHoldJdbcRow;
 import vn.medicore.dto.SchedulingModels.SlotHoldRow;
 
@@ -33,7 +40,53 @@ public interface SchedulingRepository {
 
     BookingCatalog bookingCatalog(Instant now);
 
+    RescheduleCatalog rescheduleCatalog(Instant now);
+
+    WorkScheduleCatalog workScheduleCatalog(Instant now);
+
+    boolean isWorkScheduleConfigurationAvailable(
+            UUID practitionerRoleId,
+            UUID departmentId,
+            UUID roomId,
+            UUID serviceId,
+            Instant now);
+
+    Optional<BookingSessionRow> activeBookingSessionByBucketForUpdate(
+            UUID departmentId, UUID serviceId, LocalDate localDate, String session);
+
+    void insertBookingSession(BookingSessionRow row);
+
+    Optional<BookingSessionRow> bookingSessionById(UUID id);
+
+    Optional<BookingSessionRow> activeBookingSessionByIdForUpdate(UUID id);
+
+    void insertWorkSchedule(WorkScheduleRow row);
+
+    void linkAppointmentSlotToWorkSchedule(UUID slotId, UUID workScheduleId);
+
+    void updateWorkSchedule(WorkScheduleRow row, long expectedVersion);
+
+    Optional<WorkScheduleRow> workScheduleById(UUID id, Instant now);
+
+    Optional<WorkScheduleRow> workScheduleByIdForUpdate(UUID id, Instant now);
+
+    List<WorkScheduleRow> searchWorkSchedules(LocalDate fromDate, LocalDate toDate, int limit, int offset, Instant now);
+
+    List<BookingSessionAvailabilityProjection> searchBookingSessionAvailability(
+            UUID patientId,
+            UUID departmentId,
+            UUID serviceId,
+            LocalDate localDate,
+            String session,
+            Instant now,
+            int limit,
+            int offset);
+
+    List<WorkScheduleCandidate> workScheduleCandidatesForBookingSession(UUID bookingSessionId, Instant now);
+
     void lockPractitionerDay(UUID practitionerRoleId, String dateIso);
+
+    void lockBookingSessionBucket(UUID departmentId, UUID serviceId, LocalDate localDate, String session);
 
     void lockPatientSchedule(UUID patientId);
 

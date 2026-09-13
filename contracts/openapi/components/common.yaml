@@ -19,6 +19,12 @@ parameters:
     in: header
     required: true
     schema: { type: string, minLength: 16, maxLength: 512 }
+  TabContext:
+    name: X-MediCore-Tab-Context
+    in: header
+    required: true
+    description: Non-secret 128-bit tab selector. It selects a context-scoped HttpOnly session cookie and never authenticates by itself.
+    schema: { type: string, pattern: '^[A-Za-z0-9_-]{22}$' }
   IfMatch:
     name: If-Match
     in: header

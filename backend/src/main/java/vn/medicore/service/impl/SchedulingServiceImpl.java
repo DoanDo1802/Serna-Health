@@ -6,6 +6,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
@@ -27,8 +29,19 @@ import vn.medicore.dto.SchedulingModels.AppointmentRow;
 import vn.medicore.dto.SchedulingModels.AppointmentSlotRow;
 import vn.medicore.dto.SchedulingModels.BookingAvailabilitySlot;
 import vn.medicore.dto.SchedulingModels.BookingCatalog;
+import vn.medicore.dto.SchedulingModels.RescheduleCatalog;
+import vn.medicore.dto.SchedulingModels.BookingHoldAssignment;
+import vn.medicore.dto.SchedulingModels.BookingSessionAvailability;
+import vn.medicore.dto.SchedulingModels.BookingSessionRow;
 import vn.medicore.dto.SchedulingModels.CreateAppointmentSlotRequest;
 import vn.medicore.dto.SchedulingModels.CreateSlotHoldRequest;
+import vn.medicore.dto.SchedulingModels.CreateBookingSessionHoldRequest;
+import vn.medicore.dto.SchedulingModels.CreateSlotHoldResponse;
+import vn.medicore.dto.SchedulingModels.CreateWorkScheduleRequest;
+import vn.medicore.dto.SchedulingModels.UpdateWorkScheduleRequest;
+import vn.medicore.dto.SchedulingModels.WorkScheduleCandidate;
+import vn.medicore.dto.SchedulingModels.WorkScheduleCatalog;
+import vn.medicore.dto.SchedulingModels.WorkScheduleRow;
 import vn.medicore.dto.SchedulingModels.CreateRescheduleSlotHoldRequest;
 import vn.medicore.dto.SchedulingModels.PatientAppointment;
 import vn.medicore.dto.SchedulingModels.SlotHoldJdbcRow;
@@ -44,6 +57,7 @@ import vn.medicore.service.SchedulingService;
 public class SchedulingServiceImpl implements SchedulingService {
 
     private static final ZoneId HO_CHI_MINH = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final BigDecimal MAX_DEPOSIT = new BigDecimal("100000.00");
 
     private final SchedulingRepository store;
     private final PaymentRepository paymentRepository;
@@ -133,6 +147,228 @@ public class SchedulingServiceImpl implements SchedulingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public RescheduleCatalog rescheduleCatalog() {
+        return store.rescheduleCatalog(clock.instant());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public WorkScheduleCatalog workScheduleCatalog() {
+        return store.workScheduleCatalog(clock.instant());
+    }
+
+    @Override
+    public WorkScheduleRow createWorkSchedule(CreateWorkScheduleRequest request, SchedulingAuditContext context) {
+        validateWorkScheduleRequest(request);
+        Instant now = clock.instant();
+        SessionWindow window = sessionWindow(request.localDate(), request.session());
+        if (!window.startAt().isAfter(now)) throw new IllegalArgumentException("Work schedule must be in the future");
+        if (!store.isWorkScheduleConfigurationAvailable(
+                request.practitionerRoleId(), request.departmentId(), request.roomId(), request.serviceId(), now)) {
+            throw new IllegalArgumentException("Work schedule configuration is unavailable");
+        }
+
+        String date = request.localDate().toString();
+        store.lockPractitionerDay(request.practitionerRoleId(), date);
+        if (store.countActiveSlotsByPractitionerAndDate(request.practitionerRoleId(), date) >= 4) {
+            throw new IllegalArgumentException("Practitioner role cannot exceed 4 active slots per day");
+        }
+        if (store.countActiveSlotsByPractitionerAndSession(request.practitionerRoleId(), date, request.session()) >= 2) {
+            throw new IllegalArgumentException("Practitioner role cannot exceed 2 active slots per session");
+        }
+
+        store.lockBookingSessionBucket(request.departmentId(), request.serviceId(), request.localDate(), request.session());
+        BookingSessionRow bookingSession = store.activeBookingSessionByBucketForUpdate(
+                        request.departmentId(), request.serviceId(), request.localDate(), request.session())
+                .orElseGet(() -> {
+                    BookingSessionRow created = new BookingSessionRow(ids.next(), request.departmentId(), request.serviceId(),
+                            request.localDate(), request.session(), window.startAt(), window.endAt(), "ACTIVE", 0, now, now);
+                    store.insertBookingSession(created);
+                    return created;
+                });
+        if (!bookingSession.startAt().equals(window.startAt()) || !bookingSession.endAt().equals(window.endAt())) {
+            throw new IllegalStateException("Booking session window is inconsistent");
+        }
+
+        WorkScheduleRow schedule = new WorkScheduleRow(ids.next(), bookingSession.id(), request.practitionerRoleId(), request.roomId(),
+                request.capacity(), "ACTIVE", 0, now, now, null, 0, request.capacity(),
+                request.departmentId(), request.serviceId(), request.localDate(), request.session());
+        store.insertWorkSchedule(schedule);
+        AppointmentSlotRow slot = new AppointmentSlotRow(ids.next(), request.practitionerRoleId(), request.departmentId(), request.roomId(),
+                request.serviceId(), request.session(), window.startAt(), window.endAt(), request.capacity(), "ACTIVE", 0, now, now);
+        store.insertAppointmentSlot(slot);
+        store.linkAppointmentSlotToWorkSchedule(slot.id(), schedule.id());
+        WorkScheduleRow value = new WorkScheduleRow(schedule.id(), schedule.bookingSessionId(), schedule.practitionerRoleId(),
+                schedule.roomId(), schedule.capacity(), schedule.status(), schedule.version(), schedule.createdAt(), schedule.updatedAt(),
+                slot.id(), 0, schedule.capacity(), schedule.departmentId(), schedule.serviceId(), schedule.localDate(), schedule.session());
+        record(context, null, "work_schedule.create", "SUCCEEDED", "WorkSchedule", value.id(), value.version(), "created");
+        return value;
+    }
+
+    @Override
+    public WorkScheduleRow updateWorkSchedule(UUID id, UpdateWorkScheduleRequest request, long expectedVersion,
+            SchedulingAuditContext context) {
+        Instant now = clock.instant();
+        WorkScheduleRow existing = store.workScheduleByIdForUpdate(id, now).orElseThrow(ResourceNotFoundException::new);
+        requireVersion(existing.version(), expectedVersion);
+        if (!"ACTIVE".equals(existing.status())) throw new IllegalStateException("Only ACTIVE work schedules can be updated");
+
+        AppointmentSlotRow slot = store.appointmentSlotByIdForUpdate(existing.slotId()).orElseThrow(ResourceNotFoundException::new);
+        store.expireActiveHolds(slot.id(), now);
+        int reserved = store.countActiveHoldsAndAppointments(slot.id(), now);
+
+        int targetCapacity = request.capacity() != null ? request.capacity() : existing.capacity();
+        if (targetCapacity < 1 || targetCapacity > 100) {
+            throw new IllegalArgumentException("Work schedule capacity is invalid");
+        }
+        if (targetCapacity < reserved) {
+            throw new IllegalStateException("Work schedule capacity cannot be lower than reservations");
+        }
+
+        UUID targetRoleId = request.practitionerRoleId() != null ? request.practitionerRoleId() : existing.practitionerRoleId();
+        UUID targetDepartmentId = request.departmentId() != null ? request.departmentId() : existing.departmentId();
+        UUID targetRoomId = request.roomId() != null ? request.roomId() : existing.roomId();
+        UUID targetServiceId = request.serviceId() != null ? request.serviceId() : existing.serviceId();
+        LocalDate targetLocalDate = request.localDate() != null ? request.localDate() : existing.localDate();
+        String targetSession = request.session() != null ? request.session() : existing.session();
+        if (!isSession(targetSession)) throw new IllegalArgumentException("Session is invalid");
+
+        boolean roleChanged = !targetRoleId.equals(existing.practitionerRoleId());
+        boolean deptChanged = !targetDepartmentId.equals(existing.departmentId());
+        boolean roomChanged = !targetRoomId.equals(existing.roomId());
+        boolean serviceChanged = !targetServiceId.equals(existing.serviceId());
+        boolean dateChanged = !targetLocalDate.equals(existing.localDate());
+        boolean sessionChanged = !targetSession.equals(existing.session());
+
+        if (reserved > 0 && (roleChanged || deptChanged || serviceChanged || dateChanged || sessionChanged)) {
+            throw new IllegalStateException("Cannot modify doctor, department, service, date, or session when schedule has active reservations");
+        }
+
+        SessionWindow targetWindow = sessionWindow(targetLocalDate, targetSession);
+        if ((dateChanged || sessionChanged) && !targetWindow.startAt().isAfter(now)) {
+            throw new IllegalArgumentException("Work schedule must be in the future");
+        }
+
+        if (roleChanged || deptChanged || roomChanged || serviceChanged) {
+            if (!store.isWorkScheduleConfigurationAvailable(targetRoleId, targetDepartmentId, targetRoomId, targetServiceId, now)) {
+                throw new IllegalArgumentException("Work schedule configuration is unavailable");
+            }
+        }
+
+        if (roleChanged || dateChanged || sessionChanged) {
+            String date = targetLocalDate.toString();
+            store.lockPractitionerDay(targetRoleId, date);
+            int activeSlotsForDate = store.countActiveSlotsByPractitionerAndDate(targetRoleId, date);
+            boolean sameRoleAndDate = !roleChanged && !dateChanged;
+            if (activeSlotsForDate >= (sameRoleAndDate ? 5 : 4)) {
+                throw new IllegalArgumentException("Practitioner role cannot exceed 4 active slots per day");
+            }
+            int activeSlotsForSession = store.countActiveSlotsByPractitionerAndSession(targetRoleId, date, targetSession);
+            boolean sameRoleDateSession = !roleChanged && !dateChanged && !sessionChanged;
+            if (activeSlotsForSession >= (sameRoleDateSession ? 3 : 2)) {
+                throw new IllegalArgumentException("Practitioner role cannot exceed 2 active slots per session");
+            }
+        }
+
+        UUID targetBookingSessionId;
+        if (deptChanged || serviceChanged || dateChanged || sessionChanged) {
+            store.lockBookingSessionBucket(targetDepartmentId, targetServiceId, targetLocalDate, targetSession);
+            BookingSessionRow bookingSession = store.activeBookingSessionByBucketForUpdate(
+                            targetDepartmentId, targetServiceId, targetLocalDate, targetSession)
+                    .orElseGet(() -> {
+                        BookingSessionRow created = new BookingSessionRow(ids.next(), targetDepartmentId, targetServiceId,
+                                targetLocalDate, targetSession, targetWindow.startAt(), targetWindow.endAt(), "ACTIVE", 0, now, now);
+                        store.insertBookingSession(created);
+                        return created;
+                    });
+            if (!bookingSession.startAt().equals(targetWindow.startAt()) || !bookingSession.endAt().equals(targetWindow.endAt())) {
+                throw new IllegalStateException("Booking session window is inconsistent");
+            }
+            targetBookingSessionId = bookingSession.id();
+        } else {
+            targetBookingSessionId = existing.bookingSessionId();
+        }
+
+        WorkScheduleRow updated = new WorkScheduleRow(
+                existing.id(),
+                targetBookingSessionId,
+                targetRoleId,
+                targetRoomId,
+                targetCapacity,
+                existing.status(),
+                expectedVersion + 1,
+                existing.createdAt(),
+                now,
+                existing.slotId(),
+                existing.reservedCapacity(),
+                Math.max(0, targetCapacity - existing.reservedCapacity()),
+                targetDepartmentId,
+                targetServiceId,
+                targetLocalDate,
+                targetSession
+        );
+        store.updateWorkSchedule(updated, expectedVersion);
+
+        AppointmentSlotRow updatedSlot = new AppointmentSlotRow(
+                slot.id(),
+                targetRoleId,
+                targetDepartmentId,
+                targetRoomId,
+                targetServiceId,
+                targetSession,
+                targetWindow.startAt(),
+                targetWindow.endAt(),
+                targetCapacity,
+                slot.status(),
+                slot.version() + 1,
+                slot.createdAt(),
+                now
+        );
+        store.updateAppointmentSlot(updatedSlot, slot.version());
+        record(context, null, "work_schedule.update", "SUCCEEDED", "WorkSchedule", id, updated.version(), "updated");
+        return updated;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public WorkScheduleRow getWorkSchedule(UUID id) {
+        return store.workScheduleById(id, clock.instant()).orElseThrow(ResourceNotFoundException::new);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<WorkScheduleRow> searchWorkSchedules(LocalDate fromDate, LocalDate toDate, String cursor, int limit) {
+        if (fromDate != null && toDate != null && toDate.isBefore(fromDate)) {
+            throw new IllegalArgumentException("Schedule date range is invalid");
+        }
+        int offset = offset(cursor);
+        return page(store.searchWorkSchedules(fromDate, toDate, limit + 1, offset, clock.instant()), limit, offset);
+    }
+
+    @Override
+    public void cancelWorkSchedule(UUID id, long expectedVersion, SchedulingAuditContext context) {
+        Instant now = clock.instant();
+        WorkScheduleRow existing = store.workScheduleByIdForUpdate(id, now).orElseThrow(ResourceNotFoundException::new);
+        requireVersion(existing.version(), expectedVersion);
+        if (!"ACTIVE".equals(existing.status())) throw new IllegalStateException("Only ACTIVE work schedules can be cancelled");
+        AppointmentSlotRow slot = store.appointmentSlotByIdForUpdate(existing.slotId()).orElseThrow(ResourceNotFoundException::new);
+        store.expireActiveHolds(slot.id(), now);
+        if (store.countActiveHoldsAndAppointments(slot.id(), now) > 0) {
+            throw new IllegalStateException("Work schedule has active reservations");
+        }
+        WorkScheduleRow cancelled = new WorkScheduleRow(existing.id(), existing.bookingSessionId(), existing.practitionerRoleId(), existing.roomId(),
+                existing.capacity(), "CANCELLED", expectedVersion + 1, existing.createdAt(), now, existing.slotId(), 0, existing.capacity(),
+                existing.departmentId(), existing.serviceId(), existing.localDate(), existing.session());
+        store.updateWorkSchedule(cancelled, expectedVersion);
+        AppointmentSlotRow cancelledSlot = new AppointmentSlotRow(slot.id(), slot.practitionerRoleId(), slot.departmentId(), slot.roomId(),
+                slot.serviceId(), slot.session(), slot.startAt(), slot.endAt(), slot.capacity(), "CANCELLED", slot.version() + 1,
+                slot.createdAt(), now);
+        store.updateAppointmentSlot(cancelledSlot, slot.version());
+        record(context, null, "work_schedule.cancel", "SUCCEEDED", "WorkSchedule", id, cancelled.version(), "cancelled");
+    }
+
+    @Override
     public void cancelAppointmentSlot(UUID id, long version, SchedulingAuditContext context) {
         AppointmentSlotRow existing = store.appointmentSlotByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         requireVersion(existing.version(), version);
@@ -153,6 +389,54 @@ public class SchedulingServiceImpl implements SchedulingService {
     @Override
     public SlotHoldRow createSlotHold(CreateSlotHoldRequest request, SchedulingAuditContext context) {
         return createSlotHold(request.slotId(), request.patientId(), null, context, "slot_hold.create");
+    }
+
+    @Override
+    public CreateSlotHoldResponse createBookingSessionHold(
+            CreateBookingSessionHoldRequest request, SchedulingAuditContext context) {
+        if (request.bookingSessionId() == null || request.patientId() == null) {
+            throw new IllegalArgumentException("Booking session hold request is invalid");
+        }
+        Instant now = clock.instant();
+        store.lockPatientSchedule(request.patientId());
+        BookingSessionRow session = store.activeBookingSessionByIdForUpdate(request.bookingSessionId())
+                .orElseThrow(ResourceNotFoundException::new);
+        if (!session.startAt().isAfter(now)) throw new IllegalStateException("Booking session is unavailable");
+
+        List<WorkScheduleCandidate> candidates = store.workScheduleCandidatesForBookingSession(session.id(), now);
+        for (WorkScheduleCandidate candidate : candidates) {
+            store.expireActiveHolds(candidate.slot().id(), now);
+        }
+        if (store.hasPatientScheduleConflict(request.patientId(), session.startAt(), session.endAt(), now, null, null)) {
+            record(context, request.patientId(), "slot_hold.create", "DENIED", "BookingSession", session.id(), session.version(),
+                    "APPOINTMENT_PATIENT_TIME_OVERLAP");
+            throw new PatientScheduleConflictException("APPOINTMENT_PATIENT_TIME_OVERLAP",
+                    "Patient already has a conflicting appointment or active hold");
+        }
+        List<CandidateUsage> availableCandidates = candidates.stream()
+                .map(candidate -> new CandidateUsage(candidate,
+                        store.countActiveHoldsAndAppointments(candidate.slot().id(), now)))
+                .filter(candidate -> candidate.usedCapacity() < candidate.candidate().slot().capacity())
+                .toList();
+        WorkScheduleCandidate selected = availableCandidates.stream()
+                .min(java.util.Comparator
+                        .comparingDouble((CandidateUsage candidate) ->
+                                (double) candidate.usedCapacity() / candidate.candidate().slot().capacity())
+                        .thenComparingInt(CandidateUsage::usedCapacity)
+                        .thenComparing(candidate -> candidate.candidate().slot().startAt())
+                        .thenComparing(candidate -> candidate.candidate().slot().practitionerRoleId())
+                        .thenComparing(candidate -> candidate.candidate().slot().id()))
+                .map(CandidateUsage::candidate)
+                .orElseThrow(() -> {
+                    record(context, request.patientId(), "slot_hold.create", "DENIED", "BookingSession", session.id(),
+                            session.version(), "capacity_exhausted");
+                    return new IllegalStateException("Booking session is fully booked");
+                });
+        SlotHoldRow hold = createSlotHoldOnLockedSlot(selected.slot(), request.patientId(), null, context, "slot_hold.create");
+        return new CreateSlotHoldResponse(hold.id(), hold.patientId(), hold.expiresAt(), hold.depositAmount(), hold.currency(),
+                hold.status(), hold.version(), hold.createdAt(), hold.updatedAt(),
+                new BookingHoldAssignment(selected.practitionerName(), selected.roomName(), selected.slot().startAt(),
+                        selected.slot().endAt(), selected.slot().session()));
     }
 
     @Override
@@ -197,6 +481,16 @@ public class SchedulingServiceImpl implements SchedulingService {
         Instant now = clock.instant();
         store.lockPatientSchedule(patientId);
         AppointmentSlotRow slot = store.appointmentSlotByIdForUpdate(slotId).orElseThrow(ResourceNotFoundException::new);
+        return createSlotHoldOnLockedSlot(slot, patientId, excludedAppointmentId, context, auditAction);
+    }
+
+    private SlotHoldRow createSlotHoldOnLockedSlot(
+            AppointmentSlotRow slot,
+            UUID patientId,
+            UUID excludedAppointmentId,
+            SchedulingAuditContext context,
+            String auditAction) {
+        Instant now = clock.instant();
         if (!"ACTIVE".equals(slot.status()) || !slot.startAt().isAfter(now)) {
             throw new IllegalStateException("Slot is unavailable");
         }
@@ -227,7 +521,7 @@ public class SchedulingServiceImpl implements SchedulingService {
             expiresAt = slot.startAt();
         }
         SlotHoldJdbcRow row = new SlotHoldJdbcRow(
-                ids.next(), slot.id(), patientId, expiresAt, price, "VND",
+                ids.next(), slot.id(), patientId, expiresAt, price.min(MAX_DEPOSIT), "VND",
                 null, null, null, "ACTIVE", 0, now, now);
         store.insertSlotHold(row);
         record(context, patientId, auditAction, "SUCCEEDED", "SlotHold", row.id(), row.version(), "created");
@@ -299,8 +593,22 @@ public class SchedulingServiceImpl implements SchedulingService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<BookingAvailabilitySlot> getBookingAvailability(UUID patientId, String cursor, int limit) {
-        return bookingAvailability(patientId, null, cursor, limit);
+    public Page<BookingSessionAvailability> getBookingAvailability(
+            UUID patientId,
+            UUID departmentId,
+            UUID serviceId,
+            LocalDate localDate,
+            String session,
+            String cursor,
+            int limit) {
+        if (session != null && !isSession(session)) throw new IllegalArgumentException("Booking session is invalid");
+        int offset = offset(cursor);
+        List<BookingSessionAvailability> values = store.searchBookingSessionAvailability(
+                        patientId, departmentId, serviceId, localDate, session, clock.instant(), limit + 1, offset)
+                .stream()
+                .map(projection -> projection.toAvailability())
+                .toList();
+        return page(values, limit, offset);
     }
 
     @Override
@@ -454,12 +762,35 @@ public class SchedulingServiceImpl implements SchedulingService {
 
     private static void validateSlotRequest(CreateAppointmentSlotRequest value) {
         if (value == null || value.practitionerRoleId() == null || value.departmentId() == null || value.roomId() == null
-                || value.serviceId() == null || !("MORNING".equals(value.session()) || "AFTERNOON".equals(value.session()))
+                || value.serviceId() == null || !isSession(value.session())
                 || value.startAt() == null || value.endAt() == null || !value.endAt().isAfter(value.startAt())
                 || value.capacity() < 1) {
             throw new IllegalArgumentException("Appointment slot is invalid");
         }
     }
+
+    private static void validateWorkScheduleRequest(CreateWorkScheduleRequest value) {
+        if (value == null || value.practitionerRoleId() == null || value.departmentId() == null || value.roomId() == null
+                || value.serviceId() == null || value.localDate() == null || !isSession(value.session())
+                || value.capacity() < 1) {
+            throw new IllegalArgumentException("Work schedule is invalid");
+        }
+    }
+
+    private static boolean isSession(String value) {
+        return "MORNING".equals(value) || "AFTERNOON".equals(value);
+    }
+
+    private static SessionWindow sessionWindow(LocalDate localDate, String session) {
+        LocalTime start = "MORNING".equals(session) ? LocalTime.of(8, 0) : LocalTime.of(13, 30);
+        LocalTime end = "MORNING".equals(session) ? LocalTime.of(12, 0) : LocalTime.of(17, 30);
+        return new SessionWindow(localDate.atTime(start).atZone(HO_CHI_MINH).toInstant(),
+                localDate.atTime(end).atZone(HO_CHI_MINH).toInstant());
+    }
+
+    private record SessionWindow(Instant startAt, Instant endAt) {}
+
+    private record CandidateUsage(WorkScheduleCandidate candidate, int usedCapacity) {}
 
     private void record(
             SchedulingAuditContext context,

@@ -29,6 +29,9 @@ springdoc:
     path: /api/v1/swagger-ui
 
 medicore:
+  web:
+    cors:
+      allowed-origins: ${MEDICORE_WEB_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001}
   crypto:
     encryption-key: ${MEDICORE_CRYPTO_ENCRYPTION_KEY}
     comparison-key: ${MEDICORE_CRYPTO_COMPARISON_KEY}
@@ -45,7 +48,7 @@ medicore:
     session:
       idle-timeout: 30m
       absolute-timeout: 12h
-      cookie-name: MEDICORE_SESSION
+      cookie-name-prefix: __Host-MEDICORE_SESSION_
       secure-cookie: true
       same-site: Lax
     token:

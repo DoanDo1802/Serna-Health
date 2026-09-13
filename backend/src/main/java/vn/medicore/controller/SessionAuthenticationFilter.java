@@ -2,7 +2,6 @@ package vn.medicore.controller;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -14,33 +13,36 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 import vn.medicore.common.exception.InvalidCsrfException;
 import vn.medicore.common.exception.ProblemResponseWriter;
-import vn.medicore.config.AuthProperties;
 import vn.medicore.dto.AuthenticatedAccount;
 import vn.medicore.service.IdentityAccessService;
 
 public final class SessionAuthenticationFilter extends OncePerRequestFilter {
 
     private final IdentityAccessService identityAccess;
-    private final AuthProperties properties;
+    private final TabSessionContextResolver contexts;
     private final ProblemResponseWriter problems;
 
     public SessionAuthenticationFilter(
             IdentityAccessService identityAccess,
-            AuthProperties properties,
+            TabSessionContextResolver contexts,
             ProblemResponseWriter problems) {
         this.identityAccess = identityAccess;
-        this.properties = properties;
+        this.contexts = contexts;
         this.problems = problems;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String token = cookie(request, properties.session().cookieName());
+        TabSessionContextResolver.SessionContext session = contexts.resolve(request).orElse(null);
         boolean csrfRequired = isMutating(request.getMethod()) && !isPublicAuthEndpoint(request);
         String csrfHeader = request.getHeader("X-CSRF-Token");
         try {
-            identityAccess.authenticateSession(token, csrfHeader, csrfRequired).ifPresent(account -> {
+            identityAccess.authenticateSession(
+                    session == null ? null : session.sessionToken(),
+                    session == null ? null : session.value(),
+                    csrfHeader,
+                    csrfRequired).ifPresent(account -> {
                 List<SimpleGrantedAuthority> authorities = account.permissions().stream()
                         .map(SimpleGrantedAuthority::new).toList();
                 SecurityContextHolder.getContext().setAuthentication(
@@ -54,13 +56,6 @@ public final class SessionAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
-    private static String cookie(HttpServletRequest request, String name) {
-        if (request.getCookies() == null) return null;
-        for (Cookie cookie : request.getCookies()) {
-            if (name.equals(cookie.getName())) return cookie.getValue();
-        }
-        return null;
-    }
 
     private static boolean isMutating(String method) {
         return "POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)

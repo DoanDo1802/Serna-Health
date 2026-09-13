@@ -24,17 +24,20 @@ public interface IdentityAccessService {
 
     AccountView verifyEmail(String email, String code, String token, String requestId);
 
-    SessionIssue loginWithPassword(String email, String password, String requestId, String sourceIp, String userAgent);
+    SessionIssue loginWithPassword(
+            String email, String password, String tabContext, String requestId, String sourceIp, String userAgent);
 
     CommandAccepted requestLoginOtp(String email, String requestId, String sourceIp);
 
-    SessionIssue loginWithOtp(String email, String code, String requestId, String sourceIp, String userAgent);
+    SessionIssue loginWithOtp(
+            String email, String code, String tabContext, String requestId, String sourceIp, String userAgent);
 
-    Optional<SessionView> currentSession(String rawSessionToken);
+    Optional<SessionView> currentSession(String rawSessionToken, String tabContext);
 
-    Optional<AuthenticatedAccount> authenticateSession(String rawSessionToken, String csrfToken, boolean csrfRequired);
+    Optional<AuthenticatedAccount> authenticateSession(
+            String rawSessionToken, String tabContext, String csrfToken, boolean csrfRequired);
 
-    void logoutCurrent(String rawSessionToken, String reason, String requestId, String correlationId);
+    void logoutCurrent(String rawSessionToken, String tabContext, String reason, String requestId, String correlationId);
 
     void logoutAll(UUID accountId, String reason, IdentityAuditContext audit);
 

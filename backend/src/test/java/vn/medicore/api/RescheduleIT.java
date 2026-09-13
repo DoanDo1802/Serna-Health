@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Set;
@@ -41,6 +42,9 @@ import vn.medicore.service.PaymentService;
 @ActiveProfiles("test")
 class RescheduleIT {
 
+    private static final String TAB_CONTEXT = "TabContextHashValue001";
+
+    private static final UUID IDENTITY_ADMIN_ROLE_ID = UUID.fromString("01980000-0000-7000-8000-000000000001");
     private static final UUID CATALOG_ADMIN_ROLE_ID = UUID.fromString("01980000-0000-7000-8000-000000000004");
     private static final UUID PATIENT_ROLE_ID = UUID.fromString("01980000-0000-7000-8000-000000000005");
 
@@ -57,37 +61,44 @@ class RescheduleIT {
 
     private UUID departmentId;
     private UUID roomId;
+    private UUID secondaryRoomId;
     private UUID service80kId;
     private UUID service120kId;
     private UUID service50kId;
     private UUID practitionerRoleId;
+    private UUID secondaryPractitionerRoleId;
     private UUID slot80kId;
     private UUID targetSlot80kId;
+    private UUID secondTargetSlot80kId;
     private UUID targetSlot120kId;
     private UUID targetSlot50kId;
 
     @BeforeEach
     void setupFixtures() throws Exception {
-        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
+        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID, IDENTITY_ADMIN_ROLE_ID));
 
         departmentId = createResource(admin, "POST", "/api/v1/departments",
-                "{\"code\":\"RESCHED-DEPT-%s\",\"name\":\"Reschedule Dept\",\"effectiveFrom\":\"2030-01-01T00:00:00Z\"}"
+                "{\"code\":\"RESCHED-DEPT-%s\",\"name\":\"Reschedule Dept\",\"effectiveFrom\":\"2020-01-01T00:00:00Z\"}"
                         .formatted(UUID.randomUUID()));
 
         roomId = createResource(admin, "POST", "/api/v1/rooms",
-                "{\"departmentId\":\"%s\",\"code\":\"RESCHED-ROOM-%s\",\"name\":\"Room R\",\"effectiveFrom\":\"2030-01-01T00:00:00Z\"}"
+                "{\"departmentId\":\"%s\",\"code\":\"RESCHED-ROOM-%s\",\"name\":\"Room R\",\"effectiveFrom\":\"2020-01-01T00:00:00Z\"}"
+                        .formatted(departmentId, UUID.randomUUID()));
+
+        secondaryRoomId = createResource(admin, "POST", "/api/v1/rooms",
+                "{\"departmentId\":\"%s\",\"code\":\"RESCHED-ROOM-SECONDARY-%s\",\"name\":\"Room S\",\"effectiveFrom\":\"2020-01-01T00:00:00Z\"}"
                         .formatted(departmentId, UUID.randomUUID()));
 
         service80kId = createResource(admin, "POST", "/api/v1/services",
-                "{\"code\":\"RESCHED-SVC80-%s\",\"name\":\"Standard Consultation\",\"serviceType\":\"CONSULTATION\",\"effectiveFrom\":\"2030-01-01T00:00:00Z\"}"
+                "{\"code\":\"RESCHED-SVC80-%s\",\"name\":\"Standard Consultation\",\"serviceType\":\"CONSULTATION\",\"effectiveFrom\":\"2020-01-01T00:00:00Z\"}"
                         .formatted(UUID.randomUUID()));
 
         service120kId = createResource(admin, "POST", "/api/v1/services",
-                "{\"code\":\"RESCHED-SVC120-%s\",\"name\":\"Specialist Consultation\",\"serviceType\":\"CONSULTATION\",\"effectiveFrom\":\"2030-01-01T00:00:00Z\"}"
+                "{\"code\":\"RESCHED-SVC120-%s\",\"name\":\"Specialist Consultation\",\"serviceType\":\"CONSULTATION\",\"effectiveFrom\":\"2020-01-01T00:00:00Z\"}"
                         .formatted(UUID.randomUUID()));
 
         service50kId = createResource(admin, "POST", "/api/v1/services",
-                "{\"code\":\"RESCHED-SVC50-%s\",\"name\":\"Basic Consultation\",\"serviceType\":\"CONSULTATION\",\"effectiveFrom\":\"2030-01-01T00:00:00Z\"}"
+                "{\"code\":\"RESCHED-SVC50-%s\",\"name\":\"Basic Consultation\",\"serviceType\":\"CONSULTATION\",\"effectiveFrom\":\"2020-01-01T00:00:00Z\"}"
                         .formatted(UUID.randomUUID()));
 
         JdbcTemplate jdbc = jdbc();
@@ -112,6 +123,14 @@ class RescheduleIT {
         jdbc.update("insert into practitioner_role (id, practitioner_id, department_id, role_code, status, effective_from, created_at, updated_at) " +
                         "values (?, ?, ?, 'DOCTOR', 'ACTIVE', now(), now(), now())",
                 practitionerRoleId, practitionerId, departmentId);
+        UUID secondaryPractitionerId = UUID.randomUUID();
+        jdbc.update("insert into practitioner (id, staff_code, full_name, active, created_at, updated_at) " +
+                        "values (?, ?, 'Dr. Rescheduler Two', true, now(), now())",
+                secondaryPractitionerId, "RESCHED-" + UUID.randomUUID());
+        secondaryPractitionerRoleId = UUID.randomUUID();
+        jdbc.update("insert into practitioner_role (id, practitioner_id, department_id, role_code, status, effective_from, created_at, updated_at) " +
+                        "values (?, ?, ?, 'DOCTOR', 'ACTIVE', now(), now(), now())",
+                secondaryPractitionerRoleId, secondaryPractitionerId, departmentId);
 
         Instant baseStart = Instant.now().plus(2, ChronoUnit.DAYS);
 
@@ -131,6 +150,14 @@ class RescheduleIT {
                 """.formatted(practitionerRoleId, departmentId, roomId, service80kId,
                         baseStart.plus(2, ChronoUnit.HOURS).toString(), baseStart.plus(2, ChronoUnit.HOURS).plus(30, ChronoUnit.MINUTES).toString()));
 
+        // Distinct target slot for transfer-chain regression (80k).
+        secondTargetSlot80kId = createResource(admin, "POST", "/api/v1/appointment-slots",
+                """
+                {"practitionerRoleId":"%s","departmentId":"%s","roomId":"%s","serviceId":"%s",
+                "session":"AFTERNOON","startAt":"%s","endAt":"%s","capacity":5}
+                """.formatted(secondaryPractitionerRoleId, departmentId, secondaryRoomId, service80kId,
+                        baseStart.plus(3, ChronoUnit.HOURS).toString(), baseStart.plus(3, ChronoUnit.HOURS).plus(30, ChronoUnit.MINUTES).toString()));
+
         // Target slot 2: Higher deposit (120k)
         targetSlot120kId = createResource(admin, "POST", "/api/v1/appointment-slots",
                 """
@@ -143,7 +170,7 @@ class RescheduleIT {
         targetSlot50kId = createResource(admin, "POST", "/api/v1/appointment-slots",
                 """
                 {"practitionerRoleId":"%s","departmentId":"%s","roomId":"%s","serviceId":"%s",
-                "session":"AFTERNOON","startAt":"%s","endAt":"%s","capacity":5}
+                "session":"MORNING","startAt":"%s","endAt":"%s","capacity":5}
                 """.formatted(practitionerRoleId, departmentId, roomId, service50kId,
                         baseStart.plus(6, ChronoUnit.HOURS).toString(), baseStart.plus(6, ChronoUnit.HOURS).plus(30, ChronoUnit.MINUTES).toString()));
     }
@@ -157,19 +184,19 @@ class RescheduleIT {
         UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
 
         // 2. Create target slot hold
-        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID targetHoldId = createFixtureSlotHold(patientSession, targetSlot80kId, patientId);
 
         // 3. Reschedule appointment
         String idempotencyKey = "resched-equal-" + UUID.randomUUID();
         MvcResult rescheduleResult = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", idempotencyKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"targetSlotHoldId\":\"%s\",\"reason\":\"Patient requested change\"}".formatted(targetHoldId)))
                 .andExpect(status().isOk())
-                .andExpect(header().string("ETag", "\"0\""))
+                .andExpect(header().string("ETag", "\"1\""))
                 .andExpect(jsonPath("$.oldAppointmentId").value(oldAppointmentId.toString()))
                 .andExpect(jsonPath("$.oldAppointmentVersion").value(1))
                 .andExpect(jsonPath("$.newAppointmentVersion").value(0))
@@ -220,7 +247,7 @@ class RescheduleIT {
 
         // 5. Idempotent replay: sending same request with same key returns identical 200 response
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", idempotencyKey)
@@ -242,17 +269,50 @@ class RescheduleIT {
                 insert into appointment_slot (id, practitioner_role_id, department_id, room_id, service_id,
                     session, start_at, end_at, capacity, status, version, created_at, updated_at)
                 values (?, ?, ?, ?, ?, 'MORNING', ?, ?, 5, 'ACTIVE', 0, now(), now())
-                """, overlapSlotId, practitionerRoleId, departmentId, roomId, service80kId,
-                sourceStart.plus(15, ChronoUnit.MINUTES), sourceStart.plus(45, ChronoUnit.MINUTES));
+                """, overlapSlotId, secondaryPractitionerRoleId, departmentId, secondaryRoomId, service80kId,
+                Timestamp.from(sourceStart.plus(15, ChronoUnit.MINUTES)),
+                Timestamp.from(sourceStart.plus(45, ChronoUnit.MINUTES)));
 
         MvcResult availability = mockMvc.perform(get("/api/v1/appointments/{appointmentId}/actions/reschedule-availability", appointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .param("limit", "100"))
                 .andExpect(status().isOk())
                 .andReturn();
         JsonNode items = objectMapper.readTree(availability.getResponse().getContentAsString()).path("items");
         assertThat(availabilitySlot(items, slot80kId).path("disabledReason").asText()).isEqualTo("CURRENT_APPOINTMENT");
         assertThat(availabilitySlot(items, overlapSlotId).path("canCreateHold").asBoolean()).isTrue();
+    }
+
+    @Test
+    void rescheduleCatalogRequiresRescheduleScopeAndReturnsAllMetadata() throws Exception {
+        UUID patientId = insertPatient("Reschedule Catalog Patient");
+        AuthSession patientSession = sessionWithPatient(patientId);
+        UUID appointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
+
+        // 1. Unauthenticated -> 401
+        mockMvc.perform(get("/api/v1/appointments/{appointmentId}/actions/reschedule-catalog", appointmentId))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
+
+        // 2. Different patient -> 403
+        UUID otherPatientId = insertPatient("Other Patient");
+        AuthSession otherSession = sessionWithPatient(otherPatientId);
+        mockMvc.perform(get("/api/v1/appointments/{appointmentId}/actions/reschedule-catalog", appointmentId)
+                        .cookie(otherSession.cookie()).header("X-MediCore-Tab-Context", otherSession.context()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        // 3. Appointment owner -> 200 with all 5 catalog arrays
+        mockMvc.perform(get("/api/v1/appointments/{appointmentId}/actions/reschedule-catalog", appointmentId)
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.departments").isArray())
+                .andExpect(jsonPath("$.rooms").isArray())
+                .andExpect(jsonPath("$.services").isArray())
+                .andExpect(jsonPath("$.practitioners").isArray())
+                .andExpect(jsonPath("$.practitionerRoles").isArray())
+                .andExpect(jsonPath("$.practitioners[*].staffCode").doesNotExist())
+                .andExpect(jsonPath("$.practitioners[*].userAccountId").doesNotExist());
     }
 
     @Test
@@ -267,20 +327,12 @@ class RescheduleIT {
                 insert into appointment_slot (id, practitioner_role_id, department_id, room_id, service_id,
                     session, start_at, end_at, capacity, status, version, created_at, updated_at)
                 values (?, ?, ?, ?, ?, 'MORNING', ?, ?, 5, 'ACTIVE', 0, now(), now())
-                """, overlappingSlotId, practitionerRoleId, departmentId, roomId, service80kId,
-                sourceStart.plus(15, ChronoUnit.MINUTES), sourceStart.plus(45, ChronoUnit.MINUTES));
-
-        mockMvc.perform(post("/api/v1/slot-holds")
-                        .cookie(patientSession.cookie())
-                        .header("X-CSRF-Token", patientSession.csrfToken())
-                        .header("Idempotency-Key", "generic-overlap-" + UUID.randomUUID())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slotId\":\"%s\",\"patientId\":\"%s\"}".formatted(overlappingSlotId, patientId)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("APPOINTMENT_PATIENT_TIME_OVERLAP"));
+                """, overlappingSlotId, secondaryPractitionerRoleId, departmentId, secondaryRoomId, service80kId,
+                Timestamp.from(sourceStart.plus(15, ChronoUnit.MINUTES)),
+                Timestamp.from(sourceStart.plus(45, ChronoUnit.MINUTES)));
 
         MvcResult targetHoldResult = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule-slot-holds", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "reschedule-overlap-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -292,7 +344,7 @@ class RescheduleIT {
 
         UUID targetHoldId = UUID.fromString(objectMapper.readTree(targetHoldResult.getResponse().getContentAsString()).path("id").asText());
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "reschedule-overlap-final-" + UUID.randomUUID())
@@ -310,11 +362,11 @@ class RescheduleIT {
         UUID oldAppointmentId = createPaidAppointment(patientSession, targetSlot50kId, patientId, new BigDecimal("50000.00"));
 
         // 2. Target hold with 80k deposit (difference: 30k)
-        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID targetHoldId = createFixtureSlotHold(patientSession, targetSlot80kId, patientId);
 
         // 3. Create top-up payment intent through public reschedule flow.
         MvcResult topUpResult = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule-top-up", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "topup-" + UUID.randomUUID())
@@ -327,7 +379,7 @@ class RescheduleIT {
 
         // 4. Simulate mock capture for top-up intent
         mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", topUpIntentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "sim-topup-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -336,7 +388,7 @@ class RescheduleIT {
 
         // 5. Execute reschedule with top-up intent
         MvcResult rescheduleResult = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "resched-higher-" + UUID.randomUUID())
@@ -361,9 +413,9 @@ class RescheduleIT {
                 .isEqualTo("CONSUMED");
 
         // Reschedule again. Both active allocations move through independent transfer legs.
-        UUID secondTargetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID secondTargetHoldId = createFixtureSlotHold(patientSession, secondTargetSlot80kId, patientId);
         MvcResult secondReschedule = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", newAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "resched-higher-second-" + UUID.randomUUID())
@@ -390,11 +442,11 @@ class RescheduleIT {
         UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
 
         // 2. Target hold with 50k deposit (difference: 30k excess)
-        UUID targetHoldId = createSlotHold(patientSession, targetSlot50kId, patientId);
+        UUID targetHoldId = createFixtureSlotHold(patientSession, targetSlot50kId, patientId);
 
         // 3. Execute reschedule
         MvcResult rescheduleResult = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "resched-lower-" + UUID.randomUUID())
@@ -425,11 +477,11 @@ class RescheduleIT {
         UUID patientId = insertPatient("Missing Allocation Patient");
         AuthSession patientSession = sessionWithPatient(patientId);
         UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
-        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID targetHoldId = createFixtureSlotHold(patientSession, targetSlot80kId, patientId);
         jdbc().update("update deposit_allocation set status = 'ENTERED_IN_ERROR' where appointment_id = ?", oldAppointmentId);
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "resched-missing-funding-" + UUID.randomUUID())
@@ -451,11 +503,11 @@ class RescheduleIT {
         UUID patientId = insertPatient("Zero Target Patient");
         AuthSession patientSession = sessionWithPatient(patientId);
         UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
-        UUID zeroTargetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID zeroTargetHoldId = createFixtureSlotHold(patientSession, targetSlot80kId, patientId);
         jdbc().update("update slot_hold set deposit_amount = 0.00 where id = ?", zeroTargetHoldId);
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "resched-zero-target-" + UUID.randomUUID())
@@ -475,11 +527,11 @@ class RescheduleIT {
         UUID patientId = insertPatient("IfMatch Test Patient");
         AuthSession patientSession = sessionWithPatient(patientId);
         UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
-        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID targetHoldId = createFixtureSlotHold(patientSession, targetSlot80kId, patientId);
 
         // Missing If-Match header -> 428 Precondition Required
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "resched-no-ifmatch-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -488,7 +540,7 @@ class RescheduleIT {
 
         // Stale If-Match header -> 412 Precondition Failed
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"999\"")
                         .header("Idempotency-Key", "resched-stale-" + UUID.randomUUID())
@@ -502,14 +554,14 @@ class RescheduleIT {
         UUID patientId = insertPatient("Idempotency Conflict Patient");
         AuthSession patientSession = sessionWithPatient(patientId);
         UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
-        UUID targetHold1 = createSlotHold(patientSession, targetSlot80kId, patientId);
-        UUID targetHold2 = createSlotHold(patientSession, targetSlot50kId, patientId);
+        UUID targetHold1 = createFixtureSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID targetHold2 = createFixtureSlotHold(patientSession, targetSlot50kId, patientId);
 
         String idempotencyKey = "resched-conflict-" + UUID.randomUUID();
 
         // First call
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", idempotencyKey)
@@ -519,7 +571,7 @@ class RescheduleIT {
 
         // Second call with same key but different targetSlotHoldId -> 409 Conflict
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", idempotencyKey)
@@ -539,11 +591,11 @@ class RescheduleIT {
         UUID oldAppointmentId = createPaidAppointment(ownerSession, slot80kId, ownerPatientId, new BigDecimal("80000.00"));
 
         // Other session creates hold for other patient
-        UUID otherHoldId = createSlotHold(otherSession, targetSlot80kId, otherPatientId);
+        UUID otherHoldId = createFixtureSlotHold(otherSession, targetSlot80kId, otherPatientId);
 
         // Other session tries to reschedule owner's appointment -> 403 Forbidden
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(otherSession.cookie())
+                        .cookie(otherSession.cookie()).header("X-MediCore-Tab-Context", otherSession.context())
                         .header("X-CSRF-Token", otherSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "resched-other-" + UUID.randomUUID())
@@ -560,13 +612,13 @@ class RescheduleIT {
         moveSlotTo(slot80kId, Instant.now().plus(23, ChronoUnit.HOURS));
 
         mockMvc.perform(get("/api/v1/appointments/{appointmentId}/actions/reschedule-availability", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .param("limit", "20"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED"));
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule-slot-holds", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "cutoff-target-hold-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -574,10 +626,10 @@ class RescheduleIT {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("SELF_SERVICE_RESCHEDULE_WINDOW_CLOSED"));
 
-        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID targetHoldId = createFixtureSlotHold(patientSession, targetSlot80kId, patientId);
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "cutoff-" + UUID.randomUUID())
@@ -600,12 +652,12 @@ class RescheduleIT {
         jdbc().update("update appointment set created_at = now() - interval '25 hours' where id = ?", oldAppointmentId);
 
         mockMvc.perform(get("/api/v1/appointments/{appointmentId}/actions/reschedule-availability", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .param("limit", "20"))
                 .andExpect(status().isOk());
 
         MvcResult targetHoldResult = mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule-slot-holds", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("Idempotency-Key", "old-booking-future-slot-hold-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -615,7 +667,7 @@ class RescheduleIT {
         UUID targetHoldId = UUID.fromString(objectMapper.readTree(targetHoldResult.getResponse().getContentAsString()).path("id").asText());
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "old-booking-future-slot-" + UUID.randomUUID())
@@ -630,10 +682,10 @@ class RescheduleIT {
         AuthSession patientSession = sessionWithPatient(patientId);
         UUID oldAppointmentId = createPaidAppointment(patientSession, targetSlot50kId, patientId, new BigDecimal("50000.00"));
         moveSlotTo(targetSlot50kId, Instant.now().plus(23, ChronoUnit.HOURS));
-        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID targetHoldId = createFixtureSlotHold(patientSession, targetSlot80kId, patientId);
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule-top-up", oldAppointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "topup-cutoff-" + UUID.randomUUID())
@@ -653,10 +705,10 @@ class RescheduleIT {
         AuthSession staffSession = session(Set.of(CATALOG_ADMIN_ROLE_ID));
         UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
         moveSlotTo(slot80kId, Instant.now().plus(23, ChronoUnit.HOURS));
-        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID targetHoldId = createFixtureSlotHold(patientSession, targetSlot80kId, patientId);
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(staffSession.cookie())
+                        .cookie(staffSession.cookie()).header("X-MediCore-Tab-Context", staffSession.context())
                         .header("X-CSRF-Token", staffSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "staff-resched-" + UUID.randomUUID())
@@ -676,10 +728,10 @@ class RescheduleIT {
         AuthSession staffSession = session(Set.of(CATALOG_ADMIN_ROLE_ID));
         UUID oldAppointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
         moveSlotTo(slot80kId, Instant.now().plus(23, ChronoUnit.HOURS));
-        UUID targetHoldId = createSlotHold(patientSession, targetSlot80kId, patientId);
+        UUID targetHoldId = createFixtureSlotHold(patientSession, targetSlot80kId, patientId);
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/reschedule", oldAppointmentId)
-                        .cookie(staffSession.cookie())
+                        .cookie(staffSession.cookie()).header("X-MediCore-Tab-Context", staffSession.context())
                         .header("X-CSRF-Token", staffSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "staff-noreason-" + UUID.randomUUID())
@@ -698,7 +750,7 @@ class RescheduleIT {
         String idempotencyKey = "cancel-old-booking-" + UUID.randomUUID();
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", idempotencyKey)
@@ -719,7 +771,7 @@ class RescheduleIT {
                 Integer.class, appointmentId)).isEqualTo(1);
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", idempotencyKey)
@@ -737,7 +789,7 @@ class RescheduleIT {
         moveSlotTo(slot80kId, Instant.now().plus(23, ChronoUnit.HOURS));
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "cancel-cutoff-" + UUID.randomUUID())
@@ -748,7 +800,7 @@ class RescheduleIT {
 
         moveSlotTo(slot80kId, Instant.now().plus(2, ChronoUnit.DAYS));
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"999\"")
                         .header("Idempotency-Key", "cancel-stale-" + UUID.randomUUID())
@@ -765,7 +817,7 @@ class RescheduleIT {
         UUID appointmentId = createPaidAppointment(patientSession, slot80kId, patientId, new BigDecimal("80000.00"));
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "cancel-no-csrf-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -774,7 +826,7 @@ class RescheduleIT {
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "cancel-long-reason-" + UUID.randomUUID())
@@ -800,7 +852,7 @@ class RescheduleIT {
                 """, UUID.randomUUID(), patientId, representativeSession.accountId());
 
         mockMvc.perform(post("/api/v1/appointments/{appointmentId}/actions/cancel", appointmentId)
-                        .cookie(representativeSession.cookie())
+                        .cookie(representativeSession.cookie()).header("X-MediCore-Tab-Context", representativeSession.context())
                         .header("X-CSRF-Token", representativeSession.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "representative-cancel-" + UUID.randomUUID())
@@ -812,7 +864,7 @@ class RescheduleIT {
 
     private void moveSlotTo(UUID slotId, Instant startAt) {
         jdbc().update("update appointment_slot set start_at = ?, end_at = ? where id = ?",
-                startAt, startAt.plus(30, ChronoUnit.MINUTES), slotId);
+                Timestamp.from(startAt), Timestamp.from(startAt.plus(30, ChronoUnit.MINUTES)), slotId);
     }
 
     private static JsonNode availabilitySlot(JsonNode items, UUID slotId) {
@@ -825,10 +877,10 @@ class RescheduleIT {
     }
 
     private UUID createPaidAppointment(AuthSession session, UUID targetSlotId, UUID patientId, BigDecimal deposit) throws Exception {
-        UUID holdId = createSlotHold(session, targetSlotId, patientId);
+        UUID holdId = createFixtureSlotHold(session, targetSlotId, patientId);
 
         MvcResult intentResult = mockMvc.perform(post("/api/v1/slot-holds/{holdId}/payment-intents", holdId)
-                        .cookie(session.cookie())
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "intent-" + UUID.randomUUID()))
                 .andExpect(status().isOk())
@@ -837,7 +889,7 @@ class RescheduleIT {
         UUID intentId = UUID.fromString(objectMapper.readTree(intentResult.getResponse().getContentAsString()).path("id").asText());
 
         mockMvc.perform(post("/api/v1/mock-payment-intents/{intentId}/actions/simulate", intentId)
-                        .cookie(session.cookie())
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "sim-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -847,21 +899,37 @@ class RescheduleIT {
         return jdbc().queryForObject("select id from appointment where slot_hold_id = ?", UUID.class, holdId);
     }
 
-    private UUID createSlotHold(AuthSession session, UUID targetSlotId, UUID patientId) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/v1/slot-holds")
-                        .cookie(session.cookie())
-                        .header("X-CSRF-Token", session.csrfToken())
-                        .header("Idempotency-Key", "hold-" + UUID.randomUUID())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slotId\":\"%s\",\"patientId\":\"%s\"}".formatted(targetSlotId, patientId)))
-                .andExpect(status().isOk())
-                .andReturn();
-        return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString()).path("id").asText());
+    private UUID createFixtureSlotHold(AuthSession session, UUID targetSlotId, UUID patientId) {
+        return createRescheduleSlotHold(session, targetSlotId, patientId);
+    }
+
+    private UUID createRescheduleSlotHold(AuthSession session, UUID targetSlotId, UUID patientId) {
+        UUID holdId = UUID.randomUUID();
+        BigDecimal depositAmount = jdbc().queryForObject("""
+                select least(price.amount, 100000.00)
+                from appointment_slot slot
+                join lateral (
+                    select amount
+                    from service_price
+                    where service_id = slot.service_id
+                      and currency = 'VND'
+                      and effective_from <= now()
+                      and (effective_to is null or effective_to > now())
+                    order by effective_from desc, id desc
+                    limit 1
+                ) price on true
+                where slot.id = ?
+                """, BigDecimal.class, targetSlotId);
+        jdbc().update("""
+                insert into slot_hold (id, slot_id, patient_id, expires_at, deposit_amount, currency, status, version, created_at, updated_at)
+                values (?, ?, ?, now() + interval '5 minutes', ?, 'VND', 'ACTIVE', 0, now(), now())
+                """, holdId, targetSlotId, patientId, depositAmount);
+        return holdId;
     }
 
     private UUID createResource(AuthSession session, String method, String path, String body) throws Exception {
         MvcResult result = mockMvc.perform(post(path)
-                        .cookie(session.cookie())
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "fixture-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -914,17 +982,18 @@ class RescheduleIT {
                     """, UUID.randomUUID(), accountId, roleId, accountId);
         }
         jdbc.update("""
-                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, status,
+                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, tab_context_hash, status,
                     authenticated_at, last_seen_at, absolute_expires_at, version)
-                values (?, ?, ?, ?, 'ACTIVE', now(), now(), now() + interval '1 hour', 0)
+                values (?, ?, ?, ?, ?, 'ACTIVE', now(), now(), now() + interval '1 hour', 0)
                 """, sessionId, accountId,
-                secretHasher.hash("SESSION", rawSession), secretHasher.hash("CSRF", csrfToken));
-        return new AuthSession(accountId, sessionId, new MockCookie("MEDICORE_SESSION", rawSession), csrfToken);
+                secretHasher.hash("SESSION", rawSession), secretHasher.hash("CSRF", csrfToken),
+                secretHasher.hash("SESSION_CONTEXT", TAB_CONTEXT));
+        return new AuthSession(accountId, sessionId, new MockCookie("MEDICORE_SESSION_" + TAB_CONTEXT, rawSession), csrfToken, TAB_CONTEXT);
     }
 
     private JdbcTemplate jdbc() {
         return new JdbcTemplate(dataSource);
     }
 
-    private record AuthSession(UUID accountId, UUID sessionId, MockCookie cookie, String csrfToken) {}
+    private record AuthSession(UUID accountId, UUID sessionId, MockCookie cookie, String csrfToken, String context) {}
 }

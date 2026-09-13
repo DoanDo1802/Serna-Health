@@ -13,6 +13,7 @@ medicore:
   auth:
     secret-hash-key: test-only-key-at-least-thirty-two-bytes
     session:
+      cookie-name-prefix: MEDICORE_SESSION_
       secure-cookie: false
   payment:
     mock-enabled: true

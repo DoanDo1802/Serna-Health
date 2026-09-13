@@ -96,6 +96,27 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
+    public DepartmentView activateDepartment(UUID id, long version, CatalogAuditContext context) {
+        DepartmentView existing = store.departmentByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        Instant now = clock.instant();
+        store.updateDepartment(new DepartmentRow(id, existing.code(), existing.name(), true,
+                existing.effectiveFrom(), null, version + 1, existing.createdAt(), now), version);
+        DepartmentView view = store.departmentById(id).orElseThrow();
+        record(context, "department.update", "Department", view.id(), view.version(), "activated");
+        return view;
+    }
+
+    @Override
+    public void deleteDepartment(UUID id, long version, CatalogAuditContext context) {
+        store.departmentByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        if (store.countRoomsByDepartmentId(id) > 0 || store.countPersonnelByDepartmentId(id) > 0) {
+            throw new IllegalStateException("Không thể xóa chuyên khoa đang có phòng hoặc nhân sự liên kết. Vui lòng tạm ngừng chuyên khoa.");
+        }
+        store.deleteDepartment(id, version);
+        record(context, "department.update", "Department", id, version, "deleted");
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public Page<RoomView> listRooms(UUID departmentId, Boolean active, String cursor, int limit) {
         int offset = offset(cursor);

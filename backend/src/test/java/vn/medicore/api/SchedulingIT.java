@@ -1,6 +1,7 @@
 package vn.medicore.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -44,8 +45,11 @@ import vn.medicore.config.SecretHasher;
 class SchedulingIT {
 
     // Seed role IDs from V2/V13 migrations
-    private static final UUID CATALOG_ADMIN_ROLE_ID = UUID.fromString("01980000-0000-7000-8000-000000000004");
-    private static final UUID PATIENT_ROLE_ID       = UUID.fromString("01980000-0000-7000-8000-000000000005");
+    private static final String TAB_CONTEXT = "TabContextHashValue001";
+
+    private static final UUID IDENTITY_ADMIN_ROLE_ID = UUID.fromString("01980000-0000-7000-8000-000000000001");
+    private static final UUID CATALOG_ADMIN_ROLE_ID  = UUID.fromString("01980000-0000-7000-8000-000000000004");
+    private static final UUID PATIENT_ROLE_ID        = UUID.fromString("01980000-0000-7000-8000-000000000005");
 
     @Container
     @ServiceConnection
@@ -67,15 +71,15 @@ class SchedulingIT {
         AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
 
         departmentId = createResource(admin, "POST", "/api/v1/departments",
-                "{\"code\":\"SCHED-DEPT-%s\",\"name\":\"Scheduling Dept\",\"effectiveFrom\":\"2030-01-01T00:00:00Z\"}"
+                "{\"code\":\"SCHED-DEPT-%s\",\"name\":\"Scheduling Dept\",\"effectiveFrom\":\"2020-01-01T00:00:00Z\"}"
                         .formatted(UUID.randomUUID()));
 
         roomId = createResource(admin, "POST", "/api/v1/rooms",
-                "{\"departmentId\":\"%s\",\"code\":\"SCHED-ROOM-%s\",\"name\":\"Room A\",\"effectiveFrom\":\"2030-01-01T00:00:00Z\"}"
+                "{\"departmentId\":\"%s\",\"code\":\"SCHED-ROOM-%s\",\"name\":\"Room A\",\"effectiveFrom\":\"2020-01-01T00:00:00Z\"}"
                         .formatted(departmentId, UUID.randomUUID()));
 
         serviceId = createResource(admin, "POST", "/api/v1/services",
-                "{\"code\":\"SCHED-SVC-%s\",\"name\":\"Consultation\",\"serviceType\":\"CONSULTATION\",\"effectiveFrom\":\"2030-01-01T00:00:00Z\"}"
+                "{\"code\":\"SCHED-SVC-%s\",\"name\":\"Consultation\",\"serviceType\":\"CONSULTATION\",\"effectiveFrom\":\"2020-01-01T00:00:00Z\"}"
                         .formatted(UUID.randomUUID()));
 
         // Insert service price directly — price endpoint needs service_price.create permission already on admin
@@ -108,13 +112,13 @@ class SchedulingIT {
         createSlot(session(Set.of(CATALOG_ADMIN_ROLE_ID)), Instant.now().plus(2, ChronoUnit.DAYS), 2);
 
         mockMvc.perform(get("/api/v1/booking/catalog")
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .param("patientId", UUID.randomUUID().toString()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
         mockMvc.perform(get("/api/v1/booking/catalog")
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .param("patientId", patientSession.accountId().toString()))
                 .andExpect(status().isForbidden());
     }
@@ -126,14 +130,14 @@ class SchedulingIT {
         createSlot(session(Set.of(CATALOG_ADMIN_ROLE_ID)), Instant.now().plus(2, ChronoUnit.DAYS), 2);
 
         mockMvc.perform(get("/api/v1/booking/catalog")
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .param("patientId", patientId.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.departments[0].id").value(departmentId.toString()))
-                .andExpect(jsonPath("$.services[0].priceAmount").value(75000))
-                .andExpect(jsonPath("$.practitioners[0].fullName").value("Dr. Test"))
-                .andExpect(jsonPath("$.practitioners[0].staffCode").doesNotExist())
-                .andExpect(jsonPath("$.practitioners[0].userAccountId").doesNotExist());
+                .andExpect(jsonPath("$.departments[*].id").value(hasItem(departmentId.toString())))
+                .andExpect(jsonPath("$.services[*].priceAmount").value(hasItem(75000.0)))
+                .andExpect(jsonPath("$.rooms").doesNotExist())
+                .andExpect(jsonPath("$.practitioners").doesNotExist())
+                .andExpect(jsonPath("$.practitionerRoles").doesNotExist());
     }
 
     @Test
@@ -152,7 +156,7 @@ class SchedulingIT {
         createSlot(session(Set.of(CATALOG_ADMIN_ROLE_ID)), Instant.now().plus(2, ChronoUnit.DAYS), 2);
 
         mockMvc.perform(get("/api/v1/booking/catalog")
-                        .cookie(representative.cookie())
+                        .cookie(representative.cookie()).header("X-MediCore-Tab-Context", representative.context())
                         .param("patientId", patientId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.departments").isArray())
@@ -168,7 +172,7 @@ class SchedulingIT {
         jdbc().update("update appointment_slot set status = 'CANCELLED' where id = ?", cancelledSlotId);
 
         mockMvc.perform(get("/api/v1/booking/catalog")
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .param("patientId", patientId.toString()))
                 .andExpect(status().isOk());
     }
@@ -179,43 +183,44 @@ class SchedulingIT {
         AuthSession patientSession = sessionWithPatient(patientId);
 
         mockMvc.perform(get("/api/v1/departments")
-                        .cookie(patientSession.cookie()))
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
         mockMvc.perform(get("/api/v1/rooms")
-                        .cookie(patientSession.cookie()))
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
         mockMvc.perform(get("/api/v1/services")
-                        .cookie(patientSession.cookie()))
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
         mockMvc.perform(get("/api/v1/practitioners")
-                        .cookie(patientSession.cookie()))
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
     }
 
-    // ── 2. Public availability endpoints require no authentication ──────────
+    // ── 2. Raw exact slots require staff permission ─────────────────────────
 
     @Test
-    void publicGetSlotEndpointsRequireNoAuth() throws Exception {
+    void rawSlotEndpointsRequireAppointmentSlotReadPermission() throws Exception {
         mockMvc.perform(get("/api/v1/appointment-slots"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items").isArray())
-                .andExpect(jsonPath("$.hasMore").isBoolean());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
 
-        // Create a slot first, then GET it publicly
+        AuthSession noPermissions = session(Set.of());
+        mockMvc.perform(get("/api/v1/appointment-slots").cookie(noPermissions.cookie()).header("X-MediCore-Tab-Context", noPermissions.context()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
         AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
         UUID slotId = createSlot(admin, Instant.now().plus(2, ChronoUnit.DAYS), 2);
-
-        mockMvc.perform(get("/api/v1/appointment-slots/" + slotId))
+        mockMvc.perform(get("/api/v1/appointment-slots/" + slotId).cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(slotId.toString()))
-                .andExpect(jsonPath("$.status").value("ACTIVE"))
                 .andExpect(header().exists("ETag"));
     }
 
@@ -238,7 +243,7 @@ class SchedulingIT {
                         .header("X-CSRF-Token", "any")
                         .header("Idempotency-Key", "unauth-key-2")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slotId\":\"" + UUID.randomUUID() + "\",\"patientId\":\"" + UUID.randomUUID() + "\"}"))
+                        .content("{\"bookingSessionId\":\"" + UUID.randomUUID() + "\",\"patientId\":\"" + UUID.randomUUID() + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
     }
@@ -250,7 +255,7 @@ class SchedulingIT {
         AuthSession noPermissions = session(Set.of());
 
         mockMvc.perform(post("/api/v1/appointment-slots")
-                        .cookie(noPermissions.cookie())
+                        .cookie(noPermissions.cookie()).header("X-MediCore-Tab-Context", noPermissions.context())
                         .header("X-CSRF-Token", noPermissions.csrfToken())
                         .header("Idempotency-Key", "no-perm-slot-key")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -267,7 +272,7 @@ class SchedulingIT {
 
         // With Idempotency-Key but without X-CSRF-Token → 403, not 400 IDEMPOTENCY
         mockMvc.perform(post("/api/v1/appointment-slots")
-                        .cookie(admin.cookie())
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
                         .header("Idempotency-Key", "csrf-before-idempotency-key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(slotBody(Instant.now().plus(5, ChronoUnit.DAYS), 1)))
@@ -282,7 +287,7 @@ class SchedulingIT {
         AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
 
         mockMvc.perform(post("/api/v1/appointment-slots")
-                        .cookie(admin.cookie())
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
                         .header("X-CSRF-Token", admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(slotBody(Instant.now().plus(6, ChronoUnit.DAYS), 1)))
@@ -299,7 +304,7 @@ class SchedulingIT {
         String body = slotBody(Instant.now().plus(7, ChronoUnit.DAYS), 1);
 
         MvcResult first = mockMvc.perform(post("/api/v1/appointment-slots")
-                        .cookie(admin.cookie())
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
                         .header("X-CSRF-Token", admin.csrfToken())
                         .header("Idempotency-Key", iKey)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -308,7 +313,7 @@ class SchedulingIT {
                 .andReturn();
 
         MvcResult replay = mockMvc.perform(post("/api/v1/appointment-slots")
-                        .cookie(admin.cookie())
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
                         .header("X-CSRF-Token", admin.csrfToken())
                         .header("Idempotency-Key", iKey)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -330,7 +335,7 @@ class SchedulingIT {
         String iKey = "idem-conflict-" + UUID.randomUUID();
 
         mockMvc.perform(post("/api/v1/appointment-slots")
-                        .cookie(admin.cookie())
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
                         .header("X-CSRF-Token", admin.csrfToken())
                         .header("Idempotency-Key", iKey)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -338,7 +343,7 @@ class SchedulingIT {
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/appointment-slots")
-                        .cookie(admin.cookie())
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
                         .header("X-CSRF-Token", admin.csrfToken())
                         .header("Idempotency-Key", iKey)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -355,7 +360,7 @@ class SchedulingIT {
         UUID slotId = createSlot(admin, Instant.now().plus(9, ChronoUnit.DAYS), 2);
 
         mockMvc.perform(patch("/api/v1/appointment-slots/" + slotId)
-                        .cookie(admin.cookie())
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
                         .header("X-CSRF-Token", admin.csrfToken())
                         .header("Idempotency-Key", "patch-no-etag-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -370,7 +375,7 @@ class SchedulingIT {
         UUID slotId = createSlot(admin, Instant.now().plus(10, ChronoUnit.DAYS), 2);
 
         mockMvc.perform(patch("/api/v1/appointment-slots/" + slotId)
-                        .cookie(admin.cookie())
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
                         .header("X-CSRF-Token", admin.csrfToken())
                         .header("If-Match", "\"999\"") // stale
                         .header("Idempotency-Key", "patch-stale-" + UUID.randomUUID())
@@ -386,7 +391,7 @@ class SchedulingIT {
         UUID slotId = createSlot(admin, Instant.now().plus(11, ChronoUnit.DAYS), 2);
 
         mockMvc.perform(patch("/api/v1/appointment-slots/" + slotId)
-                        .cookie(admin.cookie())
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
                         .header("X-CSRF-Token", admin.csrfToken())
                         .header("If-Match", "\"0\"")
                         .header("Idempotency-Key", "patch-ok-" + UUID.randomUUID())
@@ -402,20 +407,14 @@ class SchedulingIT {
 
     @Test
     void cancelSlotHoldTransitionsToReleased() throws Exception {
-        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
-        UUID slotId = createSlot(admin, Instant.now().plus(12, ChronoUnit.DAYS), 2);
-
+        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID, IDENTITY_ADMIN_ROLE_ID));
+        UUID bookingSessionId = createWorkSchedule(admin, LocalDate.now(ZoneOffset.UTC).plusDays(12), "MORNING", 2).bookingSessionId();
         UUID patientId = insertPatient("Cancel Hold Patient");
-        // Link patient to the admin account so requireHoldAccess passes via OWN link
-        linkPatientToAccount(patientId, admin.accountId());
-
-        // Create hold (patient role permissions via admin account link)
         AuthSession patientSession = sessionWithPatient(patientId);
-        UUID holdId = createSlotHold(patientSession, slotId, patientId);
+        UUID holdId = createBookingSessionHold(patientSession, bookingSessionId, patientId);
 
-        // GET hold — verify response does NOT expose internal idempotency fields
         MvcResult getResult = mockMvc.perform(get("/api/v1/slot-holds/" + holdId)
-                        .cookie(patientSession.cookie()))
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.currency").value("VND"))
@@ -424,12 +423,9 @@ class SchedulingIT {
                 .andExpect(jsonPath("$.idempotencyScope").doesNotExist())
                 .andReturn();
 
-        JsonNode holdNode = objectMapper.readTree(getResult.getResponse().getContentAsString());
-        long holdVersion = holdNode.path("version").asLong();
-
-        // DELETE (cancel/release)
+        long holdVersion = objectMapper.readTree(getResult.getResponse().getContentAsString()).path("version").asLong();
         mockMvc.perform(delete("/api/v1/slot-holds/" + holdId)
-                        .cookie(patientSession.cookie())
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context())
                         .header("X-CSRF-Token", patientSession.csrfToken())
                         .header("If-Match", "\"" + holdVersion + "\"")
                         .header("Idempotency-Key", "cancel-hold-" + UUID.randomUUID()))
@@ -441,62 +437,208 @@ class SchedulingIT {
 
     @Test
     void patientCannotCreateHoldForUnrelatedPatient() throws Exception {
-        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
-        UUID slotId = createSlot(admin, Instant.now().plus(13, ChronoUnit.DAYS), 3);
+        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID, IDENTITY_ADMIN_ROLE_ID));
+        UUID bookingSessionId = createWorkSchedule(admin, LocalDate.now(ZoneOffset.UTC).plusDays(13), "MORNING", 3).bookingSessionId();
 
         UUID targetPatientId = insertPatient("Unrelated Patient");
         AuthSession requester = sessionWithPatient(insertPatient("Requester Patient"));
 
         // requester has patient-role permissions but targetPatient is not linked to their account
         mockMvc.perform(post("/api/v1/slot-holds")
-                        .cookie(requester.cookie())
+                        .cookie(requester.cookie()).header("X-MediCore-Tab-Context", requester.context())
                         .header("X-CSRF-Token", requester.csrfToken())
                         .header("Idempotency-Key", "patient-context-deny-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slotId\":\"" + slotId + "\",\"patientId\":\"" + targetPatientId + "\"}"))
+                        .content("{\"bookingSessionId\":\"" + bookingSessionId + "\",\"patientId\":\"" + targetPatientId + "\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
     }
 
-    // ── 11. Slot fully booked returns 409 ────────────────────────────────────
+    // ── 11. Aggregate booking hold contract ──────────────────────────────────
 
     @Test
-    void slotFullyBookedReturns409Conflict() throws Exception {
-        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
-        UUID slotId = createSlot(admin, Instant.now().plus(14, ChronoUnit.DAYS), 1);
-
-        // First patient takes the single seat
-        UUID firstPatientId = insertPatient("First Booker");
-        AuthSession firstSession = sessionWithPatient(firstPatientId);
-        createSlotHold(firstSession, slotId, firstPatientId);
-
-        // Second patient tries — capacity exhausted → 409
-        UUID secondPatientId = insertPatient("Second Booker");
-        AuthSession secondSession = sessionWithPatient(secondPatientId);
-
-        mockMvc.perform(post("/api/v1/slot-holds")
-                        .cookie(secondSession.cookie())
-                        .header("X-CSRF-Token", secondSession.csrfToken())
-                        .header("Idempotency-Key", "capacity-deny-" + UUID.randomUUID())
+    void bookingAvailabilityAndHoldUseBucketWithoutLeakingExactSlot() throws Exception {
+        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID, IDENTITY_ADMIN_ROLE_ID));
+        LocalDate date = LocalDate.now(ZoneOffset.UTC).plusDays(14);
+        MvcResult schedule = mockMvc.perform(post("/api/v1/admin/work-schedules")
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
+                        .header("X-CSRF-Token", admin.csrfToken())
+                        .header("Idempotency-Key", "schedule-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slotId\":\"" + slotId + "\",\"patientId\":\"" + secondPatientId + "\"}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("STATE_CONFLICT"));
+                        .content(workScheduleBody(date, "MORNING", 1)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"0\""))
+                .andReturn();
+        JsonNode scheduleJson = objectMapper.readTree(schedule.getResponse().getContentAsString());
+        UUID bookingSessionId = UUID.fromString(scheduleJson.path("bookingSessionId").asText());
+
+        UUID patientId = insertPatient("Aggregate Booker");
+        AuthSession patient = sessionWithPatient(patientId);
+        mockMvc.perform(get("/api/v1/booking/availability")
+                        .cookie(patient.cookie()).header("X-MediCore-Tab-Context", patient.context())
+                        .param("patientId", patientId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].id").value(hasItem(bookingSessionId.toString())));
+
+        mockMvc.perform(get("/api/v1/booking/availability")
+                        .cookie(patient.cookie()).header("X-MediCore-Tab-Context", patient.context())
+                        .param("patientId", patientId.toString())
+                        .param("departmentId", departmentId.toString())
+                        .param("serviceId", serviceId.toString())
+                        .param("date", date.toString())
+                        .param("session", "MORNING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(bookingSessionId.toString()))
+                .andExpect(jsonPath("$.items[0].totalCapacity").value(1))
+                .andExpect(jsonPath("$.items[0].slotId").doesNotExist())
+                .andExpect(jsonPath("$.items[0].workScheduleId").doesNotExist())
+                .andExpect(jsonPath("$.items[0].practitionerRoleId").doesNotExist())
+                .andExpect(jsonPath("$.items[0].roomName").doesNotExist());
+
+        MvcResult hold = mockMvc.perform(post("/api/v1/slot-holds")
+                        .cookie(patient.cookie()).header("X-MediCore-Tab-Context", patient.context())
+                        .header("X-CSRF-Token", patient.csrfToken())
+                        .header("Idempotency-Key", "aggregate-hold-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bookingSessionId\":\"" + bookingSessionId + "\",\"patientId\":\"" + patientId + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.slotId").doesNotExist())
+                .andExpect(jsonPath("$.assignment.practitionerName").value("Dr. Test"))
+                .andExpect(jsonPath("$.assignment.roomName").value("Room A"))
+                .andReturn();
+        UUID holdId = UUID.fromString(objectMapper.readTree(hold.getResponse().getContentAsString()).path("id").asText());
+        assertThat(jdbc().queryForObject("select count(*) from slot_hold where id = ? and slot_id = ?", Integer.class,
+                holdId, UUID.fromString(scheduleJson.path("slotId").asText()))).isEqualTo(1);
+    }
+
+    @Test
+    void multipleWorkSchedulesAggregateCapacityHoldPicksLowestUtilizationAndCancelledExcluded() throws Exception {
+        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID, IDENTITY_ADMIN_ROLE_ID));
+        LocalDate date = LocalDate.now(ZoneOffset.UTC).plusDays(25);
+
+        // Create secondary room and practitioner
+        UUID roomBId = createResource(admin, "POST", "/api/v1/rooms",
+                "{\"departmentId\":\"%s\",\"code\":\"ROOM-B-%s\",\"name\":\"Room B\",\"effectiveFrom\":\"2020-01-01T00:00:00Z\"}"
+                        .formatted(departmentId, UUID.randomUUID()));
+
+        UUID practitioner2Id = UUID.randomUUID();
+        jdbc().update("insert into practitioner (id, staff_code, full_name, active, created_at, updated_at) " +
+                "values (?, ?, 'Dr. Second', true, now(), now())", practitioner2Id, "SCHED-" + UUID.randomUUID());
+        UUID practitionerRole2Id = UUID.randomUUID();
+        jdbc().update("insert into practitioner_role (id, practitioner_id, department_id, role_code, status, effective_from, created_at, updated_at) " +
+                "values (?, ?, ?, 'DOCTOR', 'ACTIVE', now(), now(), now())", practitionerRole2Id, practitioner2Id, departmentId);
+
+        // Work schedule 1: Dr. Test in Room A, capacity = 1
+        String body1 = """
+                {"practitionerRoleId":"%s","departmentId":"%s","roomId":"%s","serviceId":"%s",
+                "localDate":"%s","session":"MORNING","capacity":1}
+                """.formatted(practitionerRoleId, departmentId, roomId, serviceId, date);
+        MvcResult schedule1 = mockMvc.perform(post("/api/v1/admin/work-schedules")
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
+                        .header("X-CSRF-Token", admin.csrfToken())
+                        .header("Idempotency-Key", "schedule-1-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body1))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode json1 = objectMapper.readTree(schedule1.getResponse().getContentAsString());
+        UUID bookingSessionId = UUID.fromString(json1.path("bookingSessionId").asText());
+        UUID slot1Id = UUID.fromString(json1.path("slotId").asText());
+
+        // Work schedule 2: Dr. Second in Room B, capacity = 2
+        String body2 = """
+                {"practitionerRoleId":"%s","departmentId":"%s","roomId":"%s","serviceId":"%s",
+                "localDate":"%s","session":"MORNING","capacity":2}
+                """.formatted(practitionerRole2Id, departmentId, roomBId, serviceId, date);
+        MvcResult schedule2 = mockMvc.perform(post("/api/v1/admin/work-schedules")
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
+                        .header("X-CSRF-Token", admin.csrfToken())
+                        .header("Idempotency-Key", "schedule-2-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body2))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode json2 = objectMapper.readTree(schedule2.getResponse().getContentAsString());
+        UUID slot2Id = UUID.fromString(json2.path("slotId").asText());
+
+        // 1. Availability check: aggregated total = 3, remaining = 3
+        UUID patient1Id = insertPatient("Patient 1 MultiSchedule");
+        AuthSession patient1 = sessionWithPatient(patient1Id);
+        mockMvc.perform(get("/api/v1/booking/availability")
+                        .cookie(patient1.cookie()).header("X-MediCore-Tab-Context", patient1.context())
+                        .param("patientId", patient1Id.toString())
+                        .param("departmentId", departmentId.toString())
+                        .param("serviceId", serviceId.toString())
+                        .param("date", date.toString())
+                        .param("session", "MORNING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].totalCapacity").value(3))
+                .andExpect(jsonPath("$.items[0].remainingCapacity").value(3));
+
+        // 2. Patient 1 holds:
+        UUID hold1Id = createBookingSessionHold(patient1, bookingSessionId, patient1Id);
+
+        // Check which slot got held
+        boolean slot1Held = jdbc().queryForObject("select count(*) from slot_hold where id = ? and slot_id = ?", Integer.class, hold1Id, slot1Id) > 0;
+        UUID otherSlot = slot1Held ? slot2Id : slot1Id;
+
+        // Patient 2 holds -> candidate with lower utilization is selected
+        UUID patient2Id = insertPatient("Patient 2 MultiSchedule");
+        AuthSession patient2 = sessionWithPatient(patient2Id);
+        UUID hold2Id = createBookingSessionHold(patient2, bookingSessionId, patient2Id);
+        assertThat(jdbc().queryForObject("select count(*) from slot_hold where id = ? and slot_id = ?", Integer.class, hold2Id, otherSlot))
+                .isEqualTo(1);
+
+        // 3. Cancel schedule 3 test:
+        LocalDate date3 = LocalDate.now(ZoneOffset.UTC).plusDays(26);
+        String body3 = """
+                {"practitionerRoleId":"%s","departmentId":"%s","roomId":"%s","serviceId":"%s",
+                "localDate":"%s","session":"MORNING","capacity":1}
+                """.formatted(practitionerRoleId, departmentId, roomId, serviceId, date3);
+        MvcResult schedule3 = mockMvc.perform(post("/api/v1/admin/work-schedules")
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
+                        .header("X-CSRF-Token", admin.csrfToken())
+                        .header("Idempotency-Key", "schedule-3-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body3))
+                .andExpect(status().isOk())
+                .andReturn();
+        UUID schedule3Id = UUID.fromString(objectMapper.readTree(schedule3.getResponse().getContentAsString()).path("id").asText());
+
+        mockMvc.perform(post("/api/v1/admin/work-schedules/{id}/actions/cancel", schedule3Id)
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
+                        .header("X-CSRF-Token", admin.csrfToken())
+                        .header("Idempotency-Key", "cancel-" + UUID.randomUUID())
+                        .header("If-Match", "\"0\""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        mockMvc.perform(get("/api/v1/booking/availability")
+                        .cookie(patient1.cookie()).header("X-MediCore-Tab-Context", patient1.context())
+                        .param("patientId", patient1Id.toString())
+                        .param("departmentId", departmentId.toString())
+                        .param("serviceId", serviceId.toString())
+                        .param("date", date3.toString())
+                        .param("session", "MORNING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].totalCapacity").value(0))
+                .andExpect(jsonPath("$.items[0].remainingCapacity").value(0))
+                .andExpect(jsonPath("$.items[0].canCreateHold").value(false));
     }
 
     // ── 12. SlotHold response never exposes sensitive internal fields ─────────
 
     @Test
     void slotHoldResponseOmitsInternalIdempotencyAndHashFields() throws Exception {
-        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
-        UUID slotId = createSlot(admin, Instant.now().plus(15, ChronoUnit.DAYS), 3);
+        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID, IDENTITY_ADMIN_ROLE_ID));
+        UUID bookingSessionId = createWorkSchedule(admin, LocalDate.now(ZoneOffset.UTC).plusDays(15), "MORNING", 3).bookingSessionId();
 
         UUID patientId = insertPatient("Privacy Check Patient");
         AuthSession patientSession = sessionWithPatient(patientId);
-        UUID holdId = createSlotHold(patientSession, slotId, patientId);
+        UUID holdId = createBookingSessionHold(patientSession, bookingSessionId, patientId);
 
         String responseBody = mockMvc.perform(get("/api/v1/slot-holds/" + holdId)
-                        .cookie(patientSession.cookie()))
+                        .cookie(patientSession.cookie()).header("X-MediCore-Tab-Context", patientSession.context()))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse().getContentAsString();
@@ -506,100 +648,45 @@ class SchedulingIT {
         assertThat(responseBody).doesNotContain("idempotencyScope");
     }
 
-    // ── 13. Audit events are written for DENIED capacity and must not expose sensitive data ─
+    // ── 13. Aggregate capacity denial remains audited ────────────────────────
 
     @Test
-    void auditEventWrittenForDeniedCapacityAndOmitsSensitiveData() throws Exception {
-        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
-        UUID slotId = createSlot(admin, Instant.now().plus(16, ChronoUnit.DAYS), 1);
-
-        // Fill the slot
+    void aggregateCapacityDenialWritesRedactedAuditEvent() throws Exception {
+        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID, IDENTITY_ADMIN_ROLE_ID));
+        UUID bookingSessionId = createWorkSchedule(admin, LocalDate.now(ZoneOffset.UTC).plusDays(16), "MORNING", 1).bookingSessionId();
         UUID firstId = insertPatient("Audit First");
-        AuthSession firstSession = sessionWithPatient(firstId);
-        createSlotHold(firstSession, slotId, firstId);
+        createBookingSessionHold(sessionWithPatient(firstId), bookingSessionId, firstId);
 
-        // Trigger DENIED audit
         UUID secondId = insertPatient("Audit Second");
         AuthSession secondSession = sessionWithPatient(secondId);
         mockMvc.perform(post("/api/v1/slot-holds")
-                        .cookie(secondSession.cookie())
+                        .cookie(secondSession.cookie()).header("X-MediCore-Tab-Context", secondSession.context())
                         .header("X-CSRF-Token", secondSession.csrfToken())
                         .header("Idempotency-Key", "audit-deny-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slotId\":\"" + slotId + "\",\"patientId\":\"" + secondId + "\"}"))
+                        .content("{\"bookingSessionId\":\"" + bookingSessionId + "\",\"patientId\":\"" + secondId + "\"}"))
                 .andExpect(status().isConflict());
 
-        JdbcTemplate jdbc = jdbc();
-        Integer deniedCount = jdbc.queryForObject(
+        Integer deniedCount = jdbc().queryForObject(
                 "select count(*) from audit_event where action = 'slot_hold.create' and outcome = 'DENIED' and reason = 'capacity_exhausted'",
                 Integer.class);
         assertThat(deniedCount).isGreaterThanOrEqualTo(1);
-
-        // Verify audit event does not contain raw patient identifier or payment data
-        String auditJson = jdbc.queryForObject(
+        String auditJson = jdbc().queryForObject(
                 "select source_event from audit_event where action = 'slot_hold.create' and outcome = 'DENIED' order by occurred_at desc limit 1",
                 String.class);
-        // source_event should not contain password, OTP, raw token, credential hash
         if (auditJson != null) {
             assertThat(auditJson).doesNotContainIgnoringCase("password");
             assertThat(auditJson).doesNotContainIgnoringCase("otp");
         }
     }
 
-    // ── 14. Availability preserves reason precedence and cursor paging ───────
-
-    @Test
-    void bookingAvailabilityReturnsReasonsAndCursorPage() throws Exception {
-        AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
-        UUID patientId = insertPatient("Availability Patient");
-        AuthSession patientSession = sessionWithPatient(patientId);
-        UUID otherPatientId = insertPatient("Availability Other Patient");
-        AuthSession otherPatientSession = sessionWithPatient(otherPatientId);
-        Instant base = Instant.now().plus(2, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MINUTES);
-
-        UUID ownSlotId = createSlot(admin, base, 2);
-        UUID conflictSlotId = insertActiveSlot(base.plus(10, ChronoUnit.MINUTES), 2, "AFTERNOON");
-        UUID fullSlotId = createSlot(admin, base.plus(60, ChronoUnit.MINUTES), 1);
-        UUID openSlotId = createSlot(admin, base.plus(120, ChronoUnit.MINUTES), 2, "AFTERNOON");
-        createSlotHold(patientSession, ownSlotId, patientId);
-        createSlotHold(otherPatientSession, fullSlotId, otherPatientId);
-
-        MvcResult first = mockMvc.perform(get("/api/v1/booking/availability")
-                        .cookie(patientSession.cookie())
-                        .param("patientId", patientId.toString())
-                        .param("limit", "3"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items[0].id").value(ownSlotId.toString()))
-                .andExpect(jsonPath("$.items[0].canCreateHold").value(false))
-                .andExpect(jsonPath("$.items[0].disabledReason").value("ALREADY_BOOKED"))
-                .andExpect(jsonPath("$.items[1].id").value(conflictSlotId.toString()))
-                .andExpect(jsonPath("$.items[1].disabledReason").value("PATIENT_TIME_CONFLICT"))
-                .andExpect(jsonPath("$.items[2].id").value(fullSlotId.toString()))
-                .andExpect(jsonPath("$.items[2].disabledReason").value("SLOT_FULL"))
-                .andExpect(jsonPath("$.hasMore").value(true))
-                .andReturn();
-
-        String cursor = objectMapper.readTree(first.getResponse().getContentAsString()).path("nextCursor").asText();
-        mockMvc.perform(get("/api/v1/booking/availability")
-                        .cookie(patientSession.cookie())
-                        .param("patientId", patientId.toString())
-                        .param("limit", "3")
-                        .param("cursor", cursor))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items[0].id").value(openSlotId.toString()))
-                .andExpect(jsonPath("$.items[0].canCreateHold").value(true))
-                .andExpect(jsonPath("$.items[0].disabledReason").doesNotExist())
-                .andExpect(jsonPath("$.hasMore").value(false));
-    }
-
-    // ── 15. Practitioner daily max (4 slots/day) enforced ────────────────────
+    // ── 14. Practitioner daily max (4 slots/day) enforced ───────────────────
 
     @Test
     void practitionerDailyMaxFourSlotsEnforced() throws Exception {
         AuthSession admin = session(Set.of(CATALOG_ADMIN_ROLE_ID));
         Instant base = LocalDate.now(ZoneOffset.UTC).plusDays(20).atTime(8, 0).toInstant(ZoneOffset.UTC);
 
-        // Create 4 slots (2 MORNING + 2 AFTERNOON to avoid session limit)
         for (int i = 0; i < 2; i++) {
             createSlot(admin, base.plus(i * 30L, ChronoUnit.MINUTES), 1, "MORNING");
         }
@@ -607,9 +694,8 @@ class SchedulingIT {
             createSlot(admin, base.plus((i + 4) * 30L, ChronoUnit.MINUTES), 1, "AFTERNOON");
         }
 
-        // 5th slot must be rejected
         mockMvc.perform(post("/api/v1/appointment-slots")
-                        .cookie(admin.cookie())
+                        .cookie(admin.cookie()).header("X-MediCore-Tab-Context", admin.context())
                         .header("X-CSRF-Token", admin.csrfToken())
                         .header("Idempotency-Key", "daily-max-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -620,13 +706,49 @@ class SchedulingIT {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    private String workScheduleBody(LocalDate date, String session, int capacity) {
+        return """
+                {"practitionerRoleId":"%s","departmentId":"%s","roomId":"%s","serviceId":"%s",
+                "localDate":"%s","session":"%s","capacity":%d}
+                """.formatted(practitionerRoleId, departmentId, roomId, serviceId, date, session, capacity);
+    }
+
+    private WorkScheduleFixture createWorkSchedule(AuthSession session, LocalDate date, String scheduleSession, int capacity)
+            throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/admin/work-schedules")
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
+                        .header("X-CSRF-Token", session.csrfToken())
+                        .header("Idempotency-Key", "schedule-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(workScheduleBody(date, scheduleSession, capacity)))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        return new WorkScheduleFixture(
+                UUID.fromString(body.path("id").asText()),
+                UUID.fromString(body.path("bookingSessionId").asText()),
+                UUID.fromString(body.path("slotId").asText()));
+    }
+
+    private UUID createBookingSessionHold(AuthSession session, UUID bookingSessionId, UUID patientId) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/slot-holds")
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
+                        .header("X-CSRF-Token", session.csrfToken())
+                        .header("Idempotency-Key", "hold-" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bookingSessionId\":\"" + bookingSessionId + "\",\"patientId\":\"" + patientId + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString()).path("id").asText());
+    }
+
     private UUID createSlot(AuthSession session, Instant start, int capacity) throws Exception {
         return createSlot(session, start, capacity, "MORNING");
     }
 
     private UUID createSlot(AuthSession session, Instant start, int capacity, String slotSession) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/appointment-slots")
-                        .cookie(session.cookie())
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "slot-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -647,21 +769,9 @@ class SchedulingIT {
         return slotId;
     }
 
-    private UUID createSlotHold(AuthSession session, UUID slotId, UUID patientId) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/v1/slot-holds")
-                        .cookie(session.cookie())
-                        .header("X-CSRF-Token", session.csrfToken())
-                        .header("Idempotency-Key", "hold-" + UUID.randomUUID())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slotId\":\"" + slotId + "\",\"patientId\":\"" + patientId + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString()).path("id").asText());
-    }
-
     private UUID createResource(AuthSession session, String method, String path, String body) throws Exception {
         MvcResult result = mockMvc.perform(post(path)
-                        .cookie(session.cookie())
+                        .cookie(session.cookie()).header("X-MediCore-Tab-Context", session.context())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "fixture-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -732,17 +842,20 @@ class SchedulingIT {
                     """, UUID.randomUUID(), accountId, roleId, accountId);
         }
         jdbc.update("""
-                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, status,
+                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, tab_context_hash, status,
                     authenticated_at, last_seen_at, absolute_expires_at, version)
-                values (?, ?, ?, ?, 'ACTIVE', now(), now(), now() + interval '1 hour', 0)
+                values (?, ?, ?, ?, ?, 'ACTIVE', now(), now(), now() + interval '1 hour', 0)
                 """, sessionId, accountId,
-                secretHasher.hash("SESSION", rawSession), secretHasher.hash("CSRF", csrfToken));
-        return new AuthSession(accountId, sessionId, new MockCookie("MEDICORE_SESSION", rawSession), csrfToken);
+                secretHasher.hash("SESSION", rawSession), secretHasher.hash("CSRF", csrfToken),
+                secretHasher.hash("SESSION_CONTEXT", TAB_CONTEXT));
+        return new AuthSession(accountId, sessionId, new MockCookie("MEDICORE_SESSION_" + TAB_CONTEXT, rawSession), csrfToken, TAB_CONTEXT);
     }
 
     private JdbcTemplate jdbc() {
         return new JdbcTemplate(dataSource);
     }
 
-    private record AuthSession(UUID accountId, UUID sessionId, MockCookie cookie, String csrfToken) {}
+    private record WorkScheduleFixture(UUID id, UUID bookingSessionId, UUID slotId) {}
+
+    private record AuthSession(UUID accountId, UUID sessionId, MockCookie cookie, String csrfToken, String context) {}
 }

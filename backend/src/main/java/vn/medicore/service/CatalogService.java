@@ -25,6 +25,10 @@ public interface CatalogService {
 
     DepartmentView deactivateDepartment(UUID id, long version, CatalogAuditContext audit);
 
+    DepartmentView activateDepartment(UUID id, long version, CatalogAuditContext audit);
+
+    void deleteDepartment(UUID id, long version, CatalogAuditContext audit);
+
     // ---- Room ----
     Page<RoomView> listRooms(UUID departmentId, Boolean active, String cursor, int limit);
 

@@ -1,6 +1,7 @@
 package vn.medicore.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -41,6 +42,8 @@ import vn.medicore.config.SecretHasher;
 class CatalogIT {
 
     private static final UUID CATALOG_ADMINISTRATOR_ROLE_ID = UUID.fromString("01980000-0000-7000-8000-000000000004");
+    private static final String TAB_CONTEXT = "DDDDDDDDDDDDDDDDDDDDDD";
+    private static final String SESSION_COOKIE = "MEDICORE_SESSION_" + TAB_CONTEXT;
 
     @Container
     @ServiceConnection
@@ -65,12 +68,14 @@ class CatalogIT {
                 .andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
 
         AuthSession noPermissions = session(Set.of());
-        mockMvc.perform(get("/api/v1/departments").cookie(noPermissions.cookie()))
+        mockMvc.perform(get("/api/v1/departments").header("X-MediCore-Tab-Context", TAB_CONTEXT)
+                        .cookie(noPermissions.cookie()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
         AuthSession administrator = catalogAdministrator();
         mockMvc.perform(post("/api/v1/departments")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(administrator.cookie())
                         .header("Idempotency-Key", "catalog-csrf-key")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -91,6 +96,7 @@ class CatalogIT {
                 """.formatted(departmentId);
 
         MvcResult first = mockMvc.perform(post("/api/v1/rooms")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(administrator.cookie())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("X-Request-Id", "catalog-room-request")
@@ -106,6 +112,7 @@ class CatalogIT {
         String firstBody = first.getResponse().getContentAsString();
         UUID roomId = UUID.fromString(objectMapper.readTree(firstBody).path("id").asText());
         mockMvc.perform(post("/api/v1/rooms")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(administrator.cookie())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("X-Request-Id", "different-request")
@@ -119,6 +126,7 @@ class CatalogIT {
                 .andExpect(result -> assertThat(result.getResponse().getContentAsString()).isEqualTo(firstBody));
 
         mockMvc.perform(post("/api/v1/departments/%s/rooms".formatted(departmentId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(administrator.cookie())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -151,6 +159,7 @@ class CatalogIT {
         UUID priceId = createServicePrice(administrator, serviceId, "100000.00", "2030-01-01T00:00:00Z");
 
         mockMvc.perform(post("/api/v1/service-prices/%s/actions/end".formatted(priceId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(administrator.cookie())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -159,6 +168,7 @@ class CatalogIT {
                 .andExpect(jsonPath("$.code").value("CONCURRENCY_PRECONDITION_REQUIRED"));
 
         mockMvc.perform(post("/api/v1/service-prices/%s/actions/end".formatted(priceId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(administrator.cookie())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("If-Match", "\"77\"")
@@ -168,6 +178,7 @@ class CatalogIT {
                 .andExpect(jsonPath("$.code").value("CONCURRENCY_STALE_VERSION"));
 
         mockMvc.perform(post("/api/v1/service-prices/%s/actions/end".formatted(priceId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(administrator.cookie())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("If-Match", "\"0\"")
@@ -196,6 +207,7 @@ class CatalogIT {
 
         UUID conflictPractitionerId = createPractitioner(administrator, "ROLE-CONFLICT-PRAC", "Conflict Practitioner");
         mockMvc.perform(post("/api/v1/practitioners/%s/roles".formatted(conflictPractitionerId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(administrator.cookie())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("Idempotency-Key", "catalog-role-conflict-key")
@@ -206,6 +218,7 @@ class CatalogIT {
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/practitioner-roles/%s/actions/revoke".formatted(roleId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(administrator.cookie())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("If-Match", "\"0\"")
@@ -236,6 +249,7 @@ class CatalogIT {
         assignRole(administrator, practitionerId, departmentId, "2030-01-01T00:00:00Z");
 
         mockMvc.perform(post("/api/v1/practitioners/%s/roles".formatted(practitionerId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(administrator.cookie())
                         .header("X-CSRF-Token", administrator.csrfToken())
                         .header("Idempotency-Key", "catalog-role-overlap-key")
@@ -270,6 +284,72 @@ class CatalogIT {
         assertThat(ids).hasSize(jdbc().queryForObject("select count(*) from department", Integer.class));
     }
 
+    @Test
+    void departmentDeactivateAndActivateCycle() throws Exception {
+        AuthSession administrator = catalogAdministrator();
+        UUID departmentId = createDepartment(administrator, "CYCLE-DEPT", "Cycle Department");
+
+        // Deactivate
+        mockMvc.perform(post("/api/v1/departments/%s/actions/deactivate".formatted(departmentId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
+                        .cookie(administrator.cookie())
+                        .header("X-CSRF-Token", administrator.csrfToken())
+                        .header("If-Match", "\"0\""))
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"1\""))
+                .andExpect(jsonPath("$.active").value(false));
+
+        // Activate
+        mockMvc.perform(post("/api/v1/departments/%s/actions/activate".formatted(departmentId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
+                        .cookie(administrator.cookie())
+                        .header("X-CSRF-Token", administrator.csrfToken())
+                        .header("If-Match", "\"1\""))
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"2\""))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.effectiveTo").doesNotExist());
+    }
+
+    @Test
+    void departmentDeleteWhenUnlinkedAndRejectsWhenLinked() throws Exception {
+        AuthSession administrator = catalogAdministrator();
+        UUID departmentId = createDepartment(administrator, "DEL-DEPT", "Delete Department");
+
+        // Add a room to link with this department
+        mockMvc.perform(post("/api/v1/rooms")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
+                        .cookie(administrator.cookie())
+                        .header("X-CSRF-Token", administrator.csrfToken())
+                        .header("Idempotency-Key", "del-dept-room-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"departmentId":"%s","code":"R-DEL-1","name":"Del room"}
+                                """.formatted(departmentId)))
+                .andExpect(status().isOk());
+
+        // Attempting to delete linked department should fail with 409 Conflict
+        mockMvc.perform(delete("/api/v1/departments/%s".formatted(departmentId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
+                        .cookie(administrator.cookie())
+                        .header("X-CSRF-Token", administrator.csrfToken())
+                        .header("If-Match", "\"0\""))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STATE_CONFLICT"));
+
+        // Create an unlinked department and delete it successfully
+        UUID unlinkedDeptId = createDepartment(administrator, "UNLINK-DEPT", "Unlinked Department");
+        mockMvc.perform(delete("/api/v1/departments/%s".formatted(unlinkedDeptId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
+                        .cookie(administrator.cookie())
+                        .header("X-CSRF-Token", administrator.csrfToken())
+                        .header("If-Match", "\"0\""))
+                .andExpect(status().isNoContent());
+
+        assertThat(jdbc().queryForObject(
+                "select count(*) from department where id = ?", Integer.class, unlinkedDeptId)).isZero();
+    }
+
     private AuthSession catalogAdministrator() {
         return session(Set.of(CATALOG_ADMINISTRATOR_ROLE_ID));
     }
@@ -292,15 +372,17 @@ class CatalogIT {
                     """, UUID.randomUUID(), accountId, roleId, accountId);
         }
         jdbc.update("""
-                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, status,
+                insert into account_session(id, account_id, session_token_hash, csrf_token_hash, tab_context_hash, status,
                     authenticated_at, last_seen_at, absolute_expires_at, version)
-                values (?, ?, ?, ?, 'ACTIVE', now(), now(), now() + interval '1 hour', 0)
-                """, sessionId, accountId, secretHasher.hash("SESSION", rawSession), secretHasher.hash("CSRF", csrfToken));
-        return new AuthSession(accountId, sessionId, new MockCookie("MEDICORE_SESSION", rawSession), csrfToken);
+                values (?, ?, ?, ?, ?, 'ACTIVE', now(), now(), now() + interval '1 hour', 0)
+                """, sessionId, accountId, secretHasher.hash("SESSION", rawSession), secretHasher.hash("CSRF", csrfToken),
+                secretHasher.hash("SESSION_CONTEXT", TAB_CONTEXT));
+        return new AuthSession(accountId, sessionId, new MockCookie(SESSION_COOKIE, rawSession), csrfToken);
     }
 
     private UUID createDepartment(AuthSession session, String code, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/departments")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(session.cookie())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "department-%s".formatted(UUID.randomUUID()))
@@ -313,6 +395,7 @@ class CatalogIT {
 
     private UUID createService(AuthSession session, String code) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/services")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(session.cookie())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "service-%s".formatted(UUID.randomUUID()))
@@ -327,6 +410,7 @@ class CatalogIT {
 
     private UUID createServicePrice(AuthSession session, UUID serviceId, String amount, String effectiveFrom) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/services/%s/prices".formatted(serviceId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(session.cookie())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "price-%s".formatted(UUID.randomUUID()))
@@ -341,6 +425,7 @@ class CatalogIT {
 
     private UUID createPractitioner(AuthSession session, String staffCode, String fullName) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/practitioners")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(session.cookie())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "practitioner-%s".formatted(UUID.randomUUID()))
@@ -355,6 +440,7 @@ class CatalogIT {
 
     private UUID assignRole(AuthSession session, UUID practitionerId, UUID departmentId, String effectiveFrom) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/practitioners/%s/roles".formatted(practitionerId))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT)
                         .cookie(session.cookie())
                         .header("X-CSRF-Token", session.csrfToken())
                         .header("Idempotency-Key", "role-%s".formatted(UUID.randomUUID()))
@@ -368,7 +454,8 @@ class CatalogIT {
     }
 
     private JsonNode page(AuthSession session, String path) throws Exception {
-        MvcResult result = mockMvc.perform(get(path).cookie(session.cookie()))
+        MvcResult result = mockMvc.perform(get(path).header("X-MediCore-Tab-Context", TAB_CONTEXT)
+                        .cookie(session.cookie()))
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString(StandardCharsets.UTF_8));

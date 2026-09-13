@@ -8,6 +8,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -20,8 +21,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -91,6 +90,7 @@ paths:
           schema:
             type: string
             maxLength: 320
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -101,8 +101,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -164,6 +162,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -176,8 +175,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -245,6 +242,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -255,8 +253,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -323,6 +319,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -335,8 +332,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -424,6 +419,7 @@ paths:
             format: uuid
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -434,8 +430,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -502,6 +496,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -514,8 +509,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -589,6 +582,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -601,8 +595,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -688,6 +680,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -700,8 +693,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -787,6 +778,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -799,8 +791,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -880,6 +870,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -890,8 +881,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -961,6 +950,7 @@ paths:
             format: uuid
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -971,8 +961,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1039,6 +1027,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -1051,8 +1040,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1127,6 +1114,7 @@ paths:
           required: false
           schema:
             $ref: "#/components/schemas/PatientDuplicateCandidateStatus"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1137,8 +1125,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1206,6 +1192,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1216,8 +1203,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1285,6 +1270,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1297,8 +1283,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1384,6 +1368,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1396,8 +1381,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:

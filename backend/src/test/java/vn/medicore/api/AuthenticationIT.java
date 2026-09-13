@@ -2,6 +2,7 @@ package vn.medicore.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
@@ -39,6 +40,11 @@ import vn.medicore.service.IdentityAccessService;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AuthenticationIT {
+
+    private static final String TAB_CONTEXT_A = "AAAAAAAAAAAAAAAAAAAAAA";
+    private static final String TAB_CONTEXT_B = "BBBBBBBBBBBBBBBBBBBBBB";
+    private static final String COOKIE_A = "MEDICORE_SESSION_" + TAB_CONTEXT_A;
+    private static final String COOKIE_B = "MEDICORE_SESSION_" + TAB_CONTEXT_B;
 
     @Container
     @ServiceConnection
@@ -105,6 +111,10 @@ class AuthenticationIT {
         String key = "registration-replay-key";
 
         String first = mockMvc.perform(post("/api/v1/auth/registrations")
+                        .with(request -> {
+                            request.setRemoteAddr("203.0.113.114");
+                            return request;
+                        })
                         .header("Idempotency-Key", key)
                         .header("X-Request-Id", "replay-request")
                         .header("X-Correlation-Id", "replay-correlation")
@@ -114,6 +124,10 @@ class AuthenticationIT {
                 .andReturn().getResponse().getContentAsString();
 
         mockMvc.perform(post("/api/v1/auth/registrations")
+                        .with(request -> {
+                            request.setRemoteAddr("203.0.113.114");
+                            return request;
+                        })
                         .header("Idempotency-Key", key)
                         .header("X-Request-Id", "different-request")
                         .header("X-Correlation-Id", "different-correlation")
@@ -192,6 +206,112 @@ class AuthenticationIT {
     }
 
     @Test
+    void passwordSessionReturnsPortalIdentityAndCanBeHydratedAndLoggedOut() throws Exception {
+        String email = "portal-admin@example.com";
+        mockMvc.perform(post("/api/v1/auth/registrations")
+                        .header("Idempotency-Key", "portal-registration-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"%s\",\"password\":\"a-valid-password-123\"}".formatted(email)))
+                .andExpect(status().isAccepted());
+
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        UUID accountId = jdbc.queryForObject("select id from user_account where normalized_email = ?", UUID.class, email);
+        jdbc.update("update user_account set status = 'ACTIVE', email_verified_at = now() where id = ?", accountId);
+        jdbc.update("""
+                insert into account_role_assignment(id, account_id, role_id, department_id, effective_from, status,
+                    assigned_by_account_id, reason, version)
+                values (?, ?, '01980000-0000-7000-8000-000000000001', null, now(), 'ACTIVE', ?, 'Portal test', 0)
+                """, UUID.randomUUID(), accountId, accountId);
+
+        var login = mockMvc.perform(post("/api/v1/auth/password-sessions")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_A)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"%s\",\"password\":\"a-valid-password-123\"}".formatted(email)))
+                .andExpect(status().isOk())
+                .andExpect(cookie().httpOnly(COOKIE_A, true))
+                .andExpect(header().exists("X-CSRF-Token"))
+                .andExpect(jsonPath("$.displayEmail").value(email))
+                .andExpect(jsonPath("$.roleCodes[0]").value("IDENTITY_ADMINISTRATOR"))
+                .andReturn().getResponse();
+
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_A)
+                        .cookie(login.getCookie(COOKIE_A)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayEmail").value(email))
+                .andExpect(jsonPath("$.roleCodes[0]").value("IDENTITY_ADMINISTRATOR"));
+
+        mockMvc.perform(delete("/api/v1/auth/session")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_A)
+                        .cookie(login.getCookie(COOKIE_A))
+                        .header("X-CSRF-Token", login.getHeader("X-CSRF-Token")))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().maxAge(COOKIE_A, 0));
+    }
+
+    @Test
+    void tabContextsKeepSessionsAndCsrfTokensIsolated() throws Exception {
+        String emailA = "tab-a@example.com";
+        String emailB = "tab-b@example.com";
+        registerAndActivate(emailA, "tab-a-registration-key");
+        registerAndActivate(emailB, "tab-b-registration-key");
+
+        var loginA = login(emailA, TAB_CONTEXT_A, COOKIE_A);
+        var loginB = login(emailB, TAB_CONTEXT_B, COOKIE_B);
+
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_A)
+                        .cookie(loginA.getCookie(COOKIE_A), loginB.getCookie(COOKIE_B)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayEmail").value(emailA));
+
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_B)
+                        .cookie(loginA.getCookie(COOKIE_A), loginB.getCookie(COOKIE_B)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayEmail").value(emailB));
+
+        mockMvc.perform(delete("/api/v1/auth/session")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_A)
+                        .header("X-CSRF-Token", loginB.getHeader("X-CSRF-Token"))
+                        .cookie(loginA.getCookie(COOKIE_A), loginB.getCookie(COOKIE_B)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(delete("/api/v1/auth/session")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_A)
+                        .header("X-CSRF-Token", loginA.getHeader("X-CSRF-Token"))
+                        .cookie(loginA.getCookie(COOKIE_A), loginB.getCookie(COOKIE_B)))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().maxAge(COOKIE_A, 0));
+
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_B)
+                        .cookie(loginB.getCookie(COOKIE_B)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayEmail").value(emailB));
+    }
+
+    @Test
+    void protectedEndpointsRejectMissingMalformedAndLegacySessionCookies() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/session").cookie(new jakarta.servlet.http.Cookie("MEDICORE_SESSION", "legacy")))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/auth/session").header("X-MediCore-Tab-Context", "invalid"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void controlCenterCorsPreflightAllowsConfiguredDevOrigin() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/password-sessions")
+                        .header("Origin", "http://localhost:3001")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3001"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    @Test
     void sessionMutationRequiresCsrfAndDoesNotReserveIdempotencyRecord() throws Exception {
         String email = "csrf@example.com";
         mockMvc.perform(post("/api/v1/auth/registrations")
@@ -203,13 +323,15 @@ class AuthenticationIT {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         jdbc.update("update user_account set status = 'ACTIVE', email_verified_at = now() where normalized_email = ?", email);
         var login = mockMvc.perform(post("/api/v1/auth/password-sessions")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_A)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"%s\",\"password\":\"a-valid-password-123\"}".formatted(email)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
         mockMvc.perform(delete("/api/v1/auth/sessions")
-                        .cookie(login.getCookie("MEDICORE_SESSION"))
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_A)
+                        .cookie(login.getCookie(COOKIE_A))
                         .header("Idempotency-Key", "csrf-session-key")
                         .header("X-Request-Id", "csrf-request")
                         .header("X-Correlation-Id", "csrf-correlation"))
@@ -260,6 +382,7 @@ class AuthenticationIT {
     @Test
     void malformedTraceHeaderReturnsTraceableProblem() throws Exception {
         mockMvc.perform(post("/api/v1/auth/password-sessions")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_A)
                         .header("X-Request-Id", "x".repeat(129))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"known@example.com\",\"password\":\"wrong-password\"}"))
@@ -267,6 +390,27 @@ class AuthenticationIT {
                 .andExpect(jsonPath("$.code").value("VALIDATION_INVALID_REQUEST"))
                 .andExpect(header().exists("X-Request-Id"))
                 .andExpect(header().exists("X-Correlation-Id"));
+    }
+
+    private void registerAndActivate(String email, String idempotencyKey) throws Exception {
+        mockMvc.perform(post("/api/v1/auth/registrations")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"%s\",\"password\":\"a-valid-password-123\"}".formatted(email)))
+                .andExpect(status().isAccepted());
+        new JdbcTemplate(dataSource).update(
+                "update user_account set status = 'ACTIVE', email_verified_at = now() where normalized_email = ?", email);
+    }
+
+    private org.springframework.mock.web.MockHttpServletResponse login(
+            String email, String tabContext, String cookieName) throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/password-sessions")
+                        .header("X-MediCore-Tab-Context", tabContext)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"%s\",\"password\":\"a-valid-password-123\"}".formatted(email)))
+                .andExpect(status().isOk())
+                .andExpect(cookie().httpOnly(cookieName, true))
+                .andReturn().getResponse();
     }
 
     private int concurrentRegistration(
@@ -287,6 +431,7 @@ class AuthenticationIT {
 
     private String loginProblem(String email, String password) throws Exception {
         return mockMvc.perform(post("/api/v1/auth/password-sessions")
+                        .header("X-MediCore-Tab-Context", TAB_CONTEXT_A)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"%s","password":"%s"}

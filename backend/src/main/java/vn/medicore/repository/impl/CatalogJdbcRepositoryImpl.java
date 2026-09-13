@@ -89,6 +89,28 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
         return updated;
     }
 
+    @Override
+    public int countRoomsByDepartmentId(UUID departmentId) {
+        Integer count = jdbc.queryForObject("select count(*) from room where department_id = ?", Integer.class, departmentId);
+        return count != null ? count : 0;
+    }
+
+    @Override
+    public int countPersonnelByDepartmentId(UUID departmentId) {
+        Integer count = jdbc.queryForObject("""
+                select (select count(*) from account_role_assignment where department_id = ?)
+                     + (select count(*) from practitioner_role where department_id = ?)
+                """, Integer.class, departmentId, departmentId);
+        return count != null ? count : 0;
+    }
+
+    @Override
+    public int deleteDepartment(UUID departmentId, long expectedVersion) {
+        int deleted = update("delete from department where id = ? and version = ?", departmentId, expectedVersion);
+        if (deleted != 1) throw new StaleVersionException();
+        return deleted;
+    }
+
     // ===========================================================
     // Room
     // ===========================================================
@@ -342,6 +364,145 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
         return updated;
     }
 
+    @Override
+    public Optional<PractitionerView> practitionerByAccountId(UUID accountId) {
+        return queryOne("""
+                select id, user_account_id, staff_code, full_name, active, version, created_at, updated_at
+                from practitioner where user_account_id = ?
+                """, this::practitionerView, accountId);
+    }
+
+    @Override
+    public Optional<PractitionerView> practitionerByStaffCode(String staffCode) {
+        return queryOne("""
+                select id, user_account_id, staff_code, full_name, active, version, created_at, updated_at
+                from practitioner where staff_code = ?
+                """, this::practitionerView, staffCode);
+    }
+
+    @Override
+    public List<UUID> listPersonnelAccountIds(String type, Boolean active, int limit, int offset) {
+        StringBuilder sql = new StringBuilder("""
+                select account_id from (
+                    select p.user_account_id as account_id, p.active as profile_active, a.status as account_status, p.created_at
+                    from practitioner p
+                    join practitioner_profile pp on pp.practitioner_id = p.id
+                    join user_account a on a.id = p.user_account_id
+                    where p.user_account_id is not null
+                    union all
+                    select pm.account_id, pm.active, a.status, pm.created_at
+                    from personnel_member pm
+                    join user_account a on a.id = pm.account_id
+                ) personnel
+                where 1=1
+                """);
+        java.util.List<Object> params = new java.util.ArrayList<>();
+        if ("DOCTOR".equals(type)) {
+            sql.append(" and account_id in (select user_account_id from practitioner where user_account_id is not null)");
+        } else if ("STAFF".equals(type)) {
+            sql.append(" and account_id in (select account_id from personnel_member)");
+        }
+        if (Boolean.TRUE.equals(active)) {
+            sql.append(" and profile_active and account_status = 'ACTIVE'");
+        } else if (Boolean.FALSE.equals(active)) {
+            sql.append(" and (not profile_active or account_status <> 'ACTIVE')");
+        }
+        sql.append(" order by created_at, account_id limit ? offset ?");
+        params.add(limit);
+        params.add(offset);
+        return jdbc.queryForList(sql.toString(), UUID.class, params.toArray());
+    }
+
+    @Override
+    public void insertPersonnelMember(PersonnelMemberRow row) {
+        update("""
+                insert into personnel_member(account_id, staff_code, full_name, active, version, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, ?)
+                """, row.accountId(), row.staffCode(), row.fullName(), row.active(), row.version(),
+                ts(row.createdAt()), ts(row.updatedAt()));
+    }
+
+    @Override
+    public Optional<PersonnelMemberRow> personnelMemberByAccountId(UUID accountId) {
+        return queryOne("""
+                select account_id, staff_code, full_name, active, version, created_at, updated_at
+                from personnel_member where account_id = ?
+                """, this::personnelMemberRow, accountId);
+    }
+
+    @Override
+    public Optional<PersonnelMemberRow> personnelMemberByStaffCode(String staffCode) {
+        return queryOne("""
+                select account_id, staff_code, full_name, active, version, created_at, updated_at
+                from personnel_member where staff_code = ?
+                """, this::personnelMemberRow, staffCode);
+    }
+
+    @Override
+    public int updatePersonnelMember(PersonnelMemberRow row, long expectedVersion) {
+        int updated = update("""
+                update personnel_member
+                set staff_code = ?, full_name = ?, active = ?, version = version + 1, updated_at = ?
+                where account_id = ? and version = ?
+                """, row.staffCode(), row.fullName(), row.active(), ts(row.updatedAt()), row.accountId(), expectedVersion);
+        if (updated != 1) throw new StaleVersionException();
+        return updated;
+    }
+
+    @Override
+    public void insertPractitionerProfile(PractitionerProfileRow row) {
+        update("""
+                insert into practitioner_profile(practitioner_id, phone, date_of_birth, gender, address,
+                    professional_title, academic_degree, specialty_designation, license_number,
+                    licensing_authority, license_issued_on, license_expires_on, years_experience,
+                    biography, avatar_url, version, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, row.practitionerId(), row.phone(), row.dateOfBirth(), row.gender(), row.address(),
+                row.professionalTitle(), row.academicDegree(), row.specialtyDesignation(), row.licenseNumber(),
+                row.licensingAuthority(), row.licenseIssuedOn(), row.licenseExpiresOn(), row.yearsExperience(),
+                row.biography(), row.avatarUrl(), row.version(), ts(row.createdAt()), ts(row.updatedAt()));
+    }
+
+    @Override
+    public Optional<PractitionerProfileRow> practitionerProfileByPractitionerId(UUID practitionerId) {
+        return queryOne("""
+                select practitioner_id, phone, date_of_birth, gender, address, professional_title,
+                    academic_degree, specialty_designation, license_number, licensing_authority,
+                    license_issued_on, license_expires_on, years_experience, biography, avatar_url,
+                    version, created_at, updated_at
+                from practitioner_profile where practitioner_id = ?
+                """, this::practitionerProfileRow, practitionerId);
+    }
+
+    @Override
+    public int updatePractitionerProfile(PractitionerProfileRow row, long expectedVersion) {
+        int updated = update("""
+                update practitioner_profile
+                set phone = ?, date_of_birth = ?, gender = ?, address = ?, professional_title = ?,
+                    academic_degree = ?, specialty_designation = ?, license_number = ?, licensing_authority = ?,
+                    license_issued_on = ?, license_expires_on = ?, years_experience = ?, biography = ?, avatar_url = ?,
+                    version = version + 1, updated_at = ?
+                where practitioner_id = ? and version = ?
+                """, row.phone(), row.dateOfBirth(), row.gender(), row.address(), row.professionalTitle(),
+                row.academicDegree(), row.specialtyDesignation(), row.licenseNumber(), row.licensingAuthority(),
+                row.licenseIssuedOn(), row.licenseExpiresOn(), row.yearsExperience(), row.biography(), row.avatarUrl(),
+                ts(row.updatedAt()), row.practitionerId(), expectedVersion);
+        if (updated != 1) throw new StaleVersionException();
+        return updated;
+    }
+
+    @Override
+    public void revokeActivePractitionerRoles(UUID practitionerId, UUID actorId, Instant now, String reason) {
+        update("""
+                update practitioner_role
+                set status = 'REVOKED',
+                    effective_to = case when effective_from < ? then ? else effective_to end,
+                    revoked_at = ?, revoked_by_account_id = ?, revoke_reason = ?,
+                    version = version + 1, updated_at = ?
+                where practitioner_id = ? and status = 'ACTIVE'
+                """, ts(now), ts(now), ts(now), actorId, reason, ts(now), practitionerId);
+    }
+
     // ===========================================================
     // PractitionerRole
     // ===========================================================
@@ -376,6 +537,19 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
                        version, created_at, updated_at
                 from practitioner_role where id = ? for update
                 """, this::practitionerRoleView, id);
+    }
+
+    @Override
+    public int updatePractitionerRole(PractitionerRoleRow row, long expectedVersion) {
+        int updated = update("""
+                update practitioner_role
+                set department_id = ?, effective_from = ?, effective_to = ?,
+                    version = version + 1, updated_at = ?
+                where id = ? and version = ? and status = 'ACTIVE'
+                """, row.departmentId(), ts(row.effectiveFrom()), ts(row.effectiveTo()), ts(row.updatedAt()),
+                row.id(), expectedVersion);
+        if (updated != 1) throw new StaleVersionException();
+        return updated;
     }
 
     @Override
@@ -479,6 +653,39 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
                 rs.getString("staff_code"),
                 rs.getString("full_name"),
                 rs.getBoolean("active"),
+                instant(rs, "created_at"),
+                instant(rs, "updated_at"));
+    }
+
+    private PersonnelMemberRow personnelMemberRow(ResultSet rs, int row) throws SQLException {
+        return new PersonnelMemberRow(
+                uuid(rs, "account_id"),
+                rs.getString("staff_code"),
+                rs.getString("full_name"),
+                rs.getBoolean("active"),
+                rs.getLong("version"),
+                instant(rs, "created_at"),
+                instant(rs, "updated_at"));
+    }
+
+    private PractitionerProfileRow practitionerProfileRow(ResultSet rs, int row) throws SQLException {
+        return new PractitionerProfileRow(
+                uuid(rs, "practitioner_id"),
+                rs.getString("phone"),
+                rs.getObject("date_of_birth", java.time.LocalDate.class),
+                rs.getString("gender"),
+                rs.getString("address"),
+                rs.getString("professional_title"),
+                rs.getString("academic_degree"),
+                rs.getString("specialty_designation"),
+                rs.getString("license_number"),
+                rs.getString("licensing_authority"),
+                rs.getObject("license_issued_on", java.time.LocalDate.class),
+                rs.getObject("license_expires_on", java.time.LocalDate.class),
+                rs.getInt("years_experience"),
+                rs.getString("biography"),
+                rs.getString("avatar_url"),
+                rs.getLong("version"),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
     }
