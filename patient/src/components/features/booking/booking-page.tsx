@@ -5,7 +5,7 @@ import { useBookingStore } from '@/store/use-booking-store';
 import { useAuthStore } from '@/store/use-auth-store';
 import { usePatientStore } from '@/store/use-patient-store';
 import { useToast } from '@/components/base/toast';
-import { EnrichedAppointmentSlot, PatientAppointment } from '@/types/scheduling';
+import { BookingSessionAvailability, EnrichedAppointmentSlot, PatientAppointment } from '@/types/scheduling';
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -36,9 +36,10 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
   const {
     departments,
     services,
-    practitioners,
     filters,
     enrichedSlots,
+    bookingSessions,
+    currentHoldAssignment,
     isLoadingCatalogs,
     isLoadingSlots,
     error,
@@ -47,7 +48,6 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
     loadSlots,
     setDepartmentFilter,
     setServiceFilter,
-    setPractitionerFilter,
     setDateFilter,
     setSessionFilter,
     resetFilters,
@@ -73,7 +73,7 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
   } = useBookingStore();
 
   const [selectedSlotForDetail, setSelectedSlotForDetail] =
-    useState<EnrichedAppointmentSlot | null>(null);
+    useState<EnrichedAppointmentSlot | BookingSessionAvailability | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 7;
@@ -206,7 +206,7 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
   };
 
 
-  const handleSelectSlot = (slot: EnrichedAppointmentSlot) => {
+  const handleSelectSlot = (slot: EnrichedAppointmentSlot | BookingSessionAvailability) => {
     if (bookingInProgress) {
       toast.warning('Hoàn tất hoặc hủy phiên đặt lịch hiện tại trước khi chọn ca khác.', 'Đang Có Phiên Đặt Lịch');
       return;
@@ -246,22 +246,34 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   };
 
+  const departmentName = (departmentId: string) =>
+    departments.find((department) => department.id === departmentId)?.name || 'Khoa Khám Bệnh';
+  const serviceName = (serviceId: string) =>
+    services.find((service) => service.id === serviceId)?.name || 'Dịch vụ khám';
+  const isNormalBooking = !isRescheduleMode;
+  const normalSessions = bookingSessions.filter((session) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase().trim();
+    return serviceName(session.serviceId).toLowerCase().includes(query)
+      || departmentName(session.departmentId).toLowerCase().includes(query);
+  });
   const filteredSlots = enrichedSlots.filter((slot) => {
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().trim();
-    return (
-      slot.serviceName?.toLowerCase().includes(q) ||
-      slot.departmentName?.toLowerCase().includes(q) ||
-      slot.practitionerName?.toLowerCase().includes(q) ||
-      slot.roomName?.toLowerCase().includes(q)
-    );
+    const query = searchQuery.toLowerCase().trim();
+    return slot.serviceName?.toLowerCase().includes(query)
+      || slot.departmentName?.toLowerCase().includes(query)
+      || slot.practitionerName?.toLowerCase().includes(query)
+      || slot.roomName?.toLowerCase().includes(query);
   });
-
-  const totalPages = Math.max(1, Math.ceil(filteredSlots.length / PAGE_SIZE));
-  const paginatedSlots = filteredSlots.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
-  );
+  const displayItems = isNormalBooking ? normalSessions : filteredSlots;
+  const selectedNormalSession = isNormalBooking && selectedSlotForDetail
+    ? selectedSlotForDetail as BookingSessionAvailability
+    : null;
+  const selectedDetailSlot = !isNormalBooking && selectedSlotForDetail
+    ? selectedSlotForDetail as EnrichedAppointmentSlot
+    : null;
+  const totalPages = Math.max(1, Math.ceil(displayItems.length / PAGE_SIZE));
+  const paginatedItems = displayItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
     <div className="w-full font-sans text-content-primary selection:bg-primary selection:text-white pt-2 sm:pt-4 pb-8 flex flex-col">
@@ -274,7 +286,7 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
           <p className="text-xs sm:text-sm text-content-secondary mt-1">
             {isRescheduleMode
               ? 'Chọn ca khám mới để thay thế ca hiện tại. Hệ thống sẽ chuyển cọc tự động.'
-              : 'Tra cứu lịch làm việc của bác sĩ và đặt lịch khám theo chuyên khoa, dịch vụ linh hoạt'}
+              : 'Chọn khoa, dịch vụ, ngày và buổi khám. Bác sĩ sẽ được hệ thống phân công theo lịch trực và chỗ trống.'}
           </p>
         </div>
       </div>
@@ -431,29 +443,6 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
             </select>
           </div>
 
-          {/* Bác sĩ */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-semibold text-content-secondary uppercase tracking-wider flex items-center gap-1.5">
-              <Users className="w-3 h-3 text-content-muted" />
-              Bác sĩ (Tùy chọn)
-            </label>
-            <select
-              value={filters.practitionerId}
-              onChange={(e) => {
-                setPractitionerFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full px-3 py-2 rounded-xl border border-outline-variant/80 bg-surface-container hover:bg-surface-container-high focus:bg-surface focus:border-primary outline-none text-xs text-content-primary transition-all font-medium cursor-pointer truncate"
-            >
-              <option value="ALL">Tất cả bác sĩ</option>
-              {practitioners.map((prac) => (
-                <option key={prac.id} value={prac.id}>
-                  {prac.fullName}
-                </option>
-              ))}
-            </select>
-          </div>
-
           {/* Ngày khám & Quick chips */}
           <div className="flex flex-col gap-1.5 pt-1 border-t border-outline-variant/60">
             <label className="text-[11px] font-semibold text-content-secondary uppercase tracking-wider flex items-center gap-1.5">
@@ -598,7 +587,7 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
                 Đang tra cứu danh sách ca khám...
               </p>
             </div>
-          ) : filteredSlots.length === 0 ? (
+          ) : displayItems.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-content-secondary min-h-[360px]">
               <h3 className="text-base font-bold tracking-tight text-content-primary m-0 mb-1">
                 {searchQuery ? 'Không tìm thấy ca khám phù hợp' : 'Chưa có ca khám nào'}
@@ -647,7 +636,7 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
                       }}
                       className="py-3.5 px-5 font-semibold w-[46%]"
                     >
-                      Dịch vụ & Bác sĩ
+                      {isNormalBooking ? 'Dịch vụ & khoa' : 'Dịch vụ & Bác sĩ'}
                     </th>
                     <th
                       style={{
@@ -672,79 +661,19 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/40 text-xs sm:text-sm">
-                  {paginatedSlots.map((slot) => {
-                    const { dateStr, timeStr } = formatSlotDateTime(slot.startAt, slot.endAt);
-                    const sessionLabel =
-                      slot.session === 'MORNING'
-                        ? 'Buổi sáng'
-                        : slot.session === 'AFTERNOON'
-                          ? 'Buổi chiều'
-                          : 'Ca khám';
-
+                  {paginatedItems.map((item) => {
+                    const session = item as BookingSessionAvailability | EnrichedAppointmentSlot;
+                    const { dateStr, timeStr } = formatSlotDateTime(session.startAt, session.endAt);
+                    const normalSession = isNormalBooking ? session as BookingSessionAvailability : null;
+                    const slot = isNormalBooking ? null : session as EnrichedAppointmentSlot;
+                    const service = normalSession ? services.find((value) => value.id === normalSession.serviceId) : null;
+                    const available = session.canCreateHold !== false;
                     return (
-                      <tr
-                        key={slot.id}
-                        onClick={() => slot.canCreateHold !== false && handleSelectSlot(slot)}
-                        className={`transition-colors group ${
-                          slot.canCreateHold === false
-                            ? 'opacity-65 cursor-not-allowed hover:bg-surface-container/15'
-                            : 'cursor-pointer hover:bg-surface-container/30'
-                        }`}
-                      >
-                        {/* Thời gian khám */}
-                        <td className="py-4 px-5 whitespace-nowrap align-middle">
-                          <div className="font-semibold text-content-primary">
-                            {dateStr}
-                          </div>
-                          <div className="text-xs text-content-muted font-mono mt-0.5">
-                            {timeStr}
-                          </div>
-                        </td>
-
-                        {/* Dịch vụ & Bác sĩ */}
-                        <td className="py-4 px-5 align-middle">
-                          <div className="font-bold text-content-primary group-hover:text-primary transition-colors text-xs sm:text-sm line-clamp-1">
-                            {slot.serviceName}
-                          </div>
-                          <div className="text-xs text-content-muted mt-0.5 line-clamp-1">
-                            {slot.practitionerName} · {slot.departmentName}
-                          </div>
-                        </td>
-
-                        {/* Giá khám */}
-                        <td className="py-4 px-5 whitespace-nowrap align-middle">
-                          <div className="font-mono font-bold text-content-primary text-xs sm:text-sm">
-                            {formatPrice(slot.priceAmount, slot.priceCurrency)}
-                          </div>
-                          {slot.canCreateHold === false && (
-                            <span className="inline-flex items-center gap-1 mt-0.5 text-[11px] font-medium text-rose-400">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-                              <span>{formatSlotShortReason(slot.disabledReason)}</span>
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Thao tác */}
-                        <td className="py-4 px-5 text-right whitespace-nowrap align-middle">
-                          {slot.canCreateHold === false ? (
-                            <span className="text-xs font-medium text-content-muted">
-                              Không khả dụng
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSelectSlot(slot);
-                              }}
-                              disabled={bookingInProgress}
-                              className="px-3.5 py-1.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-xs hover:shadow-card transition-all inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
-                            >
-                              <span>Chọn ca</span>
-                              <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
-                            </button>
-                          )}
-                        </td>
+                      <tr key={session.id} onClick={() => available && handleSelectSlot(session)} className={`transition-colors group ${available ? 'cursor-pointer hover:bg-surface-container/30' : 'opacity-65 cursor-not-allowed hover:bg-surface-container/15'}`}>
+                        <td className="py-4 px-5 whitespace-nowrap align-middle"><div className="font-semibold text-content-primary">{dateStr}</div><div className="text-xs text-content-muted font-mono mt-0.5">{timeStr}</div></td>
+                        <td className="py-4 px-5 align-middle"><div className="font-bold text-content-primary group-hover:text-primary transition-colors text-xs sm:text-sm line-clamp-1">{normalSession ? serviceName(normalSession.serviceId) : slot!.serviceName}</div><div className="text-xs text-content-muted mt-0.5 line-clamp-1">{normalSession ? `${departmentName(normalSession.departmentId)} · Bác sĩ được hệ thống phân công` : `${slot!.practitionerName} · ${slot!.departmentName}`}</div></td>
+                        <td className="py-4 px-5 whitespace-nowrap align-middle"><div className="font-mono font-bold text-content-primary text-xs sm:text-sm">{normalSession ? formatPrice(service?.priceAmount ?? 0, service?.priceCurrency ?? 'VND') : formatPrice(slot!.priceAmount, slot!.priceCurrency)}</div>{normalSession && <div className="text-[11px] text-content-muted mt-0.5">Còn {normalSession.remainingCapacity}/{normalSession.totalCapacity} chỗ</div>}{!available && <span className="inline-flex items-center gap-1 mt-0.5 text-[11px] font-medium text-rose-400"><span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" /><span>{formatSlotShortReason(session.disabledReason)}</span></span>}</td>
+                        <td className="py-4 px-5 text-right whitespace-nowrap align-middle">{!available ? <span className="text-xs font-medium text-content-muted">Không khả dụng</span> : <button type="button" onClick={(event) => { event.stopPropagation(); handleSelectSlot(session); }} disabled={bookingInProgress} className="px-3.5 py-1.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-xs hover:shadow-card transition-all inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40"><span>Chọn ca</span><ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" /></button>}</td>
                       </tr>
                     );
                   })}
@@ -884,6 +813,14 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
                   <span className="text-xs font-semibold text-rose-300 px-2.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/20">Hết hiệu lực</span>
                 )}
               </div>
+
+              {!isRescheduleMode && currentHoldAssignment && (
+                <div className="p-4 rounded-2xl bg-primary/10 border border-primary/20 text-xs">
+                  <p className="font-semibold text-content-primary m-0 mb-2">Bác sĩ đã được phân công</p>
+                  <p className="text-content-secondary m-0">{currentHoldAssignment.practitionerName} · {currentHoldAssignment.roomName}</p>
+                  <p className="text-content-secondary m-0 mt-1">{formatSlotDateTime(currentHoldAssignment.startAt, currentHoldAssignment.endAt).dateStr} · {formatSlotDateTime(currentHoldAssignment.startAt, currentHoldAssignment.endAt).timeStr}</p>
+                </div>
+              )}
 
               {/* Deposit Info or Reschedule Financial Breakdown */}
               {isRescheduleMode ? (
@@ -1186,28 +1123,20 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
                     Dịch vụ khám
                   </span>
                   <span className="text-base font-bold text-content-primary">
-                    {selectedSlotForDetail.serviceName}
+                    {selectedNormalSession ? serviceName(selectedNormalSession.serviceId) : selectedDetailSlot?.serviceName}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-outline-variant">
-                  <div>
-                    <span className="text-[11px] font-bold text-content-muted uppercase tracking-wider block mb-0.5">
-                      Bác sĩ phụ trách
-                    </span>
-                    <span className="text-xs sm:text-sm font-bold text-content-primary">
-                      {selectedSlotForDetail.practitionerName}
-                    </span>
+                {selectedNormalSession ? (
+                  <div className="pt-2 border-t border-outline-variant text-xs text-content-secondary">
+                    {departmentName(selectedNormalSession.departmentId)} · Bác sĩ sẽ được hệ thống phân công theo lịch trực và chỗ trống sau khi giữ chỗ.
                   </div>
-                  <div>
-                    <span className="text-[11px] font-bold text-content-muted uppercase tracking-wider block mb-0.5">
-                      Địa điểm
-                    </span>
-                    <span className="text-xs sm:text-sm text-content-primary font-medium truncate block">
-                      {selectedSlotForDetail.departmentName} · {selectedSlotForDetail.roomName}
-                    </span>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-outline-variant">
+                    <div><span className="text-[11px] font-bold text-content-muted uppercase tracking-wider block mb-0.5">Bác sĩ phụ trách</span><span className="text-xs sm:text-sm font-bold text-content-primary">{selectedDetailSlot?.practitionerName}</span></div>
+                    <div><span className="text-[11px] font-bold text-content-muted uppercase tracking-wider block mb-0.5">Địa điểm</span><span className="text-xs sm:text-sm text-content-primary font-medium truncate block">{selectedDetailSlot?.departmentName} · {selectedDetailSlot?.roomName}</span></div>
                   </div>
-                </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-outline-variant">
                   <div>
@@ -1215,28 +1144,18 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
                       Thời gian khám
                     </span>
                     <span className="text-xs sm:text-sm font-mono font-bold text-content-primary">
-                      {
-                        formatSlotDateTime(
-                          selectedSlotForDetail.startAt,
-                          selectedSlotForDetail.endAt
-                        ).dateStr
-                      }
+                      {formatSlotDateTime(selectedSlotForDetail.startAt, selectedSlotForDetail.endAt).dateStr}
                     </span>
                     <span className="text-xs font-mono text-content-secondary block">
-                      {
-                        formatSlotDateTime(
-                          selectedSlotForDetail.startAt,
-                          selectedSlotForDetail.endAt
-                        ).timeStr
-                      }
+                      {formatSlotDateTime(selectedSlotForDetail.startAt, selectedSlotForDetail.endAt).timeStr}
                     </span>
                   </div>
                   <div>
                     <span className="text-[11px] font-bold text-content-muted uppercase tracking-wider block mb-0.5">
-                      Khung giờ Check-in
+                      {selectedNormalSession ? 'Chỗ còn lại' : 'Khung giờ Check-in'}
                     </span>
                     <span className="text-xs sm:text-sm font-mono text-content-primary font-semibold">
-                      {selectedSlotForDetail.checkInStart} – {selectedSlotForDetail.checkInEnd}
+                      {selectedNormalSession ? `${selectedNormalSession.remainingCapacity}/${selectedNormalSession.totalCapacity}` : `${selectedDetailSlot?.checkInStart} – ${selectedDetailSlot?.checkInEnd}`}
                     </span>
                   </div>
                 </div>
@@ -1248,10 +1167,12 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
                   Chi phí khám dự kiến:
                 </span>
                 <span className="text-lg font-bold font-mono text-primary">
-                  {formatPrice(
-                    selectedSlotForDetail.priceAmount,
-                    selectedSlotForDetail.priceCurrency
-                  )}
+                  {selectedNormalSession
+                    ? formatPrice(
+                        services.find((service) => service.id === selectedNormalSession.serviceId)?.priceAmount ?? 0,
+                        services.find((service) => service.id === selectedNormalSession.serviceId)?.priceCurrency ?? 'VND'
+                      )
+                    : formatPrice(selectedDetailSlot?.priceAmount ?? 0, selectedDetailSlot?.priceCurrency ?? 'VND')}
                 </span>
               </div>
             </div>

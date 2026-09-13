@@ -4,14 +4,17 @@ import {
   AppointmentSlotPageResponse,
   BookingAvailabilityPageResponse,
   BookingCatalog,
+  BookingSessionAvailabilityPageResponse,
+  CreateBookingSessionHoldRequest,
+  CreateSlotHoldResponse,
   CancelAppointmentRequest,
   CommandAcceptedResponse,
-  CreateSlotHoldRequest,
   PatientAppointment,
   PatientAppointmentPageResponse,
   PaymentIntentRow,
   RescheduleAppointmentRequest,
   RescheduleAppointmentResponse,
+  RescheduleCatalog,
   RescheduleTopUpRequest,
   SimulateMockPaymentOutcomeRequest,
   SlotHoldRow,
@@ -47,14 +50,27 @@ export const schedulingService = {
     return response.data;
   },
 
+  async getRescheduleCatalog(appointmentId: string): Promise<RescheduleCatalog> {
+    const response = await axiosClient.get<RescheduleCatalog>(`/appointments/${appointmentId}/actions/reschedule-catalog`);
+    return response.data;
+  },
+
   async getBookingAvailability(params: {
     patientId: string;
+    departmentId?: string;
+    serviceId?: string;
+    date?: string;
+    session?: 'MORNING' | 'AFTERNOON';
     cursor?: string;
     limit?: number;
-  }): Promise<BookingAvailabilityPageResponse> {
-    const response = await axiosClient.get<BookingAvailabilityPageResponse>('/booking/availability', {
+  }): Promise<BookingSessionAvailabilityPageResponse> {
+    const response = await axiosClient.get<BookingSessionAvailabilityPageResponse>('/booking/availability', {
       params: {
         patientId: params.patientId,
+        departmentId: params.departmentId,
+        serviceId: params.serviceId,
+        date: params.date,
+        session: params.session,
         cursor: params.cursor,
         limit: params.limit || 100,
       },
@@ -79,10 +95,10 @@ export const schedulingService = {
   },
 
   async createSlotHold(
-    payload: CreateSlotHoldRequest,
+    payload: CreateBookingSessionHoldRequest,
     { idempotencyKey }: IdempotentRequest
-  ): Promise<SlotHoldRow> {
-    const response = await axiosClient.post<SlotHoldRow>('/slot-holds', payload, {
+  ): Promise<CreateSlotHoldResponse> {
+    const response = await axiosClient.post<CreateSlotHoldResponse>('/slot-holds', payload, {
       headers: { 'Idempotency-Key': idempotencyKey },
     });
     return response.data;

@@ -54,6 +54,11 @@ export interface EnrichedAppointment extends AppointmentRow {
 
 export interface BookingCatalog {
   departments: BookingDepartment[];
+  services: BookingService[];
+}
+
+export interface RescheduleCatalog {
+  departments: BookingDepartment[];
   rooms: BookingRoom[];
   services: BookingService[];
   practitioners: BookingPractitioner[];
@@ -127,7 +132,7 @@ export interface EnrichedAppointmentSlot extends AppointmentSlotRow {
 
 export interface SlotHoldRow {
   id: string;
-  slotId: string;
+  slotId?: string;
   patientId: string;
   expiresAt: string;
   depositAmount: number;
@@ -152,9 +157,21 @@ export interface PaymentIntentRow {
   updatedAt: string;
 }
 
-export interface CreateSlotHoldRequest {
-  slotId: string;
+export interface CreateBookingSessionHoldRequest {
+  bookingSessionId: string;
   patientId: string;
+}
+
+export interface BookingHoldAssignment {
+  practitionerName: string;
+  roomName: string;
+  startAt: string;
+  endAt: string;
+  session: AppointmentSlotSession;
+}
+
+export interface CreateSlotHoldResponse extends Omit<SlotHoldRow, 'slotId'> {
+  assignment: BookingHoldAssignment;
 }
 
 export interface SimulateMockPaymentOutcomeRequest {
@@ -253,6 +270,22 @@ export interface PatientAppointmentPageResponse {
   hasMore: boolean;
 }
 
+export interface BookingSessionAvailability {
+  id: string;
+  version: number;
+  departmentId: string;
+  serviceId: string;
+  localDate: string;
+  session: AppointmentSlotSession;
+  startAt: string;
+  endAt: string;
+  totalCapacity: number;
+  reservedCapacity: number;
+  remainingCapacity: number;
+  canCreateHold: boolean;
+  disabledReason?: string | null;
+}
+
 export interface BookingAvailabilitySlot {
   id: string;
   version: number;
@@ -265,6 +298,12 @@ export interface BookingAvailabilitySlot {
   endAt: string;
   canCreateHold: boolean;
   disabledReason?: string | null;
+}
+
+export interface BookingSessionAvailabilityPageResponse {
+  items: BookingSessionAvailability[];
+  nextCursor?: string | null;
+  hasMore: boolean;
 }
 
 export interface BookingAvailabilityPageResponse {

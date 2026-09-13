@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/use-auth-store';
 import { useBookingStore } from '@/store/use-booking-store';
+import { currentTabContext } from '@/lib/tab-session-context';
 import { NovaLogo } from '@/components/base/nova-logo';
 import { BorderBeam } from 'border-beam';
 import {
@@ -37,6 +38,26 @@ import { PatientProfilePage } from '@/components/features/patient/patient-profil
 import { MyAppointmentsPage } from '@/components/features/appointments/my-appointments-page';
 import '@/styles/gemini.css';
 
+type DashboardView = 'home' | 'booking' | 'profile' | 'appointments';
+
+function dashboardViewKey(): string | null {
+  const context = currentTabContext();
+  return context ? `medicore.active-view.${context}` : null;
+}
+
+function initialDashboardView(): DashboardView {
+  if (typeof window === 'undefined') return 'home';
+  try {
+    const key = dashboardViewKey();
+    const saved = key ? window.sessionStorage.getItem(key) : null;
+    return saved && ['booking', 'profile', 'appointments', 'home'].includes(saved)
+      ? (saved as DashboardView)
+      : 'home';
+  } catch {
+    return 'home';
+  }
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -53,57 +74,18 @@ export function GeminiDashboard() {
   const { currentEmail, initSession, logout } = useAuthStore();
   const startRescheduleMode = useBookingStore((state) => state.startRescheduleMode);
 
-  // Persist activeView across F5 using localStorage + sessionStorage + URL hash
-  const [activeView, setActiveViewRaw] = useState<'home' | 'booking' | 'profile' | 'appointments'>('home');
+  const [activeView, setActiveViewRaw] = useState<DashboardView>(initialDashboardView);
 
-  const setActiveView = useCallback((view: 'home' | 'booking' | 'profile' | 'appointments') => {
+  const setActiveView = useCallback((view: DashboardView) => {
     setActiveViewRaw(view);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('medicore_active_view', view);
-        sessionStorage.setItem('medicore_active_view', view);
-      } catch {
-        // ignore storage errors
-      }
-      window.history.replaceState(null, '', `#${view}`);
+    try {
+      const key = dashboardViewKey();
+      if (key) window.sessionStorage.setItem(key, view);
+    } catch {
+      // View persistence is optional.
     }
   }, []);
 
-  // Restore active view on mount (for F5 refresh) and sync with hash change (back/forward)
-  useEffect(() => {
-    const hash = window.location.hash.replace('#', '');
-    if (['booking', 'profile', 'appointments', 'home'].includes(hash)) {
-      setActiveViewRaw(hash as 'home' | 'booking' | 'profile' | 'appointments');
-    } else {
-      try {
-        const saved =
-          localStorage.getItem('medicore_active_view') ||
-          sessionStorage.getItem('medicore_active_view');
-        if (saved && ['booking', 'profile', 'appointments', 'home'].includes(saved)) {
-          setActiveViewRaw(saved as 'home' | 'booking' | 'profile' | 'appointments');
-          window.history.replaceState(null, '', `#${saved}`);
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    const onHashChange = () => {
-      const currentHash = window.location.hash.replace('#', '');
-      if (['booking', 'profile', 'appointments', 'home'].includes(currentHash)) {
-        setActiveViewRaw(currentHash as 'home' | 'booking' | 'profile' | 'appointments');
-        try {
-          localStorage.setItem('medicore_active_view', currentHash);
-          sessionStorage.setItem('medicore_active_view', currentHash);
-        } catch {
-          // ignore
-        }
-      }
-    };
-
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
 
   const [focusedAppointmentId, setFocusedAppointmentId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -225,8 +207,14 @@ export function GeminiDashboard() {
   };
 
   const handleLogout = async () => {
-    await logout().catch(console.error);
-    router.push('/');
+    await logout();
+    try {
+      const key = dashboardViewKey();
+      if (key) window.sessionStorage.removeItem(key);
+    } catch {
+      // View persistence is optional.
+    }
+    router.replace('/');
   };
 
   // Recent history mock (1-2 medical consultation items)

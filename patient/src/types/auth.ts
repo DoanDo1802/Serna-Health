@@ -16,15 +16,15 @@ export interface AccountView {
 export type SessionStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED';
 
 export interface SessionView {
-  id: string;
   accountId: string;
+  displayEmail: string;
   status: SessionStatus;
-  roles: string[];
-  permissions: string[];
+  authenticatedAt: string;
+  lastSeenAt: string;
   idleExpiresAt: string;
   absoluteExpiresAt: string;
-  createdAt: string;
-  lastSeenAt: string;
+  roleCodes: string[];
+  permissions: string[];
 }
 
 export interface CommandAccepted {

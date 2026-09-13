@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import {
   AppointmentSlotRow,
   BookingAvailabilitySlot,
+  BookingHoldAssignment,
+  BookingSessionAvailability,
   BookingDepartment,
   BookingPhase,
   BookingPractitioner,
@@ -42,7 +44,6 @@ export interface BookingErrorInfo {
 interface BookingFilters {
   departmentId: string;
   serviceId: string;
-  practitionerId: string;
   date: string;
   session: 'ALL' | AppointmentSlotSession;
 }
@@ -56,8 +57,11 @@ interface BookingState {
   filters: BookingFilters;
   rawSlots: (AppointmentSlotRow | BookingAvailabilitySlot)[];
   enrichedSlots: EnrichedAppointmentSlot[];
+  bookingSessions: BookingSessionAvailability[];
+  selectedBookingSession: BookingSessionAvailability | null;
   selectedSlot: EnrichedAppointmentSlot | null;
   currentHold: SlotHoldRow | null;
+  currentHoldAssignment: BookingHoldAssignment | null;
   currentPaymentIntent: PaymentIntentRow | null;
   bookingPhase: BookingPhase;
   holdIdempotencyKey: string | null;
@@ -81,12 +85,12 @@ interface BookingState {
   loadSlots: () => Promise<void>;
   setDepartmentFilter: (departmentId: string) => void;
   setServiceFilter: (serviceId: string) => void;
-  setPractitionerFilter: (practitionerId: string) => void;
   setDateFilter: (date: string) => void;
   setSessionFilter: (session: 'ALL' | AppointmentSlotSession) => void;
   resetFilters: () => void;
   selectSlot: (slot: EnrichedAppointmentSlot | null) => void;
-  createSlotHold: (slot: EnrichedAppointmentSlot) => Promise<boolean>;
+  selectBookingSession: (session: BookingSessionAvailability | null) => void;
+  createSlotHold: (slot: EnrichedAppointmentSlot | BookingSessionAvailability) => Promise<boolean>;
   createPaymentIntent: () => Promise<boolean>;
   simulateMockPaymentOutcome: (outcome: 'SUCCEEDED' | 'FAILED') => Promise<boolean>;
   startRescheduleMode: (context: RescheduleContext) => Promise<boolean>;
@@ -95,8 +99,10 @@ interface BookingState {
   createRescheduleTopUp: () => Promise<boolean>;
   submitReschedule: () => Promise<RescheduleAppointmentResponse | null>;
   refreshBookingStatus: () => Promise<void>;
-  releaseCurrentHold: () => Promise<boolean>;
+  releaseCurrentHold: (refreshSlots?: boolean) => Promise<boolean>;
   resetBookingFlow: () => void;
+  resetBookingState: () => Promise<boolean>;
+  discardBookingState: () => void;
   clearError: () => void;
 }
 
@@ -226,8 +232,6 @@ const projectSlots = (
   }).filter((slot) => {
     if (state.filters.departmentId !== 'ALL' && slot.departmentId !== state.filters.departmentId) return false;
     if (state.filters.serviceId !== 'ALL' && slot.serviceId !== state.filters.serviceId) return false;
-    if (state.filters.practitionerId !== 'ALL'
-      && state.practitionerRoles.get(slot.practitionerRoleId)?.practitionerId !== state.filters.practitionerId) return false;
     if (state.filters.date) {
       const slotLocalDate = toLocalDateString(new Date(slot.startAt));
       if (slotLocalDate !== state.filters.date) return false;
@@ -238,9 +242,9 @@ const projectSlots = (
 
 export const useBookingStore = create<BookingState>((set, get) => ({
   departments: [], rooms: [], services: [], practitioners: [], practitionerRoles: new Map(),
-  filters: { departmentId: 'ALL', serviceId: 'ALL', practitionerId: 'ALL', date: getTodayDateString(), session: 'ALL' },
-  rawSlots: [], enrichedSlots: [], selectedSlot: null,
-  currentHold: null, currentPaymentIntent: null, bookingPhase: 'IDLE',
+  filters: { departmentId: 'ALL', serviceId: 'ALL', date: getTodayDateString(), session: 'ALL' },
+  rawSlots: [], enrichedSlots: [], bookingSessions: [], selectedBookingSession: null, selectedSlot: null,
+  currentHold: null, currentHoldAssignment: null, currentPaymentIntent: null, bookingPhase: 'IDLE',
   holdIdempotencyKey: null, paymentIdempotencyKey: null, mockPaymentIdempotencyKey: null, mockPaymentOutcome: null,
   rescheduleContext: null, rescheduleReason: '', rescheduleSubmitIdempotencyKey: null, rescheduleResult: null, isSubmittingReschedule: false,
   isLoadingCatalogs: false, isLoadingSlots: false, isHolding: false, isCreatingPaymentIntent: false, isSimulatingPayment: false,
@@ -270,21 +274,39 @@ export const useBookingStore = create<BookingState>((set, get) => ({
 
     const rescheduleAppointmentId = get().rescheduleContext?.originalAppointment?.id;
     try {
-      const [catalog, slotsResponse] = await Promise.all([
-        schedulingService.getBookingCatalog(patientId),
+      const filters = get().filters;
+      const [catalog, availabilityResponse] = await Promise.all([
+        rescheduleAppointmentId
+          ? schedulingService.getRescheduleCatalog(rescheduleAppointmentId)
+          : schedulingService.getBookingCatalog(patientId),
         rescheduleAppointmentId
           ? schedulingService.getRescheduleAvailability(rescheduleAppointmentId, { limit: 100 })
-          : schedulingService.getBookingAvailability({ patientId, limit: 100 }),
+          : schedulingService.getBookingAvailability({
+              patientId,
+              departmentId: filters.departmentId === 'ALL' ? undefined : filters.departmentId,
+              serviceId: filters.serviceId === 'ALL' ? undefined : filters.serviceId,
+              date: filters.date || undefined,
+              session: filters.session === 'ALL' ? undefined : filters.session,
+              limit: 100,
+            }),
       ]);
+      const isRescheduleCatalog = (cat: typeof catalog): cat is import('@/types/scheduling').RescheduleCatalog => 'rooms' in cat;
+      const rooms = isRescheduleCatalog(catalog) ? catalog.rooms : [];
+      const practitioners = isRescheduleCatalog(catalog) ? catalog.practitioners : [];
+      const practitionerRoles = isRescheduleCatalog(catalog)
+        ? new Map(catalog.practitionerRoles.map((role) => [role.id, role]))
+        : new Map<string, BookingPractitionerRole>();
       const next = {
         ...get(),
         departments: catalog.departments,
-        rooms: catalog.rooms,
+        rooms,
         services: catalog.services,
-        practitioners: catalog.practitioners,
-        practitionerRoles: new Map(catalog.practitionerRoles.map((role) => [role.id, role])),
+        practitioners,
+        practitionerRoles,
       };
-      const rawSlots = slotsResponse.items || [];
+      const rawSlots: (AppointmentSlotRow | BookingAvailabilitySlot)[] = rescheduleAppointmentId
+        ? availabilityResponse.items as BookingAvailabilitySlot[]
+        : [];
       set({
         departments: next.departments,
         rooms: next.rooms,
@@ -292,7 +314,9 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         practitioners: next.practitioners,
         practitionerRoles: next.practitionerRoles,
         rawSlots,
-        enrichedSlots: projectSlots(next, rawSlots),
+        enrichedSlots: rescheduleAppointmentId ? projectSlots(next, rawSlots as (AppointmentSlotRow | BookingAvailabilitySlot)[]) : [],
+        bookingSessions: rescheduleAppointmentId ? [] : availabilityResponse.items as BookingSessionAvailability[],
+        selectedBookingSession: null,
         isLoadingCatalogs: false,
         isLoadingSlots: false,
         error: null,
@@ -311,10 +335,30 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       set({ errorInfo, error: errorInfo.message, isLoadingCatalogs: false });
       return;
     }
-    set({ isLoadingCatalogs: true, error: null, errorInfo: null, departments: [], rooms: [], services: [], practitioners: [], practitionerRoles: new Map(), rawSlots: [], enrichedSlots: [], selectedSlot: null });
+    set({ isLoadingCatalogs: true, error: null, errorInfo: null, departments: [], rooms: [], services: [], practitioners: [], practitionerRoles: new Map(), rawSlots: [], enrichedSlots: [], bookingSessions: [], selectedBookingSession: null, selectedSlot: null });
     try {
-      const catalog = await schedulingService.getBookingCatalog(patientId);
-      set({ departments: catalog.departments, rooms: catalog.rooms, services: catalog.services, practitioners: catalog.practitioners, practitionerRoles: new Map(catalog.practitionerRoles.map((role) => [role.id, role])), isLoadingCatalogs: false });
+      const rescheduleAppointmentId = get().rescheduleContext?.originalAppointment?.id;
+      if (rescheduleAppointmentId) {
+        const catalog = await schedulingService.getRescheduleCatalog(rescheduleAppointmentId);
+        set({
+          departments: catalog.departments,
+          rooms: catalog.rooms,
+          services: catalog.services,
+          practitioners: catalog.practitioners,
+          practitionerRoles: new Map(catalog.practitionerRoles.map((role) => [role.id, role])),
+          isLoadingCatalogs: false,
+        });
+      } else {
+        const catalog = await schedulingService.getBookingCatalog(patientId);
+        set({
+          departments: catalog.departments,
+          rooms: [],
+          services: catalog.services,
+          practitioners: [],
+          practitionerRoles: new Map(),
+          isLoadingCatalogs: false,
+        });
+      }
     } catch (err) {
       const errorInfo = errorFrom(err, 'Không thể tải dữ liệu đặt khám.');
       set({ errorInfo, error: errorInfo.message, isLoadingCatalogs: false });
@@ -325,57 +369,70 @@ export const useBookingStore = create<BookingState>((set, get) => ({
     set({ isLoadingSlots: true, error: null, errorInfo: null });
     try {
       const patientId = usePatientStore.getState().activePatientId;
+      if (!patientId) throw new Error('Chưa chọn hồ sơ bệnh nhân.');
       const rescheduleAppointmentId = get().rescheduleContext?.originalAppointment?.id;
-      const response = patientId
-        ? (rescheduleAppointmentId
-            ? await schedulingService.getRescheduleAvailability(rescheduleAppointmentId, { limit: 100 })
-            : await schedulingService.getBookingAvailability({ patientId, limit: 100 }))
-        : await schedulingService.searchAppointmentSlots();
-      const rawSlots = patientId
-        ? response.items || []
-        : (response.items || []).filter((slot): slot is AppointmentSlotRow =>
-            'status' in slot && slot.status === 'ACTIVE');
-      const state = get();
-      set({
-        rawSlots,
-        enrichedSlots: projectSlots(state, rawSlots),
-        isLoadingSlots: false,
-        error: null,
-        errorInfo: null,
-      });
+      const filters = get().filters;
+      if (rescheduleAppointmentId) {
+        const response = await schedulingService.getRescheduleAvailability(rescheduleAppointmentId, { limit: 100 });
+        const rawSlots = response.items || [];
+        set({
+          rawSlots,
+          enrichedSlots: projectSlots(get(), rawSlots),
+          bookingSessions: [],
+          selectedBookingSession: null,
+          isLoadingSlots: false,
+          error: null,
+          errorInfo: null,
+        });
+      } else {
+        const response = await schedulingService.getBookingAvailability({
+          patientId,
+          departmentId: filters.departmentId === 'ALL' ? undefined : filters.departmentId,
+          serviceId: filters.serviceId === 'ALL' ? undefined : filters.serviceId,
+          date: filters.date || undefined,
+          session: filters.session === 'ALL' ? undefined : filters.session,
+          limit: 100,
+        });
+        set({
+          rawSlots: [],
+          enrichedSlots: [],
+          bookingSessions: response.items || [],
+          selectedBookingSession: null,
+          isLoadingSlots: false,
+          error: null,
+          errorInfo: null,
+        });
+      }
     } catch (err) {
       const errorInfo = errorFrom(err, 'Không thể tải danh sách ca khám.');
       set({ errorInfo, error: errorInfo.message, isLoadingSlots: false });
     }
   },
 
-  setDepartmentFilter: (departmentId) => set((state) => {
-    const filters = { ...state.filters, departmentId };
-    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
-  }),
-  setServiceFilter: (serviceId) => set((state) => {
-    const filters = { ...state.filters, serviceId };
-    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
-  }),
-  setPractitionerFilter: (practitionerId) => set((state) => {
-    const filters = { ...state.filters, practitionerId };
-    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
-  }),
-  setDateFilter: (date) => set((state) => {
-    const filters = { ...state.filters, date };
-    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
-  }),
-  setSessionFilter: (session) => set((state) => {
-    const filters = { ...state.filters, session };
-    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
-  }),
-  resetFilters: () => set((state) => {
-    const filters = { departmentId: 'ALL', serviceId: 'ALL', practitionerId: 'ALL', date: '', session: 'ALL' as const };
-    return { filters, enrichedSlots: projectSlots({ ...state, filters }, state.rawSlots) };
-  }),
+  setDepartmentFilter: (departmentId) => {
+    set((state) => ({ filters: { ...state.filters, departmentId } }));
+    void get().loadSlots();
+  },
+  setServiceFilter: (serviceId) => {
+    set((state) => ({ filters: { ...state.filters, serviceId } }));
+    void get().loadSlots();
+  },
+  setDateFilter: (date) => {
+    set((state) => ({ filters: { ...state.filters, date } }));
+    void get().loadSlots();
+  },
+  setSessionFilter: (session) => {
+    set((state) => ({ filters: { ...state.filters, session } }));
+    void get().loadSlots();
+  },
+  resetFilters: () => {
+    set({ filters: { departmentId: 'ALL', serviceId: 'ALL', date: '', session: 'ALL' } });
+    void get().loadSlots();
+  },
   selectSlot: (selectedSlot) => set({ selectedSlot }),
+  selectBookingSession: (selectedBookingSession) => set({ selectedBookingSession }),
 
-  createSlotHold: async (slot) => {
+  createSlotHold: async (selection) => {
     const patientId = usePatientStore.getState().activePatientId;
     if (!patientId) {
       const errorInfo = { type: 'NO_PATIENT' as const, message: 'Chưa chọn hồ sơ bệnh nhân.' };
@@ -383,22 +440,50 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       return false;
     }
     const key = createIdempotencyKey();
-    set({ isHolding: true, bookingPhase: 'CREATING_HOLD', holdIdempotencyKey: key, error: null, errorInfo: null, selectedSlot: slot });
+    const rescheduleContext = get().rescheduleContext;
+    const isReschedule = Boolean(rescheduleContext);
+    set({
+      isHolding: true,
+      bookingPhase: 'CREATING_HOLD',
+      holdIdempotencyKey: key,
+      error: null,
+      errorInfo: null,
+      selectedSlot: isReschedule ? selection as EnrichedAppointmentSlot : null,
+      selectedBookingSession: isReschedule ? null : selection as BookingSessionAvailability,
+    });
     try {
-      const rescheduleContext = get().rescheduleContext;
-      const hold = rescheduleContext
-        ? await schedulingService.createRescheduleSlotHold(
-          rescheduleContext.originalAppointment.id,
-          slot.id,
+      if (isReschedule) {
+        const hold = await schedulingService.createRescheduleSlotHold(
+          rescheduleContext!.originalAppointment.id,
+          (selection as EnrichedAppointmentSlot).id,
           { idempotencyKey: key }
-        )
-        : await schedulingService.createSlotHold({ slotId: slot.id, patientId }, { idempotencyKey: key });
+        );
+        const phase: BookingPhase = hold.status === 'ACTIVE' ? 'HOLD_ACTIVE' : 'HOLD_EXPIRED';
+        set({ currentHold: hold, currentHoldAssignment: null, isHolding: false, bookingPhase: phase });
+        return hold.status === 'ACTIVE';
+      }
+      const response = await schedulingService.createSlotHold(
+        { bookingSessionId: (selection as BookingSessionAvailability).id, patientId },
+        { idempotencyKey: key }
+      );
+      const hold: SlotHoldRow = {
+        id: response.id,
+        patientId: response.patientId,
+        expiresAt: response.expiresAt,
+        depositAmount: response.depositAmount,
+        currency: response.currency,
+        status: response.status,
+        version: response.version,
+        createdAt: response.createdAt,
+        updatedAt: response.updatedAt,
+      };
       const phase: BookingPhase = hold.status === 'ACTIVE' ? 'HOLD_ACTIVE' : 'HOLD_EXPIRED';
-      set({ currentHold: hold, isHolding: false, bookingPhase: phase });
+      set({ currentHold: hold, currentHoldAssignment: response.assignment, isHolding: false, bookingPhase: phase });
+      void get().loadSlots();
       return hold.status === 'ACTIVE';
     } catch (err) {
       const errorInfo = errorFrom(err, 'Không thể giữ chỗ ca khám.');
-      set({ errorInfo, error: null, isHolding: false, bookingPhase: 'IDLE', holdIdempotencyKey: null });
+      set({ errorInfo, error: null, isHolding: false, bookingPhase: 'IDLE', holdIdempotencyKey: null, selectedBookingSession: null });
       if (errorInfo.type === 'SLOT_UNAVAILABLE') {
         set({ selectedSlot: null });
         void get().loadSlots();
@@ -602,7 +687,9 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       );
       set({
         currentHold: null,
+        currentHoldAssignment: null,
         currentPaymentIntent: null,
+        selectedBookingSession: null,
         selectedSlot: null,
         holdIdempotencyKey: null,
         paymentIdempotencyKey: null,
@@ -647,7 +734,7 @@ export const useBookingStore = create<BookingState>((set, get) => ({
     }
   },
 
-  releaseCurrentHold: async () => {
+  releaseCurrentHold: async (refreshSlots = true) => {
     const { currentHold, currentPaymentIntent } = get();
     if (!currentHold) {
       return true;
@@ -655,7 +742,9 @@ export const useBookingStore = create<BookingState>((set, get) => ({
     if (currentHold.status !== 'ACTIVE') {
       set({
         currentHold: null,
+        currentHoldAssignment: null,
         currentPaymentIntent: null,
+        selectedBookingSession: null,
         selectedSlot: null,
         holdIdempotencyKey: null,
         paymentIdempotencyKey: null,
@@ -664,6 +753,7 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         rescheduleSubmitIdempotencyKey: null,
         bookingPhase: 'IDLE',
       });
+      if (refreshSlots && !get().rescheduleContext) void get().loadSlots();
       return true;
     }
     if (currentPaymentIntent?.status === 'SUCCEEDED') {
@@ -685,7 +775,9 @@ export const useBookingStore = create<BookingState>((set, get) => ({
     }
     set({
       currentHold: null,
+      currentHoldAssignment: null,
       currentPaymentIntent: null,
+      selectedBookingSession: null,
       selectedSlot: null,
       holdIdempotencyKey: null,
       paymentIdempotencyKey: null,
@@ -694,12 +786,15 @@ export const useBookingStore = create<BookingState>((set, get) => ({
       rescheduleSubmitIdempotencyKey: null,
       bookingPhase: 'IDLE',
     });
+    if (refreshSlots && !get().rescheduleContext) void get().loadSlots();
     return true;
   },
 
   resetBookingFlow: () => set({
     selectedSlot: null,
+    selectedBookingSession: null,
     currentHold: null,
+    currentHoldAssignment: null,
     currentPaymentIntent: null,
     bookingPhase: 'IDLE',
     holdIdempotencyKey: null,
@@ -712,6 +807,46 @@ export const useBookingStore = create<BookingState>((set, get) => ({
     isCreatingPaymentIntent: false,
     isSimulatingPayment: false,
     isSubmittingReschedule: false,
+    error: null,
+    errorInfo: null,
+  }),
+
+  resetBookingState: async () => {
+    if (!(await get().releaseCurrentHold(false))) return false;
+    get().discardBookingState();
+    return true;
+  },
+
+  discardBookingState: () => set({
+    departments: [],
+    rooms: [],
+    services: [],
+    practitioners: [],
+    practitionerRoles: new Map(),
+    filters: { departmentId: 'ALL', serviceId: 'ALL', date: getTodayDateString(), session: 'ALL' },
+    rawSlots: [],
+    enrichedSlots: [],
+    bookingSessions: [],
+    selectedBookingSession: null,
+    selectedSlot: null,
+    currentHold: null,
+    currentHoldAssignment: null,
+    currentPaymentIntent: null,
+    bookingPhase: 'IDLE',
+    holdIdempotencyKey: null,
+    paymentIdempotencyKey: null,
+    mockPaymentIdempotencyKey: null,
+    mockPaymentOutcome: null,
+    rescheduleContext: null,
+    rescheduleReason: '',
+    rescheduleSubmitIdempotencyKey: null,
+    rescheduleResult: null,
+    isSubmittingReschedule: false,
+    isLoadingCatalogs: false,
+    isLoadingSlots: false,
+    isHolding: false,
+    isCreatingPaymentIntent: false,
+    isSimulatingPayment: false,
     error: null,
     errorInfo: null,
   }),

@@ -7,6 +7,7 @@ import {
   EmailVerificationRequest,
 } from '@/types/auth';
 import { authService } from '@/services/auth-service';
+import { currentTabContext, ensureTabContext, rotateTabContext } from '@/lib/tab-session-context';
 
 interface AuthState {
   session: SessionView | null;
@@ -14,8 +15,6 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-
-  // Actions
   initSession: () => Promise<boolean>;
   loginWithPassword: (data: PasswordLoginRequest) => Promise<boolean>;
   loginWithOtp: (data: OtpLoginRequest) => Promise<boolean>;
@@ -24,11 +23,39 @@ interface AuthState {
   requestLoginOtp: (email: string) => Promise<boolean>;
   requestEmailVerification: (email: string) => Promise<boolean>;
   logout: () => Promise<void>;
+  clearExpiredSession: () => void;
   clearError: () => void;
   setCurrentEmail: (email: string) => void;
 }
 
-export const useAuthStore = create<AuthState>((set, _get) => ({
+const LOGIN_EMAIL_KEY = 'medicore_login_email';
+
+function saveLoginEmail(email: string): void {
+  if (typeof window !== 'undefined') window.localStorage.setItem(LOGIN_EMAIL_KEY, email);
+}
+
+export function loginEmailPrefill(): string {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(LOGIN_EMAIL_KEY) ?? '';
+}
+
+async function resetAccountBoundState(): Promise<boolean> {
+  const { useBookingStore } = await import('@/store/use-booking-store');
+  if (!(await useBookingStore.getState().resetBookingState())) return false;
+  const { usePatientStore } = await import('@/store/use-patient-store');
+  usePatientStore.getState().resetPatientState();
+  return true;
+}
+
+function anonymousState() {
+  return { session: null, currentEmail: null, isAuthenticated: false, error: null };
+}
+
+function remainsCurrent(context: string): boolean {
+  return currentTabContext() === context;
+}
+
+export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   currentEmail: null,
   isAuthenticated: false,
@@ -36,34 +63,43 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
   error: null,
 
   setCurrentEmail: (email: string) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('medicore_user_email', email);
-    }
+    saveLoginEmail(email);
     set({ currentEmail: email });
   },
 
   clearError: () => set({ error: null }),
 
+  clearExpiredSession: () => {
+    void import('@/store/use-booking-store').then(({ useBookingStore }) => useBookingStore.getState().discardBookingState());
+    void import('@/store/use-patient-store').then(({ usePatientStore }) => usePatientStore.getState().resetPatientState());
+    set(anonymousState());
+  },
+
   initSession: async () => {
-    const savedEmail =
-      typeof window !== 'undefined' ? localStorage.getItem('medicore_user_email') : null;
-    if (savedEmail) {
-      set({ currentEmail: savedEmail });
-    }
     set({ isLoading: true });
     try {
+      const context = await ensureTabContext();
       const session = await authService.getCurrentSession();
+      if (!remainsCurrent(context)) {
+        set({ isLoading: false });
+        return false;
+      }
       const isAuthenticated = session.status === 'ACTIVE';
+      const priorAccountId = get().session?.accountId;
+      if (isAuthenticated && priorAccountId && priorAccountId !== session.accountId && !(await resetAccountBoundState())) {
+        set({ isLoading: false, error: 'Không thể đóng phiên đặt lịch hiện tại. Vui lòng thử lại.' });
+        return false;
+      }
       set({
         session: isAuthenticated ? session : null,
-        currentEmail: savedEmail,
+        currentEmail: isAuthenticated ? session.displayEmail : null,
         isAuthenticated,
         isLoading: false,
         error: null,
       });
       return isAuthenticated;
     } catch {
-      set({ session: null, isAuthenticated: false, isLoading: false });
+      set({ ...anonymousState(), isLoading: false });
       return false;
     }
   },
@@ -71,21 +107,28 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
   loginWithPassword: async (data: PasswordLoginRequest) => {
     set({ isLoading: true, error: null });
     try {
-      const session = await authService.loginWithPassword(data);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('medicore_user_email', data.email);
+      if (!(await resetAccountBoundState())) {
+        set({ isLoading: false, error: 'Không thể đóng phiên đặt lịch hiện tại. Vui lòng thử lại.' });
+        return false;
       }
+      if (get().isAuthenticated) await authService.logout();
+      const context = rotateTabContext();
+      const session = await authService.loginWithPassword(data);
+      if (!remainsCurrent(context)) {
+        set({ isLoading: false });
+        return false;
+      }
+      saveLoginEmail(data.email);
       set({
         session,
-        currentEmail: data.email,
+        currentEmail: session.displayEmail,
         isAuthenticated: session.status === 'ACTIVE',
         isLoading: false,
         error: null,
       });
       return true;
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
+      const message = err instanceof Error ? err.message : 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
       set({ isLoading: false, error: message });
       return false;
     }
@@ -94,21 +137,28 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
   loginWithOtp: async (data: OtpLoginRequest) => {
     set({ isLoading: true, error: null });
     try {
-      const session = await authService.loginWithOtp(data);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('medicore_user_email', data.email);
+      if (!(await resetAccountBoundState())) {
+        set({ isLoading: false, error: 'Không thể đóng phiên đặt lịch hiện tại. Vui lòng thử lại.' });
+        return false;
       }
+      if (get().isAuthenticated) await authService.logout();
+      const context = rotateTabContext();
+      const session = await authService.loginWithOtp(data);
+      if (!remainsCurrent(context)) {
+        set({ isLoading: false });
+        return false;
+      }
+      saveLoginEmail(data.email);
       set({
         session,
-        currentEmail: data.email,
+        currentEmail: session.displayEmail,
         isAuthenticated: session.status === 'ACTIVE',
         isLoading: false,
         error: null,
       });
       return true;
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Mã OTP không chính xác hoặc đã hết hạn.';
+      const message = err instanceof Error ? err.message : 'Mã OTP không chính xác hoặc đã hết hạn.';
       set({ isLoading: false, error: message });
       return false;
     }
@@ -118,14 +168,11 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
     set({ isLoading: true, error: null });
     try {
       await authService.register(data);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('medicore_user_email', data.email);
-      }
+      saveLoginEmail(data.email);
       set({ currentEmail: data.email, isLoading: false, error: null });
       return true;
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Đăng ký thất bại. Vui lòng kiểm tra lại mật khẩu.';
+      const message = err instanceof Error ? err.message : 'Đăng ký thất bại. Vui lòng kiểm tra lại mật khẩu.';
       set({ isLoading: false, error: message });
       return false;
     }
@@ -138,8 +185,7 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
       set({ isLoading: false, error: null });
       return true;
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Mã xác thực không hợp lệ hoặc đã hết hạn.';
+      const message = err instanceof Error ? err.message : 'Mã xác thực không hợp lệ hoặc đã hết hạn.';
       set({ isLoading: false, error: message });
       return false;
     }
@@ -149,14 +195,11 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
     set({ isLoading: true, error: null });
     try {
       await authService.requestLoginOtp(email);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('medicore_user_email', email);
-      }
+      saveLoginEmail(email);
       set({ currentEmail: email, isLoading: false, error: null });
       return true;
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Không thể gửi mã OTP. Vui lòng thử lại sau.';
+      const message = err instanceof Error ? err.message : 'Không thể gửi mã OTP. Vui lòng thử lại sau.';
       set({ isLoading: false, error: message });
       return false;
     }
@@ -178,20 +221,13 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
   logout: async () => {
     set({ isLoading: true });
     try {
-      await authService.logout();
-    } catch (e) {
-      console.error('Logout error:', e);
-    } finally {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('medicore_user_email');
+      if (!(await resetAccountBoundState())) {
+        set({ isLoading: false, error: 'Không thể đóng phiên đặt lịch hiện tại. Vui lòng thử lại.' });
+        return;
       }
-      set({
-        session: null,
-        currentEmail: null,
-        isAuthenticated: false,
-        isLoading: false,
-        error: null,
-      });
+      await authService.logout();
+    } finally {
+      set({ ...anonymousState(), isLoading: false });
     }
   },
 }));

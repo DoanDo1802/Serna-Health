@@ -31,6 +31,7 @@ interface PatientState {
   updateProfile: (data: PatientUpdateRequest) => Promise<PatientView | null>;
   loadIdentifiers: (patientId: string) => Promise<void>;
   addIdentifier: (data: PatientIdentifierAddRequest) => Promise<boolean>;
+  resetPatientState: () => void;
   clearError: () => void;
 }
 
@@ -44,6 +45,19 @@ export const usePatientStore = create<PatientState>((set, get) => ({
   error: null,
 
   clearError: () => set({ error: null }),
+
+  resetPatientState: () => {
+    patientService.clearCache();
+    set({
+      accountLinks: [],
+      activePatientId: null,
+      activePatient: null,
+      identifiers: [],
+      isLoading: false,
+      isSaving: false,
+      error: null,
+    });
+  },
 
   loadAccountLinks: async () => {
     // Only show full loading spinner if we don't already have data in memory

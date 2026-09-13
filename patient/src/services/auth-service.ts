@@ -44,7 +44,7 @@ export const authService = {
 
   /**
    * Đăng nhập bằng Email và Mật khẩu.
-   * Cookie MEDICORE_SESSION và Header X-CSRF-Token được xử lý tự động.
+   * Cookie session theo tab và Header X-CSRF-Token được xử lý tự động.
    */
   async loginWithPassword(payload: PasswordLoginRequest): Promise<SessionView> {
     const response = await axiosClient.post<SessionView>('/auth/password-sessions', payload);
@@ -70,7 +70,7 @@ export const authService = {
   },
 
   /**
-   * Lấy thông tin phiên làm việc hiện tại từ cookie MEDICORE_SESSION.
+   * Lấy thông tin phiên làm việc của context tab hiện tại.
    */
   async getCurrentSession(): Promise<SessionView> {
     const response = await axiosClient.get<SessionView>('/auth/session');

@@ -231,9 +231,10 @@ export const MyAppointmentsPage: React.FC<MyAppointmentsPageProps> = ({
       }
       const key = cancelIdempotencyKey || crypto.randomUUID();
       if (!cancelIdempotencyKey) setCancelIdempotencyKey(key);
+      const finalReason = cancelReason.trim() || 'Bệnh nhân yêu cầu hủy lịch';
       const updated = await schedulingService.cancelAppointment(
         selectedAppointment.id,
-        { reason: cancelReason.trim() || undefined },
+        { reason: finalReason },
         fresh.version,
         { idempotencyKey: key }
       );

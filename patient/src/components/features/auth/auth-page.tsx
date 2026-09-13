@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/store/use-auth-store';
+import { loginEmailPrefill, useAuthStore } from '@/store/use-auth-store';
 import { authService } from '@/services/auth-service';
 import { useToast } from '@/components/base/toast';
 import { NovaLogo } from '@/components/base/nova-logo';
@@ -33,7 +33,7 @@ export function AuthPage() {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
-  const [formEmail, setFormEmail] = useState('');
+  const [formEmail, setFormEmail] = useState(() => loginEmailPrefill());
   const [password, setPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [resetToken, setResetToken] = useState('');
