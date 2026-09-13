@@ -297,8 +297,8 @@ export function DoctorScheduleContent() {
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-foreground tracking-tight">Lịch làm việc của tôi</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <h1 className="text-3xl font-bold text-foreground mb-2">Lịch làm việc của tôi</h1>
+          <p className="text-muted-foreground text-sm">
             Theo dõi ca trực được phân công và danh sách bệnh nhân đăng ký khám
             {practitioner?.fullName && (
               <span className="font-semibold text-primary ml-1.5">• Bác sĩ: {practitioner.fullName}</span>
