@@ -241,15 +241,26 @@ export function DoctorScheduleContent() {
     return schedulesByDate.get(selectedDateStr) || []
   }, [schedulesByDate, selectedDateStr])
 
-  // Selected day's appointments (must belong to this day's shift slots)
+  // Selected day's appointments (must belong to this day's shift slots or appointment date)
   const selectedDayAppointments = useMemo(() => {
     const daySlotIds = new Set(selectedDaySchedules.map((s) => s.slotId).filter(Boolean))
-    if (daySlotIds.size === 0) return []
     return appointments.filter((a) => {
       if (a.status?.toUpperCase() === "CANCELLED") return false
-      return a.slotId && daySlotIds.has(a.slotId)
+      if (daySlotIds.size > 0 && a.slotId && daySlotIds.has(a.slotId)) return true
+      if (a.startAt) {
+        try {
+          const d = new Date(a.startAt)
+          const y = d.getFullYear()
+          const m = String(d.getMonth() + 1).padStart(2, "0")
+          const day = String(d.getDate()).padStart(2, "0")
+          if (`${y}-${m}-${day}` === selectedDateStr) return true
+        } catch {
+          if (a.startAt.split("T")[0] === selectedDateStr) return true
+        }
+      }
+      return false
     })
-  }, [appointments, selectedDaySchedules])
+  }, [appointments, selectedDaySchedules, selectedDateStr])
 
   const getStatusBadge = (status: string) => {
     switch (status.toUpperCase()) {
@@ -387,11 +398,24 @@ export function DoctorScheduleContent() {
                 const hasAfternoon = daySchedules.some((s) => s.session === "AFTERNOON")
                 const hasShift = daySchedules.length > 0
 
-                // Count appointments for this day's assigned shifts
+                // Count appointments for this day's assigned shifts or date
                 const daySlotIds = new Set(daySchedules.map((s) => s.slotId).filter(Boolean))
-                const dayAppointments = daySlotIds.size > 0 
-                  ? appointments.filter((a) => a.status?.toUpperCase() !== "CANCELLED" && a.slotId && daySlotIds.has(a.slotId))
-                  : []
+                const dayAppointments = appointments.filter((a) => {
+                  if (a.status?.toUpperCase() === "CANCELLED") return false
+                  if (daySlotIds.size > 0 && a.slotId && daySlotIds.has(a.slotId)) return true
+                  if (a.startAt) {
+                    try {
+                      const d = new Date(a.startAt)
+                      const y = d.getFullYear()
+                      const m = String(d.getMonth() + 1).padStart(2, "0")
+                      const dStr = String(d.getDate()).padStart(2, "0")
+                      return `${y}-${m}-${dStr}` === dateStr
+                    } catch {
+                      return a.startAt.split("T")[0] === dateStr
+                    }
+                  }
+                  return false
+                })
 
                 return (
                   <button

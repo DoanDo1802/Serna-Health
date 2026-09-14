@@ -82,7 +82,7 @@ export interface IcdCode {
   description: string
 }
 
-export type AppointmentStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | "NO_SHOW" | "WAITING" | "IN_PROGRESS" | "DONE"
+export type AppointmentStatus = "PENDING" | "CONFIRMED" | "CHECKED_IN" | "IN_CONSULTATION" | "COMPLETED" | "CANCELLED" | "NO_SHOW" | "WAITING" | "IN_PROGRESS" | "DONE" | "FULFILLED"
 
 export interface Appointment {
   id: string
@@ -98,6 +98,13 @@ export interface Appointment {
   symptomsInitial?: string
   patientCode?: string
   cancellationReason?: string
+  doctorName?: string
+  departmentName?: string
+  roomName?: string
+  serviceName?: string
+  slotId?: string
+  startAt?: string
+  endAt?: string
 }
 
 export interface Patient {

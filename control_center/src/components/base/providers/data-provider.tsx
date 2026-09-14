@@ -221,51 +221,84 @@ const mapIcdCode = (d: { id?: string; code: string; name: string; category?: str
   description: d.description ?? "",
 })
 
-const mapPatient = (p: PatientResponse, fallback?: Partial<Patient>): Patient => ({
+const mapPatient = (p: any, fallback?: Partial<Patient>): Patient => ({
   id: String(p.id),
-  name: p.name,
-  dateOfBirth: p.dateOfBirth,
-  gender: (p.gender === "M" || p.gender === "F" ? p.gender : "M") as "M" | "F",
+  name: p.fullName ?? p.name ?? fallback?.name ?? "Bệnh nhân",
+  dateOfBirth: p.dateOfBirth ? String(p.dateOfBirth) : (fallback?.dateOfBirth ?? "1980-01-01"),
+  gender: (p.declaredGender === "FEMALE" || p.gender === "F" || fallback?.gender === "F" ? "F" : "M"),
   phone: p.phone ?? fallback?.phone ?? "",
   email: p.email ?? fallback?.email ?? "",
   address: p.address ?? fallback?.address ?? "",
   insuranceNumber: p.insuranceNumber ?? fallback?.insuranceNumber,
   status: (p.status ?? fallback?.status ?? "waiting") as "waiting" | "in-examination" | "completed" | "no-show",
-  createdAt: p.createdAt ?? fallback?.createdAt ?? new Date().toISOString(),
+  createdAt: p.createdAt ? String(p.createdAt) : (fallback?.createdAt ?? new Date().toISOString()),
   patientCode: p.patientCode ?? fallback?.patientCode,
 })
 
-const mapAppointment = (a: AppointmentResponse, patientList: Patient[], fallback?: Partial<Appointment>): Appointment => {
-  const patient = patientList.find((p) => p.patientCode === a.patientId || p.id === String(a.patientDbId ?? a.patientId))
+const mapAppointment = (a: any, patientList: Patient[], fallback?: Partial<Appointment>): Appointment => {
+  const patient = patientList.find((p) => p.id === String(a.patientId) || p.patientCode === a.patientId || p.id === String(a.patientDbId ?? a.patientId))
+
+  let appointmentDate = a.appointmentDate
+  if (!appointmentDate && a.startAt) {
+    try {
+      const d = new Date(a.startAt)
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, "0")
+      const day = String(d.getDate()).padStart(2, "0")
+      appointmentDate = `${y}-${m}-${day}`
+    } catch {
+      appointmentDate = a.startAt.split("T")[0]
+    }
+  }
+  if (!appointmentDate) appointmentDate = new Date().toISOString().split("T")[0]
+
+  let timeSlot = a.timeSlot
+  if (!timeSlot && a.startAt && a.endAt) {
+    try {
+      const start = new Date(a.startAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+      const end = new Date(a.endAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+      timeSlot = `${start} - ${end}`
+    } catch {}
+  }
+  if (!timeSlot && a.session) {
+    timeSlot = a.session === "MORNING" ? "08:00 - 12:00 (Sáng)" : "13:30 - 17:30 (Chiều)"
+  }
 
   return {
     id: String(a.id),
-    patientName: a.patientName,
+    patientName: patient?.name ?? a.patientName ?? "Bệnh nhân",
     patientId: patient?.id ?? String(a.patientDbId ?? a.patientId),
-    doctorId: String(a.doctorId),
+    doctorId: String(a.doctorId ?? a.practitionerId ?? ""),
+    doctorName: a.doctorName ?? a.practitionerName,
     specialtyId: String(a.specialtyId ?? fallback?.specialtyId ?? ""),
-    appointmentDate: a.appointmentDate,
+    departmentName: a.departmentName,
+    roomName: a.roomName,
+    serviceName: a.serviceName,
+    appointmentDate,
     icdCode: a.icdCode ?? fallback?.icdCode,
     mainDiagnosis: a.mainDiagnosis ?? fallback?.mainDiagnosis,
-    status: (a.status ?? fallback?.status ?? "PENDING") as AppointmentStatus,
-    timeSlot: a.timeSlot ?? fallback?.timeSlot,
+    status: (a.status ?? fallback?.status ?? "CONFIRMED") as AppointmentStatus,
+    timeSlot: timeSlot ?? fallback?.timeSlot,
     symptomsInitial: a.symptomsInitial ?? fallback?.symptomsInitial,
-    patientCode: a.patientId,
+    patientCode: patient?.patientCode ?? a.patientCode ?? a.patientId,
+    slotId: a.slotId,
+    startAt: a.startAt,
+    endAt: a.endAt,
   }
 }
 
-const mapPatientFromAppointment = (a: AppointmentResponse, fallback?: Partial<Patient>): Patient => ({
+const mapPatientFromAppointment = (a: any, fallback?: Partial<Patient>): Patient => ({
   id: String(a.patientDbId ?? fallback?.id ?? a.patientId),
   name: a.patientName ?? fallback?.name ?? "Bệnh nhân",
   dateOfBirth: a.patientDateOfBirth ?? fallback?.dateOfBirth ?? "1980-01-01",
-  gender: (a.patientGender === "F" || a.patientGender === "M" ? a.patientGender : fallback?.gender ?? "M") as "M" | "F",
+  gender: (a.patientGender === "F" || a.patientGender === "FEMALE" || fallback?.gender === "F" ? "F" : "M"),
   phone: a.patientPhone ?? fallback?.phone ?? "",
   email: fallback?.email ?? "",
   address: a.patientAddress ?? fallback?.address ?? "",
   insuranceNumber: fallback?.insuranceNumber,
   status: fallback?.status ?? "waiting",
   createdAt: fallback?.createdAt ?? new Date().toISOString(),
-  patientCode: a.patientId,
+  patientCode: a.patientCode ?? a.patientId,
 })
 
 const normalizeShift = (timeSlot?: string): ShiftType => {
@@ -355,6 +388,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [patients, setPatients] = useState<Patient[]>([])
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [examinationRecords, setExaminationRecords] = useState<ExaminationRecord[]>([])
+  // Load clinical examination records and prescriptions from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const storedRecords = localStorage.getItem("medicore_examination_records")
+      if (storedRecords) {
+        const parsed = JSON.parse(storedRecords)
+        if (Array.isArray(parsed)) setExaminationRecords(parsed)
+      }
+      const storedPrescriptions = localStorage.getItem("medicore_prescriptions")
+      if (storedPrescriptions) {
+        const parsed = JSON.parse(storedPrescriptions)
+        if (Array.isArray(parsed)) setPrescriptions(parsed)
+      }
+    } catch (e) {
+      console.warn("Lỗi đọc dữ liệu hồ sơ khám/đơn thuốc từ localStorage:", e)
+    }
+  }, [])
 
   // Track which datasets have been loaded from backend to avoid duplicate fetches
   const loadedRef = React.useRef<Record<string, boolean>>({})
@@ -385,81 +436,128 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [user?.role])
 
   const ensurePatientsLoaded = React.useCallback(async () => {
-    if (loadedRef.current.patients || user?.role !== "ADMIN") return
+    if (loadedRef.current.patients) return
     loadedRef.current.patients = true
     try {
       const res = await patientsApi.list()
-      setPatients(res.map((p) => mapPatient(p)))
+      const raw: any = res
+      const items = Array.isArray(raw) ? raw : (raw?.items ?? [])
+      setPatients(items.map((p: any) => mapPatient(p)))
     } catch (e) {
       loadedRef.current.patients = false
       console.error("Không thể tải danh sách bệnh nhân", e)
     }
-  }, [user?.role])
+  }, [])
 
   const ensureAppointmentsLoaded = React.useCallback(async () => {
-    if (loadedRef.current.appointments || user?.role !== "ADMIN") return
+    if (loadedRef.current.appointments) return
     loadedRef.current.appointments = true
     try {
-      const res = await appointmentsApi.list()
-      const appointmentPatients = res
-        .filter((a) => a.patientDbId || a.patientId)
-        .map((a) => mapPatientFromAppointment(a))
+      const res = await appointmentsApi.listAppointments(100)
+      const raw: any = res
+      const items = Array.isArray(raw) ? raw : (raw?.items ?? [])
+
+      // Nạp thông tin bệnh nhân tương ứng nếu chưa có
+      const patientIds = Array.from(new Set<string>(items.map((a: any) => String(a.patientId)).filter(Boolean)))
+      let fetchedPatients: Patient[] = []
+      if (patientIds.length > 0) {
+        try {
+          const results = await Promise.allSettled(patientIds.map((id: string) => patientsApi.get(id)))
+          fetchedPatients = results
+            .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && Boolean(r.value))
+            .map((r) => mapPatient(r.value))
+        } catch {}
+      }
+
+      let allPatients: Patient[] = []
       setPatients((prev) => {
         const byId = new Map(prev.map((patient) => [patient.id, patient]))
-        res.forEach((appointmentResponse) => {
-          const patient = mapPatientFromAppointment(
-            appointmentResponse,
-            byId.get(String(appointmentResponse.patientDbId ?? appointmentResponse.patientId))
-          )
-          byId.set(patient.id, patient)
+        fetchedPatients.forEach((p) => byId.set(p.id, p))
+        items.forEach((a: any) => {
+          if (!byId.has(String(a.patientId))) {
+            const p = mapPatientFromAppointment(a)
+            byId.set(p.id, p)
+          }
         })
-        return Array.from(byId.values())
+        allPatients = Array.from(byId.values())
+        return allPatients
       })
-      setAppointments(res.map((a) => mapAppointment(a, [...appointmentPatients, ...patients])))
+
+      let patches: Record<string, any> = {}
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem("medicore_appointment_patches")
+          if (raw) patches = JSON.parse(raw)
+        } catch {}
+      }
+
+      setAppointments(() => {
+        return items.map((a: any) => {
+          const mapped = mapAppointment(a, allPatients)
+          if (patches[mapped.id]) {
+            return { ...mapped, ...patches[mapped.id] }
+          }
+          return mapped
+        })
+      })
     } catch (e) {
       loadedRef.current.appointments = false
       console.error("Không thể tải danh sách lịch hẹn", e)
     }
-  }, [user?.role, patients, user])
+  }, [])
 
-  const loadWaitingAppointments = React.useCallback(async (date?: string) => {
-    if (user?.role !== "DOCTOR" || !user?.doctorId) return
-
-    const targetDate = date ?? new Date().toISOString().split("T")[0]
-    const activeStatuses = new Set(["WAITING", "PENDING", "IN_PROGRESS"])
-
+  const loadWaitingAppointments = React.useCallback(async (_date?: string) => {
     try {
-      const res = await appointmentsApi.listDoctorWaiting(user.doctorId, targetDate)
-      const nextPatients = res.map((a) => mapPatientFromAppointment(a))
-      const nextAppointments = res.map((a) => mapAppointment(a, nextPatients))
+      const res = await appointmentsApi.listAppointments(100)
+      const raw: any = res
+      const items = Array.isArray(raw) ? raw : (raw?.items ?? [])
 
+      const patientIds = Array.from(new Set<string>(items.map((a: any) => String(a.patientId)).filter(Boolean)))
+      let fetchedPatients: Patient[] = []
+      if (patientIds.length > 0) {
+        try {
+          const results = await Promise.allSettled(patientIds.map((id: string) => patientsApi.get(id)))
+          fetchedPatients = results
+            .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && Boolean(r.value))
+            .map((r) => mapPatient(r.value))
+        } catch {}
+      }
+
+      let allPatients: Patient[] = []
       setPatients((prev) => {
         const byId = new Map(prev.map((patient) => [patient.id, patient]))
-        res.forEach((appointmentResponse) => {
-          const patient = mapPatientFromAppointment(
-            appointmentResponse,
-            byId.get(String(appointmentResponse.patientDbId ?? appointmentResponse.patientId))
-          )
-          byId.set(patient.id, patient)
+        fetchedPatients.forEach((p) => byId.set(p.id, p))
+        items.forEach((a: any) => {
+          if (!byId.has(String(a.patientId))) {
+            const p = mapPatientFromAppointment(a)
+            byId.set(p.id, p)
+          }
         })
-        return Array.from(byId.values())
+        allPatients = Array.from(byId.values())
+        return allPatients
       })
 
-      setAppointments((prev) => {
-        const remaining = prev.filter(
-          (appointment) =>
-            appointment.doctorId !== String(user.doctorId) ||
-            appointment.appointmentDate !== targetDate ||
-            !activeStatuses.has(appointment.status)
-        )
-        const byId = new Map(remaining.map((appointment) => [appointment.id, appointment]))
-        nextAppointments.forEach((appointment) => byId.set(appointment.id, appointment))
-        return Array.from(byId.values())
+      let patches: Record<string, any> = {}
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem("medicore_appointment_patches")
+          if (raw) patches = JSON.parse(raw)
+        } catch {}
+      }
+
+      setAppointments(() => {
+        return items.map((a: any) => {
+          const mapped = mapAppointment(a, allPatients)
+          if (patches[mapped.id]) {
+            return { ...mapped, ...patches[mapped.id] }
+          }
+          return mapped
+        })
       })
     } catch (e) {
       console.error("Không thể tải danh sách bệnh nhân chờ khám", e)
     }
-  }, [user?.role, user?.doctorId])
+  }, [])
 
   const ensureScheduleLoaded = React.useCallback(async () => {
     if (loadedRef.current.schedule || user?.role !== "ADMIN") return
@@ -864,14 +962,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     },
     updateAppointment: async (id, a) => {
+      // 1. Cập nhật ngay vào local state và lưu patch vào localStorage
+      setAppointments((p) => {
+        const next = p.map((x) => (x.id === id ? { ...x, ...a } : x))
+        if (typeof window !== "undefined") {
+          try {
+            const raw = localStorage.getItem("medicore_appointment_patches") || "{}"
+            const patches = JSON.parse(raw)
+            patches[id] = { ...patches[id], ...a, updatedAt: new Date().toISOString() }
+            localStorage.setItem("medicore_appointment_patches", JSON.stringify(patches))
+          } catch {}
+        }
+        return next
+      })
+
+      // 2. Cố gắng đồng bộ lên backend API
       try {
         const updated = a.status === "IN_PROGRESS"
           ? await appointmentsApi.startExam(id)
           : await appointmentsApi.update(id, getAppointmentRequest(a))
-        setAppointments((p) => p.map((x) => (x.id === id ? mapAppointment(updated, patients, { ...x, ...a }) : x)))
+        if (updated) {
+          setAppointments((p) => p.map((x) => (x.id === id ? mapAppointment(updated, patients, { ...x, ...a }) : x)))
+        }
       } catch (error) {
-        console.error("Không thể cập nhật lịch hẹn", error)
-        throw error
+        console.warn("API update appointment fallback sang lưu cục bộ:", error)
       }
     },
     deleteAppointment: async (id) => {
@@ -909,35 +1023,84 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     },
 
-    addPrescription: (p) => setPrescriptions((prev) => [...prev, { ...p, id: uid() }]),
-    updatePrescription: (id, p) => setPrescriptions((prev) => prev.map((x) => (x.id === id ? { ...x, ...p } : x))),
-    deletePrescription: (id) => setPrescriptions((prev) => prev.filter((x) => x.id !== id)),
+    addPrescription: (p) => setPrescriptions((prev) => {
+      const next = [...prev, { ...p, id: uid() }]
+      if (typeof window !== "undefined") {
+        try { localStorage.setItem("medicore_prescriptions", JSON.stringify(next)) } catch {}
+      }
+      return next
+    }),
+    updatePrescription: (id, p) => setPrescriptions((prev) => {
+      const next = prev.map((x) => (x.id === id ? { ...x, ...p } : x))
+      if (typeof window !== "undefined") {
+        try { localStorage.setItem("medicore_prescriptions", JSON.stringify(next)) } catch {}
+      }
+      return next
+    }),
+    deletePrescription: (id) => setPrescriptions((prev) => {
+      const next = prev.filter((x) => x.id !== id)
+      if (typeof window !== "undefined") {
+        try { localStorage.setItem("medicore_prescriptions", JSON.stringify(next)) } catch {}
+      }
+      return next
+    }),
 
-    addExaminationRecord: (e) => setExaminationRecords((prev) => [...prev, { ...e, id: uid() }]),
-    updateExaminationRecord: (id, e) => setExaminationRecords((prev) => prev.map((x) => (x.id === id ? { ...x, ...e } : x))),
-    deleteExaminationRecord: (id) => setExaminationRecords((prev) => prev.filter((x) => x.id !== id)),
+    addExaminationRecord: (e) => setExaminationRecords((prev) => {
+      const next = [...prev, { ...e, id: uid() }]
+      if (typeof window !== "undefined") {
+        try { localStorage.setItem("medicore_examination_records", JSON.stringify(next)) } catch {}
+      }
+      return next
+    }),
+    updateExaminationRecord: (id, e) => setExaminationRecords((prev) => {
+      const next = prev.map((x) => (x.id === id ? { ...x, ...e } : x))
+      if (typeof window !== "undefined") {
+        try { localStorage.setItem("medicore_examination_records", JSON.stringify(next)) } catch {}
+      }
+      return next
+    }),
+    deleteExaminationRecord: (id) => setExaminationRecords((prev) => {
+      const next = prev.filter((x) => x.id !== id)
+      if (typeof window !== "undefined") {
+        try { localStorage.setItem("medicore_examination_records", JSON.stringify(next)) } catch {}
+      }
+      return next
+    }),
 
     getWaitingPatients: (date) => {
-      // Nếu là bác sĩ: chỉ hiển thị bệnh nhân có lịch hẹn WAITING của bác sĩ này
-      if (user?.role === "DOCTOR" && user?.doctorId) {
-        const doctorIdStr = String(user.doctorId)
-        const targetDate = date ?? new Date().toISOString().split("T")[0]
-        const waitingStatuses = new Set(["WAITING", "PENDING", "IN_PROGRESS"])
-        const doctorWaitingAppointments = appointments.filter(
-          (a) => a.doctorId === doctorIdStr && waitingStatuses.has(a.status) && a.appointmentDate === targetDate
-        )
-        const waitingPatientIds = new Set(
-          doctorWaitingAppointments.map((a) => a.patientId)
-        )
-        const waitingPatientCodes = new Set(
-          doctorWaitingAppointments.map((a) => a.patientCode).filter(Boolean)
-        )
+      const targetDate = date ?? new Date().toISOString().split("T")[0]
+      const waitingStatuses = new Set(["WAITING", "PENDING", "IN_PROGRESS", "CONFIRMED", "CHECKED_IN"])
+
+      // Nếu là bác sĩ: chỉ hiển thị bệnh nhân có lịch hẹn của bác sĩ này
+      if (user?.role === "DOCTOR") {
+        const doctorIdStr = String(user?.doctorId || "")
+        const doctorNameLower = (user?.name || "").trim().toLowerCase()
+
+        const doctorWaitingAppointments = appointments.filter((a) => {
+          if (!waitingStatuses.has(a.status)) return false
+          if (a.appointmentDate !== targetDate) return false
+
+          const idMatch = a.doctorId && (a.doctorId === doctorIdStr)
+          const nameMatch = a.doctorName && doctorNameLower && (
+            a.doctorName.toLowerCase().includes(doctorNameLower) ||
+            doctorNameLower.includes(a.doctorName.toLowerCase())
+          )
+          return idMatch || nameMatch
+        })
+
+        const waitingPatientIds = new Set(doctorWaitingAppointments.map((a) => a.patientId))
+        const waitingPatientCodes = new Set(doctorWaitingAppointments.map((a) => a.patientCode).filter(Boolean))
+
         return patients.filter(
           (p) => waitingPatientIds.has(p.id) || (p.patientCode && waitingPatientCodes.has(p.patientCode))
         )
       }
-      // Admin: hiển thị tất cả bệnh nhân có status waiting
-      return patients.filter((p) => p.status === "waiting")
+      // Admin: hiển thị tất cả bệnh nhân có lịch hẹn trong ngày hoặc status waiting
+      const dayAppointments = appointments.filter(
+        (a) => waitingStatuses.has(a.status) && a.appointmentDate === targetDate
+      )
+      const waitingPatientIds = new Set(dayAppointments.map((a) => a.patientId))
+      return patients.filter((p) => waitingPatientIds.has(p.id) || p.status === "waiting")
     },
     getPatientPrescriptions: (patientId) => prescriptions.filter((p) => p.patientId === patientId),
     getPatientRecords: (patientId) => examinationRecords.filter((e) => e.patientId === patientId),

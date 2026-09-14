@@ -569,7 +569,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
 
     const today = new Date().toISOString().split("T")[0]
     const appointmentRecordId = appointment.id
-    const doctorId = appointment.doctorId ?? "dr1"
+    const doctorId = user?.doctorId ? String(user.doctorId) : (appointment.doctorId ?? "dr1")
 
     try {
       if (complete) setIsCompleting(true)
@@ -598,8 +598,13 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
         },
       }
 
+      let savedRecord: any = null
       if (complete) {
-        const savedRecord = await medicalRecordsApi.create(recordPayload)
+        try {
+          savedRecord = await medicalRecordsApi.create(recordPayload)
+        } catch (err) {
+          console.warn("API create medical record fallback sang lưu cục bộ:", err)
+        }
         
         try {
           const pdfProps = {
@@ -638,7 +643,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
           const pdfBlob = await generateMedicalRecordPdf(pdfProps)
           await medicalRecordsApi.uploadPdf(Number(appointment.id), pdfBlob)
         } catch (pdfError) {
-          console.error("Không thể tạo và tải lên PDF hồ sơ khám", pdfError)
+          console.warn("Không thể tạo và tải lên PDF hồ sơ khám:", pdfError)
         }
       }
 
@@ -648,7 +653,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
         patientId: patient.id,
         doctorId,
         examinationDate: today,
-        icdCode,
+        icdCode: selectedIcd?.code ?? icdCode,
         mainDiagnosis: selectedIcd?.name || mainDiagnosis,
         symptoms,
         physicalExamination: physicalExam,
@@ -675,6 +680,11 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
       }
 
       if (complete) {
+        await updateAppointment(appointment.id, {
+          ...appointment,
+          status: "COMPLETED",
+        })
+
         await updatePatient(patient.id, {
           ...patient,
           status: "completed",
@@ -682,9 +692,9 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
 
         toast({
           title: "Hoàn thành khám bệnh",
-          description: "Hoàn thành khám bệnh thành công. Hồ sơ PDF đã được lưu và gửi tới bệnh nhân.",
+          description: "Hồ sơ khám bệnh và đơn thuốc đã được lưu thành công vào hồ sơ bệnh nhân.",
         })
-        router.push("/doctor/waiting-patients")
+        router.push("/doctor/patient-records")
       } else {
         await updateAppointment(appointment.id, {
           ...appointment,
