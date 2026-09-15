@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   ChevronRight
 } from "lucide-react"
+import { NovaLogo } from "@/components/base/nova-logo"
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -87,16 +88,11 @@ export default function LoginPage() {
       <div className="flex w-full flex-col justify-between p-8 lg:w-[45%] xl:w-[40%] bg-card border-r border-border/40 z-10">
 
         {/* Header Logo */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/25">
-            <span className="relative flex items-center justify-center">
-              <span className="absolute w-4.5 h-1.5 bg-primary-foreground rounded-full" />
-              <span className="absolute w-1.5 h-4.5 bg-primary-foreground rounded-full" />
-            </span>
-          </div>
+        <div className="flex items-center gap-3">
+          <NovaLogo size={40} />
           <div className="flex flex-col leading-tight">
-            <span className="text-xl font-bold tracking-tight text-foreground">MediCore</span>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-primary">EMR Portal</span>
+            <span className="text-xl font-bold tracking-tight text-foreground">NOVAMED</span>
+            <span className="text-[10px] uppercase font-bold tracking-wider text-primary">Control Center</span>
           </div>
         </div>
 
@@ -124,7 +120,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="name@medicore.com"
+                  placeholder="name@novamed.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10 h-11 rounded-xl border-input focus-visible:ring-primary focus-visible:border-primary bg-background"
@@ -177,7 +173,7 @@ export default function LoginPage() {
 
         {/* Footer info */}
         <div className="text-center text-[11px] text-muted-foreground/80">
-          MediCore EMR © {new Date().getFullYear()} • Hệ thống bảo mật thông tin chuẩn HIPAA
+          NOVAMED Control Center © {new Date().getFullYear()} • Hệ thống bảo mật thông tin chuẩn HIPAA
         </div>
       </div>
 
@@ -185,7 +181,7 @@ export default function LoginPage() {
       <div className="relative hidden flex-1 overflow-hidden bg-emerald-950 lg:block">
         <img
           src="/images/hero-hospital.png"
-          alt="Không gian bệnh viện Medicore với đội ngũ y tế đang hỗ trợ người bệnh"
+          alt="Không gian bệnh viện NOVAMED với đội ngũ y tế đang hỗ trợ người bệnh"
           className="h-full min-h-screen w-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/50 via-emerald-900/20 to-slate-950/55" />

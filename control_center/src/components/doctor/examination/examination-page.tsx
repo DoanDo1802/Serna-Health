@@ -50,8 +50,7 @@ import { useAuth } from "@/components/base/providers/auth-provider"
 import type { Appointment, Patient, Specialty, SpecialtyExamTemplateField } from "@/types/medical"
 import { useReactToPrint } from "react-to-print"
 import { useRef } from "react"
-import { medicalRecordsApi, aiApi, treatmentTemplatesApi } from "@/lib/api"
-import { generateMedicalRecordPdf } from "@/lib/generate-medical-record-pdf"
+import { receptionApi, clinicalCareApi, aiApi, treatmentTemplatesApi, type ClinicalNote, type ClinicalNoteVersion } from "@/lib/api"
 import { ExamTemplateRenderer } from "@/components/shared/exam-template-renderer"
 
 const parseBoldItalicAndArrows = (text: string): React.ReactNode[] => {
@@ -157,9 +156,10 @@ interface ExaminationPageProps {
   patient: Patient
   appointment?: Appointment | null
   specialty?: Specialty
+  encounterId?: string
 }
 
-export function ExaminationPage({ patient, appointment, specialty }: ExaminationPageProps) {
+export function ExaminationPage({ patient, appointment, specialty, encounterId }: ExaminationPageProps) {
   const router = useRouter()
   const { toast } = useToast()
   const { user } = useAuth()
@@ -181,6 +181,12 @@ export function ExaminationPage({ patient, appointment, specialty }: Examination
     ensureIcdLoaded()
   }, [ensureMedicinesLoaded, ensureIcdLoaded])
 
+  const [resolvedEncounterId, setResolvedEncounterId] = useState<string | undefined>(encounterId)
+  const [encounterEtag, setEncounterEtag] = useState<string>("\"0\"")
+  const [activeNote, setActiveNote] = useState<ClinicalNote | null>(null)
+  const [activeVersion, setActiveVersion] = useState<ClinicalNoteVersion | null>(null)
+  const [versionEtag, setVersionEtag] = useState<string>("\"0\"")
+
   const [icdCode, setIcdCode] = useState("")
   const [mainDiagnosis, setMainDiagnosis] = useState("")
   const [symptoms, setSymptoms] = useState("")
@@ -191,6 +197,97 @@ export function ExaminationPage({ patient, appointment, specialty }: Examination
   useEffect(() => {
     setSpecialtyExamValues({})
   }, [specialty?.id])
+
+  useEffect(() => {
+    if (encounterId) setResolvedEncounterId(encounterId)
+  }, [encounterId])
+
+  // Nạp hoặc khởi tạo Encounter và hồ sơ khám từ backend
+  useEffect(() => {
+    let active = true
+    const initEncounterAndNote = async () => {
+      try {
+        let currentEncounterId = encounterId || resolvedEncounterId
+        let currentEtag = "\"0\""
+
+        if (!currentEncounterId && appointment?.id) {
+          try {
+            const checkInRes = await receptionApi.checkIn(appointment.id, "Bắt đầu lượt khám")
+            if (checkInRes?.encounter) {
+              currentEncounterId = checkInRes.encounter.id
+              currentEtag = `"${checkInRes.encounter.version}"`
+              if (active) {
+                setResolvedEncounterId(currentEncounterId)
+                setEncounterEtag(currentEtag)
+              }
+            }
+          } catch (e) {
+            console.warn("Không thể tự động check-in qua receptionApi:", e)
+          }
+        } else if (currentEncounterId) {
+          try {
+            const encRes = await receptionApi.getEncounter(currentEncounterId)
+            if (encRes?.data && active) {
+              currentEtag = encRes.etag || `"${encRes.data.version}"`
+              setEncounterEtag(currentEtag)
+            }
+          } catch (e) {
+            console.warn("Không thể tải thông tin encounter:", e)
+          }
+        }
+
+        if (currentEncounterId) {
+          const notesPage = await clinicalCareApi.listEncounterNotes(currentEncounterId)
+          const examNote = notesPage?.items?.find((n) => n.noteType === "EXAMINATION")
+          if (examNote && active) {
+            setActiveNote(examNote)
+            if (examNote.currentVersionId) {
+              const vRes = await clinicalCareApi.getNoteVersion(examNote.currentVersionId)
+              if (vRes?.data && active) {
+                setActiveVersion(vRes.data)
+                setVersionEtag(vRes.etag || `"${vRes.data.version}"`)
+                const content = vRes.data.content as any
+                if (content) {
+                  if (content.symptoms) setSymptoms(content.symptoms)
+                  if (content.physicalExamination) setPhysicalExam(content.physicalExamination)
+                  if (content.testResults) setTestResults(content.testResults)
+                  if (content.mainDiagnosis) setMainDiagnosis(content.mainDiagnosis)
+                  if (content.icdCode) setIcdCode(content.icdCode)
+                  if (content.careAdvice) setTreatment(content.careAdvice)
+                  if (content.followUpDate) setFollowUpDate(content.followUpDate)
+                  if (content.clinicalNote) setExaminationNotes(content.clinicalNote)
+                  if (Array.isArray(content.medicines) && content.medicines.length > 0) {
+                    setPrescriptionItems(content.medicines.map((m: any) => ({
+                      medicineId: String(m.medicineId),
+                      medicineName: m.medicineName,
+                      quantity: m.quantity,
+                      unit: m.unit || "Viên",
+                      dosage: m.dosage || m.dosageInstruction || "",
+                      notes: m.notes || "",
+                      isFromTemplate: Boolean(m.isFromTemplate),
+                    })))
+                  }
+                  if (content.additionalData?.specialtyExamValues) {
+                    setSpecialtyExamValues(content.additionalData.specialtyExamValues)
+                  }
+                  if (content.additionalData?.prescriptionNotes) {
+                    setPrescriptionNotes(content.additionalData.prescriptionNotes)
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Không thể nạp hồ sơ khám từ backend:", err)
+      }
+    }
+
+    initEncounterAndNote()
+    return () => {
+      active = false
+    }
+  }, [encounterId, appointment?.id])
 
   const [previewMode, setPreviewMode] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
@@ -541,54 +638,95 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
     documentTitle: `PhieuKham_${patient.name}`,
   });
   const handleSaveExamination = async (complete: boolean = false) => {
-    if (!icdCode || !mainDiagnosis || !symptoms || !physicalExam || !treatment) {
-      toast({
-        title: "Thiếu thông tin",
-        description: "Vui lòng điền đầy đủ các trường bắt buộc",
-        variant: "destructive",
-      })
-      return
-    }
-    const missingSpecialtyField = specialtyFields.find((field) => field.required && isSpecialtyFieldEmpty(field))
-    if (missingSpecialtyField) {
-      toast({
-        title: "Thiếu thông tin chuyên khoa",
-        description: `Vui lòng điền mục chuyên khoa bắt buộc: ${missingSpecialtyField.label}`,
-        variant: "destructive",
-      })
-      return
-    }
-    if (!appointment?.id) {
-      toast({
-        title: "Lỗi lịch hẹn",
-        description: "Không tìm thấy lịch hẹn hợp lệ để lưu hồ sơ khám",
-        variant: "destructive",
-      })
-      return
+    if (complete) {
+      if (!icdCode || !mainDiagnosis || !symptoms || !physicalExam || !treatment) {
+        toast({
+          title: "Thiếu thông tin bắt buộc",
+          description: "Vui lòng điền đầy đủ các trường: Triệu chứng, Khám lâm sàng, Chẩn đoán, Hướng điều trị",
+          variant: "destructive",
+        })
+        return
+      }
+      const missingSpecialtyField = specialtyFields.find((field) => field.required && isSpecialtyFieldEmpty(field))
+      if (missingSpecialtyField) {
+        toast({
+          title: "Thiếu thông tin chuyên khoa",
+          description: `Vui lòng điền mục chuyên khoa bắt buộc: ${missingSpecialtyField.label}`,
+          variant: "destructive",
+        })
+        return
+      }
+    } else {
+      if (!symptoms && !mainDiagnosis) {
+        toast({
+          title: "Thiếu thông tin",
+          description: "Vui lòng nhập ít nhất triệu chứng hoặc chẩn đoán để lưu nháp",
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     const today = new Date().toISOString().split("T")[0]
-    const appointmentRecordId = appointment.id
-    const doctorId = user?.doctorId ? String(user.doctorId) : (appointment.doctorId ?? "dr1")
+    const appointmentRecordId = appointment?.id || "temp-appt"
+    const doctorId = user?.doctorId ? String(user.doctorId) : (appointment?.doctorId ?? "dr1")
 
     try {
       if (complete) setIsCompleting(true)
 
-      const recordPayload = {
-        appointmentId: Number(appointment.id),
+      // 1. Ensure encounter is checked in & started
+      let currentEncounterId = resolvedEncounterId
+      let currentEncounterEtag = encounterEtag
+
+      if (!currentEncounterId && appointment?.id) {
+        try {
+          const checkInRes = await receptionApi.checkIn(appointment.id, "Bắt đầu lượt khám")
+          if (checkInRes?.encounter) {
+            currentEncounterId = checkInRes.encounter.id
+            currentEncounterEtag = `"${checkInRes.encounter.version}"`
+            setResolvedEncounterId(currentEncounterId)
+            setEncounterEtag(currentEncounterEtag)
+            if (checkInRes.encounter.status === "PLANNED") {
+              const startRes = await receptionApi.startEncounter(currentEncounterId, currentEncounterEtag)
+              currentEncounterEtag = startRes.etag || `"${startRes.data.version}"`
+              setEncounterEtag(currentEncounterEtag)
+            }
+          }
+        } catch (e) {
+          console.warn("Không thể check-in/start encounter:", e)
+        }
+      }
+
+      if (!currentEncounterId) {
+        toast({
+          title: "Lỗi phiên khám",
+          description: "Không tìm thấy phiên khám hợp lệ (Encounter). Vui lòng thử lại.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const noteContent = {
         symptoms,
         physicalExamination: physicalExam,
         testResults: testResults || undefined,
-        mainDiagnosis,
+        mainDiagnosis: selectedIcd?.name || mainDiagnosis,
+        icdCode: selectedIcd?.code ?? icdCode,
         clinicalNote: examinationNotes || undefined,
-        historySummary: appointment.symptomsInitial || undefined,
+        historySummary: appointment?.symptomsInitial || undefined,
         careAdvice: treatment,
         followUpDate: followUpDate || undefined,
-        diagnoses: selectedIcd?.code ? [{ icd10Code: selectedIcd.code, isPrimary: true }] : [],
+        diagnoses: (selectedIcd?.code || icdCode)
+          ? [{ icd10Code: selectedIcd?.code ?? icdCode, isPrimary: true }]
+          : [],
         medicines: prescriptionItems.map((item) => ({
-          medicineId: Number(item.medicineId),
+          medicineId: item.medicineId,
+          medicineName: item.medicineName,
           quantity: item.quantity,
+          unit: item.unit,
           dosageInstruction: [item.dosage, item.notes].filter(Boolean).join(" - "),
+          dosage: item.dosage,
+          notes: item.notes,
           isFromTemplate: Boolean(item.isFromTemplate),
         })),
         additionalData: {
@@ -598,56 +736,34 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
         },
       }
 
-      let savedRecord: any = null
-      if (complete) {
-        try {
-          savedRecord = await medicalRecordsApi.create(recordPayload)
-        } catch (err) {
-          console.warn("API create medical record fallback sang lưu cục bộ:", err)
-        }
-        
-        try {
-          const pdfProps = {
-            patient: {
-              name: patient.name,
-              patientCode: patient.patientCode,
-              id: patient.id,
-              gender: patient.gender,
-              phone: patient.phone,
-              address: patient.address,
-              dateOfBirth: patient.dateOfBirth,
-            },
-            symptoms,
-            physicalExam,
-            examinationNotes,
-            diagnosis: mainDiagnosis,
-            icdCode: selectedIcd?.code ?? icdCode,
-            treatment,
-            followUpDate,
-            prescriptionItems: prescriptionItems.map((item) => ({
-              medicineName: item.medicineName,
-              quantity: String(item.quantity),
-              unit: item.unit,
-              dosage: item.dosage,
-              notes: item.notes,
-            })),
-            prescriptionNotes,
-            specialtyFields,
-            specialtyExamValues,
-            doctorName: user?.name || undefined,
-            specialtyName: specialty?.name || undefined,
-            appointmentDate: appointment?.appointmentDate || undefined,
-            timeSlot: appointment?.timeSlot || undefined,
-            emrCode: savedRecord?.emrCode || undefined,
-          }
-          const pdfBlob = await generateMedicalRecordPdf(pdfProps)
-          await medicalRecordsApi.uploadPdf(Number(appointment.id), pdfBlob)
-        } catch (pdfError) {
-          console.warn("Không thể tạo và tải lên PDF hồ sơ khám:", pdfError)
+      let curVersionId = activeVersion?.id
+      let curVersionEtag = versionEtag
+
+      // 2. Create or Update draft note
+      if (curVersionId && activeVersion?.status === "DRAFT") {
+        const updateRes = await clinicalCareApi.updateDraft(curVersionId, curVersionEtag, {
+          contentSchemaVersion: "1.0",
+          content: noteContent,
+        })
+        curVersionEtag = updateRes.etag || `"${updateRes.data.version}"`
+        setActiveVersion(updateRes.data)
+        setVersionEtag(curVersionEtag)
+      } else {
+        const createRes = await clinicalCareApi.createNote(currentEncounterId, {
+          noteType: "EXAMINATION",
+          contentSchemaVersion: "1.0",
+          content: noteContent,
+        })
+        setActiveNote(createRes.data)
+        if (createRes.data.currentVersion) {
+          curVersionId = createRes.data.currentVersion.id
+          curVersionEtag = `"${createRes.data.currentVersion.version}"`
+          setActiveVersion(createRes.data.currentVersion)
+          setVersionEtag(curVersionEtag)
         }
       }
 
-      // Save examination record in local cache for current screen/session
+      // Save in local cache for current session
       addExaminationRecord({
         appointmentId: appointmentRecordId,
         patientId: patient.id,
@@ -666,7 +782,6 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
         createdAt: today,
       })
 
-      // Save prescription in local cache for current screen/session
       if (prescriptionItems.length > 0) {
         addPrescription({
           appointmentId: appointmentRecordId,
@@ -679,12 +794,23 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
         })
       }
 
+      // 3. If completing, finalize note & complete encounter
       if (complete) {
-        await updateAppointment(appointment.id, {
-          ...appointment,
-          status: "COMPLETED",
-        })
+        if (!curVersionId) {
+          throw new Error("Không thể xác định phiên bản hồ sơ để hoàn thành")
+        }
+        const finRes = await clinicalCareApi.finalizeNote(curVersionId, curVersionEtag)
+        setActiveVersion(finRes.data)
+        setVersionEtag(finRes.etag || `"${finRes.data.version}"`)
 
+        await receptionApi.completeEncounter(currentEncounterId, currentEncounterEtag)
+
+        if (appointment?.id) {
+          await updateAppointment(appointment.id, {
+            ...appointment,
+            status: "COMPLETED",
+          })
+        }
         await updatePatient(patient.id, {
           ...patient,
           status: "completed",
@@ -692,28 +818,30 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
 
         toast({
           title: "Hoàn thành khám bệnh",
-          description: "Hồ sơ khám bệnh và đơn thuốc đã được lưu thành công vào hồ sơ bệnh nhân.",
+          description: "Hồ sơ khám bệnh đã được ký hoàn thành và lưu trữ bền vững.",
         })
         router.push("/doctor/patient-records")
       } else {
-        await updateAppointment(appointment.id, {
-          ...appointment,
-          status: "IN_PROGRESS",
-        })
+        if (appointment?.id) {
+          await updateAppointment(appointment.id, {
+            ...appointment,
+            status: "IN_PROGRESS",
+          })
+        }
         await updatePatient(patient.id, {
           ...patient,
           status: "in-examination",
         })
         toast({
-          title: "Lưu tạm thành công",
-          description: "Thông tin khám bệnh đã được lưu tạm.",
+          title: "Đã lưu nháp",
+          description: "Thông tin khám bệnh đã được lưu nháp trên hệ thống.",
         })
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Không thể lưu khám bệnh", error)
       toast({
         title: "Lỗi hệ thống",
-        description: complete ? "Không thể hoàn thành khám hoặc lưu PDF. Vui lòng thử lại." : "Không thể lưu khám bệnh. Vui lòng thử lại.",
+        description: error?.message || (complete ? "Không thể hoàn thành khám bệnh. Vui lòng thử lại." : "Không thể lưu khám bệnh. Vui lòng thử lại."),
         variant: "destructive",
       })
     } finally {
@@ -943,7 +1071,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
                       <div>
 
                         <h2 className="text-xl font-bold text-green-700">
-                          MEDICORE CLINIC
+                          NOVAMED CLINIC
                         </h2>
 
                         <p className="text-sm text-muted-foreground mt-1">
@@ -1456,7 +1584,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
                 <h3 className="font-semibold text-xs text-foreground uppercase tracking-wider">
-                  MediCore AI Copilot
+                  NOVAMED AI Copilot
                 </h3>
               </div>
 

@@ -7,9 +7,10 @@ import { useData } from "@/components/base/providers/data-provider"
 interface ExaminationPageWrapperProps {
   patientId: string
   appointmentId?: string
+  encounterId?: string
 }
 
-export function ExaminationPageWrapper({ patientId, appointmentId }: ExaminationPageWrapperProps) {
+export function ExaminationPageWrapper({ patientId, appointmentId, encounterId }: ExaminationPageWrapperProps) {
   const {
     patients,
     appointments,
@@ -62,5 +63,5 @@ export function ExaminationPageWrapper({ patientId, appointmentId }: Examination
   const specialtyId = appointment?.specialtyId || doctor?.specialtyId
   const specialty = specialtyId ? specialties.find((s) => s.id === specialtyId) : undefined
 
-  return <ExaminationPage patient={displayPatient} appointment={appointment} specialty={specialty} />
+  return <ExaminationPage patient={displayPatient} appointment={appointment} specialty={specialty} encounterId={encounterId} />
 }

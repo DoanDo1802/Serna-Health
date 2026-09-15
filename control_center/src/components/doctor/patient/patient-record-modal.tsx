@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useData } from "@/components/base/providers/data-provider"
 import { useAuth } from "@/components/base/providers/auth-provider"
-import { medicalRecordsApi, practitionersApi, type PractitionerView } from "@/lib/api"
-import type { MedicalRecordResponse, Patient, Appointment } from "@/types/medical"
+import { clinicalCareApi, practitionersApi, type PractitionerView, type ClinicalNote } from "@/lib/api"
+import type { Patient, Appointment } from "@/types/medical"
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,7 @@ import {
   AlertCircle,
   CalendarCheck,
   User,
+  ShieldCheck,
 } from "lucide-react"
 
 interface PatientRecordModalProps {
@@ -39,9 +40,8 @@ interface PatientRecordModalProps {
 export function PatientRecordModal({ patient, open, onOpenChange }: PatientRecordModalProps) {
   const { user } = useAuth()
   const { appointments, examinationRecords, prescriptions, ensureAppointmentsLoaded } = useData()
-  const [backendRecords, setBackendRecords] = useState<Record<string, MedicalRecordResponse>>({})
-  const [recordErrors, setRecordErrors] = useState<Record<string, string>>({})
-  const [loadingRecordIds, setLoadingRecordIds] = useState<Record<string, boolean>>({})
+  const [patientNotes, setPatientNotes] = useState<ClinicalNote[]>([])
+  const [loadingNotes, setLoadingNotes] = useState(false)
   const [practitioner, setPractitioner] = useState<PractitionerView | null>(null)
 
   useEffect(() => {
@@ -86,32 +86,27 @@ export function PatientRecordModal({ patient, open, onOpenChange }: PatientRecor
       return (b.timeSlot ?? "").localeCompare(a.timeSlot ?? "")
     }), [appointments, patient.id, patient.patientCode])
 
-  // Nạp hồ sơ khám từ backend nếu có
+  // Nạp hồ sơ khám bền vững từ clinicalCareApi
   useEffect(() => {
-    if (!open || patientAppointments.length === 0) return
-
-    patientAppointments
-      .filter((appointment) => ["DONE", "COMPLETED", "FULFILLED"].includes((appointment.status || "").toUpperCase()))
-      .forEach((appointment) => {
-        const appointmentId = String(appointment.id)
-        if (backendRecords[appointmentId] || loadingRecordIds[appointmentId] || recordErrors[appointmentId]) return
-
-        setLoadingRecordIds((current) => ({ ...current, [appointmentId]: true }))
-        medicalRecordsApi.getByAppointment(appointment.id)
-          .then((record) => {
-            setBackendRecords((current) => ({ ...current, [appointmentId]: record }))
-          })
-          .catch((error) => {
-            setRecordErrors((current) => ({
-              ...current,
-              [appointmentId]: error instanceof Error ? error.message : "Không thể tải hồ sơ khám",
-            }))
-          })
-          .finally(() => {
-            setLoadingRecordIds((current) => ({ ...current, [appointmentId]: false }))
-          })
+    if (!open || !patient.id) return
+    let active = true
+    setLoadingNotes(true)
+    clinicalCareApi.listPatientNotes(patient.id)
+      .then((res) => {
+        if (active && res?.items) {
+          setPatientNotes(res.items)
+        }
       })
-  }, [open, patientAppointments, backendRecords, loadingRecordIds, recordErrors])
+      .catch((err) => {
+        console.warn("Không thể tải hồ sơ khám bệnh từ clinicalCareApi:", err)
+      })
+      .finally(() => {
+        if (active) setLoadingNotes(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [open, patient.id])
 
   const patientRecords = useMemo(() => examinationRecords
     .filter((e) => e.patientId === patient.id || e.patientId === patient.patientCode)
@@ -247,7 +242,7 @@ export function PatientRecordModal({ patient, open, onOpenChange }: PatientRecor
           <TabsContent value="records" className="flex-1 overflow-hidden pt-2">
             <ScrollArea className="h-[55vh] pr-3">
               <div className="space-y-4">
-                {patientAppointments.length === 0 && patientRecords.length === 0 ? (
+                {patientAppointments.length === 0 && patientRecords.length === 0 && patientNotes.length === 0 ? (
                   <div className="text-center py-16 flex flex-col items-center justify-center text-muted-foreground gap-2">
                     <CalendarCheck className="w-10 h-10 opacity-30 stroke-1 text-primary" />
                     <p className="text-sm font-medium text-foreground">Chưa có lịch sử khám bệnh</p>
@@ -257,30 +252,43 @@ export function PatientRecordModal({ patient, open, onOpenChange }: PatientRecor
                   </div>
                 ) : (
                   patientAppointments.map((appointment) => {
-                    const backendRecord = backendRecords[String(appointment.id)]
-                    const localRecord = patientRecords.find((item) => item.appointmentId === appointment.id)
-                    const isRecordLoading = loadingRecordIds[String(appointment.id)]
-                    const recordError = recordErrors[String(appointment.id)]
+                    const matchedNote = patientNotes.find((note) => {
+                      const noteDate = (note.createdAt || "").split("T")[0]
+                      return noteDate === appointment.appointmentDate
+                    }) || (patientNotes.length === 1 ? patientNotes[0] : undefined)
 
-                    // Tìm đơn thuốc tương ứng với ca khám này
+                    const noteContent = matchedNote?.currentVersion?.content as any
+                    const localRecord = patientRecords.find((item) => item.appointmentId === appointment.id)
+
+                    // Tìm đơn thuốc từ note bền vững hoặc local
                     const appointmentPrescription = prescriptions.find(
                       (p) =>
                         p.appointmentId === appointment.id ||
                         (p.patientId === patient.id && p.prescriptionDate === appointment.appointmentDate)
                     )
 
+                    const displayMedicines = (noteContent?.medicines && Array.isArray(noteContent.medicines) && noteContent.medicines.length > 0)
+                      ? noteContent.medicines
+                      : appointmentPrescription?.items
+
                     const mainDiag =
+                      noteContent?.mainDiagnosis ||
                       localRecord?.mainDiagnosis ||
-                      appointment.mainDiagnosis ||
-                      backendRecord?.mainDiagnosis ||
-                      backendRecord?.diagnosisName
+                      appointment.mainDiagnosis
 
-                    const icd = localRecord?.icdCode || appointment.icdCode
+                    const icd = noteContent?.icdCode || localRecord?.icdCode || appointment.icdCode
 
-                    const symptoms = localRecord?.symptoms || appointment.symptomsInitial
+                    const symptoms = noteContent?.symptoms || localRecord?.symptoms || appointment.symptomsInitial
 
                     const examAdvice =
-                      localRecord?.treatment || localRecord?.notes || backendRecord?.careAdvice
+                      noteContent?.careAdvice || noteContent?.clinicalNote ||
+                      localRecord?.treatment || localRecord?.notes
+
+                    const physicalExam =
+                      noteContent?.physicalExamination || localRecord?.physicalExamination
+
+                    const followUpDate =
+                      noteContent?.followUpDate || localRecord?.followUpDate
 
                     return (
                       <Card key={appointment.id} className="p-4 border shadow-sm space-y-3 bg-card">
@@ -296,6 +304,11 @@ export function PatientRecordModal({ patient, open, onOpenChange }: PatientRecor
                                 <Badge variant="secondary" className="text-xs font-normal flex items-center gap-1">
                                   <Clock className="w-3 h-3 text-muted-foreground" />
                                   <span>{appointment.timeSlot}</span>
+                                </Badge>
+                              )}
+                              {matchedNote?.currentVersion?.status === "FINALIZED" && (
+                                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 gap-1 text-xs">
+                                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Hồ sơ hoàn tất (v{matchedNote.currentVersion.versionNumber})
                                 </Badge>
                               )}
                             </div>
@@ -360,13 +373,13 @@ export function PatientRecordModal({ patient, open, onOpenChange }: PatientRecor
                           )}
                         </div>
 
-                        {/* Hàng 3: Khám lâm sàng & Lời dặn (nếu có) */}
-                        {(localRecord?.physicalExamination || examAdvice || localRecord?.followUpDate) && (
+                        {/* Hàng 3: Khám lâm sàng & Lời dặn */}
+                        {(physicalExam || examAdvice || followUpDate) && (
                           <div className="space-y-2 pt-1 text-xs border-t border-border/40">
-                            {localRecord?.physicalExamination && (
+                            {physicalExam && (
                               <div>
                                 <span className="font-semibold text-foreground">Khám lâm sàng / thể chất: </span>
-                                <span className="text-muted-foreground">{localRecord.physicalExamination}</span>
+                                <span className="text-muted-foreground">{physicalExam}</span>
                               </div>
                             )}
                             {examAdvice && (
@@ -375,29 +388,29 @@ export function PatientRecordModal({ patient, open, onOpenChange }: PatientRecor
                                 <span className="text-muted-foreground">{examAdvice}</span>
                               </div>
                             )}
-                            {localRecord?.followUpDate && (
+                            {followUpDate && (
                               <div className="text-primary font-medium flex items-center gap-1.5">
                                 <CalendarCheck className="w-3.5 h-3.5" />
-                                <span>Hẹn tái khám ngày: {new Date(localRecord.followUpDate).toLocaleDateString("vi-VN")}</span>
+                                <span>Hẹn tái khám ngày: {new Date(followUpDate).toLocaleDateString("vi-VN")}</span>
                               </div>
                             )}
                           </div>
                         )}
 
-                        {/* Hàng 4: Đơn thuốc đã kê (nếu có) */}
-                        {appointmentPrescription && appointmentPrescription.items.length > 0 && (
+                        {/* Hàng 4: Đơn thuốc đã kê */}
+                        {displayMedicines && displayMedicines.length > 0 && (
                           <div className="pt-2 border-t border-border/40">
                             <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground mb-1.5">
                               <Pill className="w-3.5 h-3.5 text-primary" />
-                              <span>Đơn thuốc đã kê ({appointmentPrescription.items.length} loại)</span>
+                              <span>Đơn thuốc đã kê ({displayMedicines.length} loại)</span>
                             </div>
                             <div className="bg-muted/30 rounded-lg p-2 space-y-1.5 text-xs">
-                              {appointmentPrescription.items.map((med, idx) => (
+                              {displayMedicines.map((med: any, idx: number) => (
                                 <div key={idx} className="flex items-center justify-between border-b border-border/30 pb-1 last:border-0 last:pb-0">
                                   <div>
                                     <span className="font-medium text-foreground">{med.medicineName}</span>
-                                    {med.dosage && (
-                                      <span className="text-muted-foreground text-[11px] block">{med.dosage}</span>
+                                    {(med.dosage || med.dosageInstruction) && (
+                                      <span className="text-muted-foreground text-[11px] block">{med.dosage || med.dosageInstruction}</span>
                                     )}
                                   </div>
                                   <div className="text-right font-medium text-foreground shrink-0 pl-2">
@@ -406,21 +419,6 @@ export function PatientRecordModal({ patient, open, onOpenChange }: PatientRecor
                                 </div>
                               ))}
                             </div>
-                          </div>
-                        )}
-
-                        {/* Hàng 5: Nút xem PDF (nếu có) */}
-                        {backendRecord?.pdfUrl && (
-                          <div className="pt-2">
-                            <a
-                              href={backendRecord.pdfUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span>Xem hồ sơ bệnh án PDF</span>
-                            </a>
                           </div>
                         )}
                       </Card>

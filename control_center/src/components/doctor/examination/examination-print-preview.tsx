@@ -92,11 +92,11 @@ export default function ExaminationPrintPreview({
                 <div className="flex justify-between items-start border-b pb-6 border-slate-200">
                     <div className="flex gap-3 items-center">
                         <div className="w-10 h-10 rounded-lg bg-green-700 flex items-center justify-center text-white font-black text-xl tracking-tighter">
-                            MC
+                            NM
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-slate-800 tracking-tight leading-tight">
-                                MEDICORE CLINIC
+                                NOVAMED CLINIC
                             </h2>
                             <p className="text-xs text-slate-500 font-medium">
                                 Hệ thống y tế kỹ thuật số hiện đại
@@ -353,7 +353,7 @@ export default function ExaminationPrintPreview({
                         </div>
                     </div>
                     <div className="text-right text-[10px] text-slate-400 space-y-0.5 font-medium">
-                        <p>Hệ thống hồ sơ bệnh án điện tử MediCore</p>
+                        <p>Hệ thống hồ sơ bệnh án điện tử NOVAMED</p>
                         <p>Thời gian xuất: <span className="font-mono">{now.toLocaleString("vi-VN")}</span></p>
                     </div>
                 </div>

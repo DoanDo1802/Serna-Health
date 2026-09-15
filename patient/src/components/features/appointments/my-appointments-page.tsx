@@ -14,7 +14,20 @@ import {
   X,
   Receipt,
   CreditCard,
+  Building2,
+  Stethoscope,
 } from 'lucide-react';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/base/ui/table';
+import { Card } from '@/components/base/ui/card';
+import { EmptyState } from '@/components/base/ui/empty-state';
+import { Button } from '@/components/base/ui/button';
 import { schedulingService } from '@/services/scheduling-service';
 import { patientService } from '@/services/patient-service';
 import {
@@ -392,7 +405,7 @@ export const MyAppointmentsPage: React.FC<MyAppointmentsPageProps> = ({
       </div>
 
       {/* Unified Single Card for Toolbar & Data Table */}
-      <div className="w-full bg-surface border border-outline-variant/80 rounded-3xl overflow-hidden shadow-card flex flex-col min-h-[540px] justify-between">
+      <Card className="w-full overflow-hidden border border-outline-variant/80 rounded-2xl sm:rounded-3xl shadow-card flex flex-col min-h-[540px] justify-between p-0 gap-0">
         {/* Unified Responsive Toolbar: Filters & Actions */}
         <div className="p-3 sm:p-3.5 px-4 sm:px-6 flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-outline-variant/60 bg-surface-container/20">
           {/* Left: Segmented Filter Tabs */}
@@ -494,100 +507,42 @@ export const MyAppointmentsPage: React.FC<MyAppointmentsPageProps> = ({
             <span className="text-xs sm:text-sm font-medium">Đang tải danh sách lịch khám...</span>
           </div>
         ) : filteredAppointments.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-content-secondary min-h-[360px]">
-            <div className="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center mb-3">
-              <Search className="w-6 h-6 text-content-muted" />
-            </div>
-            <h3 className="text-base font-bold text-content-primary m-0">Không tìm thấy lịch khám nào</h3>
-            <p className="text-xs text-content-muted max-w-sm mt-1 mb-4">
-              {searchQuery
-                ? 'Không có kết quả phù hợp với từ khóa tìm kiếm của bạn.'
-                : 'Bạn chưa có lịch hẹn khám nào trong danh mục này.'}
-            </p>
-            {onNavigateBooking && (
-              <button
-                type="button"
-                onClick={onNavigateBooking}
-                className="px-5 py-2 rounded-full bg-primary hover:bg-primary-hover text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
-              >
-                Đặt Lịch Khám Ngay
-              </button>
-            )}
+          <div className="p-6 sm:p-8 flex-1 flex flex-col justify-center">
+            <EmptyState
+              icon={<Calendar className="w-8 h-8" />}
+              title={searchQuery ? 'Không tìm thấy lịch khám nào' : 'Không có lịch hẹn'}
+              description={
+                searchQuery
+                  ? 'Không có kết quả phù hợp với từ khóa tìm kiếm của bạn. Hãy thử tìm kiếm với từ khóa khác.'
+                  : 'Bạn chưa có lịch hẹn khám nào trong danh mục này. Ca khám đang mở và sẵn sàng tiếp nhận đặt lịch.'
+              }
+              action={
+                onNavigateBooking ? (
+                  <Button
+                    type="button"
+                    onClick={onNavigateBooking}
+                    size="default"
+                  >
+                    <span>+ Đặt Lịch Khám Ngay</span>
+                  </Button>
+                ) : undefined
+              }
+            />
           </div>
         ) : (
           <div className="flex-1 flex flex-col justify-between">
-            <table className="w-full text-left border-collapse">
-              <thead
-                style={{
-                  backgroundColor: 'transparent',
-                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                }}
-                className="border-b border-outline-variant/60"
-              >
-                <tr className="border-b border-outline-variant/60 !bg-transparent text-[11px] font-bold text-content-secondary uppercase tracking-wider">
-                  <th
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: 'rgba(255, 255, 255, 0.65)',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                    }}
-                    className="py-3.5 px-6 font-semibold w-[22%]"
-                  >
-                    Thời gian khám
-                  </th>
-                  <th
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: 'rgba(255, 255, 255, 0.65)',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                    }}
-                    className="py-3.5 px-6 font-semibold w-[24%]"
-                  >
-                    Dịch vụ & Chuyên khoa
-                  </th>
-                  <th
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: 'rgba(255, 255, 255, 0.65)',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                    }}
-                    className="py-3.5 px-6 font-semibold w-[20%]"
-                  >
-                    Bác sĩ & Địa điểm
-                  </th>
-                  <th
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: 'rgba(255, 255, 255, 0.65)',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                    }}
-                    className="py-3.5 px-6 font-semibold w-[13%]"
-                  >
-                    Tiền cọc
-                  </th>
-                  <th
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: 'rgba(255, 255, 255, 0.65)',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                    }}
-                    className="py-3.5 px-6 font-semibold w-[11%]"
-                  >
-                    Trạng thái
-                  </th>
-                  <th
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: 'rgba(255, 255, 255, 0.65)',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                    }}
-                    className="py-3.5 px-6 text-right font-semibold w-[10%]"
-                  >
-                    <span className="sr-only">Thao tác</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/40 text-xs sm:text-sm">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[22%]">Thời gian khám</TableHead>
+                  <TableHead className="w-[24%]">Dịch vụ & Chuyên khoa</TableHead>
+                  <TableHead className="w-[20%]">Bác sĩ & Địa điểm</TableHead>
+                  <TableHead className="w-[13%]">Tiền cọc</TableHead>
+                  <TableHead className="w-[11%]">Trạng thái</TableHead>
+                  <TableHead className="w-[10%] text-right pr-6">Thao tác</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {paginatedAppointments.map((appt) => {
                   const statusCfg = STATUS_CONFIG[appt.status] || {
                     label: appt.status,
@@ -604,76 +559,80 @@ export const MyAppointmentsPage: React.FC<MyAppointmentsPageProps> = ({
                         : 'Ca khám';
 
                   return (
-                    <tr
+                    <TableRow
                       key={appt.id}
                       onClick={() => setSelectedAppointment(appt)}
-                      className="hover:bg-surface-container/30 transition-colors cursor-pointer group"
+                      className="cursor-pointer group"
                     >
                       {/* Thời gian khám */}
-                      <td className="py-4 px-6 whitespace-nowrap align-middle">
+                      <TableCell className="whitespace-nowrap">
                         <div className="font-semibold text-content-primary">
                           {formatDate(appt.startAt)}
                         </div>
-                        <div className="text-xs text-content-muted font-mono mt-0.5">
-                          {formatTime(appt.startAt)} – {formatTime(appt.endAt)}
+                        <div className="text-xs text-content-muted font-mono mt-0.5 flex items-center gap-1.5">
+                          <Clock className="w-3 h-3 text-content-muted/70 shrink-0" />
+                          <span>{formatTime(appt.startAt)} – {formatTime(appt.endAt)}</span>
+                          <span className="text-[10px] opacity-60">({sessionLabel})</span>
                         </div>
-                      </td>
+                      </TableCell>
 
                       {/* Dịch vụ & Chuyên khoa */}
-                      <td className="py-4 px-6 align-middle">
+                      <TableCell>
                         <div className="font-bold text-content-primary group-hover:text-primary transition-colors line-clamp-1">
                           {appt.serviceName}
                         </div>
-                        <div className="text-xs text-content-muted mt-0.5 line-clamp-1">
-                          {appt.departmentName || 'Khoa Khám Bệnh'}
+                        <div className="text-xs text-content-muted mt-0.5 line-clamp-1 flex items-center gap-1.5">
+                          <Stethoscope className="w-3 h-3 text-primary/70 shrink-0" />
+                          <span>{appt.departmentName || 'Khoa Khám Bệnh'}</span>
                         </div>
-                      </td>
+                      </TableCell>
 
                       {/* Bác sĩ & Phòng */}
-                      <td className="py-4 px-6 align-middle">
-                        <div className="font-medium text-content-primary line-clamp-1">
+                      <TableCell>
+                        <div className="font-semibold text-content-primary line-clamp-1">
                           {appt.practitionerName}
                         </div>
-                        <div className="text-xs text-content-muted mt-0.5 line-clamp-1">
-                          {appt.roomName}
+                        <div className="text-xs text-content-muted mt-0.5 line-clamp-1 flex items-center gap-1.5">
+                          <Building2 className="w-3 h-3 text-teal/70 shrink-0" />
+                          <span>{appt.roomName}</span>
                         </div>
-                      </td>
+                      </TableCell>
 
                       {/* Tiền cọc */}
-                      <td className="py-4 px-6 whitespace-nowrap align-middle">
+                      <TableCell className="whitespace-nowrap">
                         {Number(appt.paidDepositAmount) > 0 ? (
                           <div>
                             <span className="font-mono font-bold text-content-primary">
                               {dep.amount}
                             </span>
                             {appt.depositState === 'REFUND_PENDING' && (
-                              <span className="block text-[10px] text-amber-400 font-medium">Chờ hoàn</span>
+                              <span className="block text-[10px] text-amber-400 font-medium">Chờ hoàn cọc</span>
                             )}
                           </div>
                         ) : (
                           <span className="text-xs text-content-muted">Miễn cọc</span>
                         )}
-                      </td>
+                      </TableCell>
 
                       {/* Trạng thái */}
-                      <td className="py-4 px-6 whitespace-nowrap align-middle">
+                      <TableCell className="whitespace-nowrap">
                         <StatusBadge variant={statusCfg.variant} dot>
                           {statusCfg.label}
                         </StatusBadge>
-                      </td>
+                      </TableCell>
 
                       {/* Thao tác */}
-                      <td className="py-4 px-6 text-right whitespace-nowrap align-middle">
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-content-muted group-hover:text-primary transition-all">
+                      <TableCell className="text-right whitespace-nowrap pr-6">
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-content-muted group-hover:text-primary transition-colors">
                           <span>Chi tiết</span>
-                          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                         </span>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
             {/* Table Footer with Simple Prev/Next Pagination */}
             {totalPages > 1 && (
               <div className="mt-auto px-6 py-3 border-t border-outline-variant/60 bg-surface-container/20 flex items-center justify-end gap-3 text-xs text-content-secondary">
@@ -707,7 +666,7 @@ export const MyAppointmentsPage: React.FC<MyAppointmentsPageProps> = ({
             )}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Detail / Cancel Modal */}
       {selectedAppointment && (
@@ -872,34 +831,39 @@ export const MyAppointmentsPage: React.FC<MyAppointmentsPageProps> = ({
             ) : (
               /* Appointment Details View */
               <div>
-                {/* Header */}
-                <div className="flex items-center justify-between pb-4 border-b border-outline-variant mb-4">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-surface-container text-content-primary border border-outline-variant flex items-center justify-center shrink-0">
-                      <Calendar className="w-4 h-4 text-content-muted" />
-                    </div>
-                    <div>
-                      <h3 className="text-base sm:text-lg font-bold text-content-primary m-0">Chi Tiết Lịch Khám</h3>
-                      <span className="text-xs font-mono text-content-muted">#{selectedAppointment.id.slice(0, 8)}</span>
-                    </div>
+                {/* Header (matching screenshot style) */}
+                <div className="border-b border-outline-variant/60 pb-3 mb-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-content-muted font-semibold uppercase tracking-wider block">
+                      Chi tiết lịch hẹn
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReschedulePreparationError(null);
+                        setSelectedAppointment(null);
+                      }}
+                      className="p-1 rounded-full text-content-muted hover:text-content-primary hover:bg-surface-container transition-colors cursor-pointer"
+                      aria-label="Đóng chi tiết"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setReschedulePreparationError(null);
-                      setSelectedAppointment(null);
-                    }}
-                    className="p-1.5 rounded-full text-content-muted hover:text-content-primary hover:bg-surface-container transition-colors cursor-pointer"
-                    aria-label="Đóng chi tiết"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <span className="text-lg sm:text-xl font-bold text-content-primary mt-1 block">
+                    {formatDate(selectedAppointment.startAt)}
+                  </span>
+                  <div className="flex items-center gap-2 mt-1 text-xs text-primary font-medium">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{formatTime(selectedAppointment.startAt)} – {formatTime(selectedAppointment.endAt)}</span>
+                    <span className="text-content-muted">•</span>
+                    <span className="text-content-secondary font-mono">#{selectedAppointment.id.slice(0, 8)}</span>
+                  </div>
                 </div>
 
-                <div className="space-y-3 text-xs sm:text-sm">
+                <div className="space-y-4 text-xs sm:text-sm">
                   {/* Reschedule notices */}
                   {selectedAppointment.status === 'RESCHEDULED' && (
-                    <div className="p-2.5 px-3.5 rounded-2xl bg-surface-container border border-outline-variant text-xs text-content-secondary flex items-center gap-2">
+                    <div className="p-2.5 px-3.5 rounded-xl bg-surface-container border border-outline-variant text-xs text-content-secondary flex items-center gap-2">
                       <Clock className="w-3.5 h-3.5 text-content-muted shrink-0" />
                       <span>
                         Lịch khám đã được dời sang lịch hẹn mới
@@ -909,14 +873,14 @@ export const MyAppointmentsPage: React.FC<MyAppointmentsPageProps> = ({
                   )}
 
                   {selectedAppointment.rescheduledFromId && (
-                    <div className="p-2.5 px-3.5 rounded-2xl bg-surface-container border border-outline-variant text-xs text-content-secondary flex items-center gap-2">
+                    <div className="p-2.5 px-3.5 rounded-xl bg-surface-container border border-outline-variant text-xs text-content-secondary flex items-center gap-2">
                       <CheckCircle2 className="w-3.5 h-3.5 text-content-muted shrink-0" />
                       <span>Được dời từ lịch hẹn trước đó (#{selectedAppointment.rescheduledFromId.slice(0, 8)}).</span>
                     </div>
                   )}
 
                   {selectedAppointment.cancellationOutcome && (
-                    <div className="p-2.5 px-3.5 rounded-2xl bg-surface-container/80 border border-outline-variant text-xs text-content-secondary flex items-start gap-2">
+                    <div className="p-2.5 px-3.5 rounded-xl bg-surface-container/80 border border-outline-variant text-xs text-content-secondary flex items-start gap-2">
                       <AlertCircle className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
                       <span>
                         {selectedAppointment.cancellationOutcome === 'REFUND_PENDING' && selectedAppointment.depositState === 'REFUND_PENDING'
@@ -939,7 +903,7 @@ export const MyAppointmentsPage: React.FC<MyAppointmentsPageProps> = ({
 
                     if (!isWithin24Hours) {
                       return (
-                        <div className="p-3 rounded-2xl bg-surface-container border border-outline-variant text-xs text-content-secondary flex items-start gap-2.5">
+                        <div className="p-3 rounded-xl bg-surface-container border border-outline-variant text-xs text-content-secondary flex items-start gap-2.5">
                           <AlertCircle className="w-4 h-4 text-content-muted shrink-0 mt-0.5" />
                           <div>
                             <span className="font-semibold block text-content-primary">Đã quá thời hạn tự phục vụ trực tuyến</span>
@@ -953,7 +917,7 @@ export const MyAppointmentsPage: React.FC<MyAppointmentsPageProps> = ({
                     const hoursLeft = Math.max(0, Math.floor((cutoffMillis - currentTimestamp) / (60 * 60 * 1000)));
                     const minsLeft = Math.max(0, Math.floor(((cutoffMillis - currentTimestamp) % (60 * 60 * 1000)) / (60 * 1000)));
                     return (
-                      <div className="p-2.5 px-3.5 rounded-2xl bg-surface-container border border-outline-variant text-xs text-content-secondary flex items-center gap-2 font-medium">
+                      <div className="p-2.5 px-3.5 rounded-xl bg-surface-container border border-outline-variant text-xs text-content-secondary flex items-center gap-2 font-medium">
                         <Clock className="w-3.5 h-3.5 text-content-muted shrink-0" />
                         <span>Còn <strong className="text-content-primary font-semibold">{hoursLeft}h {minsLeft}m</strong> để tự hủy hoặc đổi lịch trực tuyến</span>
                       </div>
@@ -961,63 +925,82 @@ export const MyAppointmentsPage: React.FC<MyAppointmentsPageProps> = ({
                   })()}
 
                   {reschedulePreparationError && (
-                    <div className="p-3 rounded-2xl bg-surface-container border border-rose-500/30 text-xs text-rose-300 flex items-start gap-2">
+                    <div className="p-3 rounded-xl bg-surface-container border border-rose-500/30 text-xs text-rose-300 flex items-start gap-2">
                       <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                       <span>{reschedulePreparationError}</span>
                     </div>
                   )}
 
-                  {/* Core Info */}
-                  <div className="p-4 rounded-2xl bg-surface-container border border-outline-variant space-y-2.5 text-xs sm:text-sm">
-                    <div>
-                      <span className="text-xs text-content-muted block mb-0.5">Bác sĩ phụ trách</span>
-                      <span className="font-bold text-content-primary">
-                        {selectedAppointment.practitionerName}
-                      </span>
+                  {/* Section 1: Thông tin phân công / khám bệnh */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-bold text-content-muted uppercase tracking-wider block">
+                      Thông tin ca khám
+                    </span>
+                    <div className="border border-outline-variant/60 rounded-xl p-3 bg-surface-container/30 flex gap-3 items-center">
+                      <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center shrink-0">
+                        <Stethoscope className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs text-content-muted">Dịch vụ & Chuyên khoa</span>
+                        <span className="text-sm font-semibold text-content-primary truncate">
+                          {selectedAppointment.serviceName}
+                        </span>
+                        <span className="text-xs text-content-secondary truncate">
+                          {selectedAppointment.departmentName || 'Khoa Khám Bệnh'}
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-xs text-content-muted block mb-0.5">Dịch vụ & Chuyên khoa</span>
-                      <span className="text-content-primary">
-                        {selectedAppointment.serviceName} · {selectedAppointment.departmentName}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-content-muted block mb-0.5">Địa điểm khám</span>
-                      <span className="text-content-primary">{selectedAppointment.roomName}</span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-content-muted block mb-0.5">Thời gian khám</span>
-                      <span className="font-semibold text-content-primary">
-                        {formatDate(selectedAppointment.startAt)} ({formatTime(selectedAppointment.startAt)} –{' '}
-                        {formatTime(selectedAppointment.endAt)})
-                      </span>
+
+                    <div className="border border-outline-variant/60 rounded-xl p-3 bg-surface-container/30 flex gap-3 items-center">
+                      <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center shrink-0">
+                        <Building2 className="w-5 h-5 text-teal" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs text-content-muted">Bác sĩ & Phòng khám</span>
+                        <span className="text-sm font-semibold text-content-primary truncate">
+                          {selectedAppointment.practitionerName}
+                        </span>
+                        <span className="text-xs text-content-secondary truncate">
+                          {selectedAppointment.roomName || 'Phòng khám tiêu chuẩn'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Deposit Info */}
-                  {(() => {
-                    const dep = getDepositBadge(selectedAppointment);
-                    return (
-                      <div className="p-3.5 rounded-2xl bg-surface-container/60 border border-outline-variant flex items-center justify-between">
-                        <div>
-                          <span className="text-xs font-semibold text-content-primary block">
-                            Tiền cọc giữ chỗ
-                          </span>
-                          <span className="text-[11px] text-content-muted">
-                            {dep.subtext}
-                          </span>
+                  {/* Section 2: Tiền cọc & Trạng thái */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-bold text-content-muted uppercase tracking-wider block">
+                      Tiền cọc & Trạng thái
+                    </span>
+                    {(() => {
+                      const dep = getDepositBadge(selectedAppointment);
+                      return (
+                        <div className="border border-outline-variant/60 rounded-xl p-3 bg-surface-container/30 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center shrink-0">
+                              <Receipt className="w-5 h-5 text-content-muted" />
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-semibold text-content-primary">
+                                Tiền cọc giữ chỗ
+                              </span>
+                              <span className="text-[11px] text-content-muted">
+                                {dep.subtext}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right flex items-center gap-2">
+                            <span className="text-sm sm:text-base font-bold font-mono text-content-primary">
+                              {dep.amount}
+                            </span>
+                            <StatusBadge variant={dep.variant}>
+                              {dep.label}
+                            </StatusBadge>
+                          </div>
                         </div>
-                        <div className="text-right flex items-center gap-2.5">
-                          <span className="text-sm sm:text-base font-bold font-mono text-content-primary">
-                            {dep.amount}
-                          </span>
-                          <StatusBadge variant={dep.variant}>
-                            {dep.label}
-                          </StatusBadge>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 {/* Actions: exactly matched to booking modal design */}

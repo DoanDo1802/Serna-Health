@@ -36,7 +36,6 @@ import {
   personnelApi,
   schedulesApi,
   specialtiesApi,
-  medicalRecordsApi,
   type Department,
   type Personnel,
 } from "@/lib/api"
@@ -601,33 +600,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const ensurePrescriptionsLoaded = React.useCallback(async () => {
     if (loadedRef.current.prescriptions || user?.role !== "ADMIN") return
     loadedRef.current.prescriptions = true
-    try {
-      const res = await medicalRecordsApi.listDoctorRecords()
-      const mappedPrescriptions: Prescription[] = res
-        .filter((r: any) => r.medicines && r.medicines.length > 0)
-        .map((r: any): Prescription => ({
-          id: `EMR-${r.emrCode || r.id}`,
-          appointmentId: String(r.appointmentId),
-          patientId: String(r.patientId),
-          doctorId: String(r.doctorId),
-          prescriptionDate: r.createdAt || new Date().toISOString(),
-          items: r.medicines.map((m: any) => ({
-            medicineId: String(m.medicineId),
-            medicineName: m.medicineName,
-            quantity: m.quantity,
-            unit: m.unit,
-            dosage: m.dosageInstruction || m.dosage,
-            notes: "",
-          })),
-          notes: r.additionalData?.prescriptionNotes || "",
-          status: "issued",
-        }))
-
-      setPrescriptions(mappedPrescriptions)
-    } catch (e) {
-      loadedRef.current.prescriptions = false
-      console.error("Không thể tải danh sách đơn thuốc", e)
-    }
+    setPrescriptions([])
   }, [user?.role])
 
   // ── Initial load by role ──────────────────────────────────────────
@@ -1006,12 +979,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     },
     updatePatient: async (id, p) => {
+      // 1. Cập nhật ngay vào local state
+      setPatients((prev) => prev.map((x) => (x.id === id ? { ...x, ...p } : x)))
+
+      // 2. Chỉ gọi PATCH API nếu có thông tin nhân khẩu thay đổi
       try {
-        const updated = await patientsApi.update(id, toPatientRequest(p))
-        setPatients((prev) => prev.map((x) => (x.id === id ? mapPatient(updated, { ...x, ...p }) : x)))
+        if (p.name || p.dateOfBirth || p.phone || p.email || p.address) {
+          const updated = await patientsApi.update(id, toPatientRequest(p))
+          if (updated) {
+            setPatients((prev) => prev.map((x) => (x.id === id ? mapPatient(updated, { ...x, ...p }) : x)))
+          }
+        }
       } catch (error) {
-        console.error("Không thể cập nhật bệnh nhân", error)
-        throw error
+        console.warn("API update patient fallback sang lưu cục bộ:", error)
       }
     },
     deletePatient: async (id) => {

@@ -51,7 +51,14 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             "POST /api/v1/appointments/{id}/actions/reschedule-slot-holds",
             "POST /api/v1/appointments/{id}/actions/reschedule",
             "POST /api/v1/appointments/{id}/actions/reschedule-top-up",
-            "POST /api/v1/appointments/{id}/actions/cancel");
+            "POST /api/v1/appointments/{id}/actions/cancel",
+            "POST /api/v1/appointments/{id}/check-ins",
+            "POST /api/v1/visits/{id}/actions/complete",
+            "POST /api/v1/encounters/{id}/actions/start",
+            "POST /api/v1/encounters/{id}/actions/complete",
+            "POST /api/v1/encounters/{id}/clinical-notes",
+            "POST /api/v1/clinical-note-versions/{id}/actions/finalize",
+            "POST /api/v1/clinical-note-versions/{id}/actions/amend");
 
     private final IdempotencyServiceImpl idempotency;
     private final TabSessionContextResolver contexts;

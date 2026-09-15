@@ -189,7 +189,7 @@ export function PrescriptionManager() {
                 {/* Header phòng khám */}
                 <div className="flex justify-between items-start pb-4 border-b border-border">
                   <div>
-                    <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider">Medicore Clinic</h2>
+                    <h2 className="text-sm font-extrabold text-primary uppercase tracking-wider">NOVAMED CLINIC</h2>
                     <p className="text-[10px] text-muted-foreground mt-0.5">Hệ thống y tế kỹ thuật số hiện đại</p>
                   </div>
                   <div className="text-right flex flex-col items-end gap-1.5 select-none">

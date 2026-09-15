@@ -154,7 +154,7 @@ export default function ExaminationForm({
 
                             <h2 className="text-xl font-bold text-green-700">
 
-                                MEDICORE CLINIC
+                                NOVAMED CLINIC
 
                             </h2>
 

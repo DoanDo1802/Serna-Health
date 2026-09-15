@@ -30,7 +30,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/CheckIn"
         "400":
           description: Invalid request
           content:
@@ -89,7 +89,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CheckInAppointmentRequest"
   /check-ins/{checkInId}:
     get:
       tags:
@@ -119,7 +119,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/CheckIn"
         "400":
           description: Invalid request
           content:
@@ -181,6 +181,17 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: patientId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/VisitStatus"
         - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
@@ -195,7 +206,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/VisitPage"
         "400":
           description: Invalid request
           content:
@@ -272,10 +283,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Visit"
         "400":
           description: Invalid request
           content:
@@ -355,10 +368,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Visit"
         "400":
           description: Invalid request
           content:
@@ -421,12 +436,6 @@ paths:
         - R1-13
       x-medicore-scenarios: *a1
       x-medicore-idempotent: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Resource"
   /visits/{visitId}/actions/cancel:
     post:
       tags:
@@ -455,10 +464,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Visit"
         "400":
           description: Invalid request
           content:
@@ -526,7 +537,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /visits/{visitId}/actions/enter-in-error:
     post:
       tags:
@@ -555,10 +566,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Visit"
         "400":
           description: Invalid request
           content:
@@ -626,7 +639,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /visits/{visitId}/encounters:
     get:
       tags:
@@ -658,7 +671,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/EncounterPage"
         "400":
           description: Invalid request
           content:
@@ -735,10 +748,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Encounter"
         "400":
           description: Invalid request
           content:
@@ -817,10 +832,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Encounter"
         "400":
           description: Invalid request
           content:
@@ -883,12 +900,6 @@ paths:
         - R1-13
       x-medicore-scenarios: *a1
       x-medicore-idempotent: false
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Resource"
   /encounters/{encounterId}/actions/complete:
     post:
       tags:
@@ -917,10 +928,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Encounter"
         "400":
           description: Invalid request
           content:
@@ -983,12 +996,6 @@ paths:
         - R1-13
       x-medicore-scenarios: *a1
       x-medicore-idempotent: false
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Resource"
   /encounters/{encounterId}/actions/cancel:
     post:
       tags:
@@ -1017,10 +1024,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Encounter"
         "400":
           description: Invalid request
           content:
@@ -1088,13 +1097,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /encounters/{encounterId}/actions/enter-in-error:
     post:
       tags:
         - ReceptionQueue
-      summary: Enter In Error Encounter
-      operationId: enterInErrorEncounter
+      summary: Enter Encounter In Error
+      operationId: enterEncounterInError
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
@@ -1117,10 +1126,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Encounter"
         "400":
           description: Invalid request
           content:
@@ -1188,7 +1199,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /queue-entries:
     get:
       tags:

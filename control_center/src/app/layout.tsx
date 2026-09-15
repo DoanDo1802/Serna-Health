@@ -12,8 +12,8 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "MedAdmin - Quản lý Danh mục Y tế",
-  description: "Hệ thống quản trị danh mục y tế: bác sĩ, chuyên khoa, thuốc và ICD-10",
+  title: "NOVAMED Control Center - Hệ Thống Quản Trị & Bệnh Án Điện Tử",
+  description: "Hệ thống quản trị y tế, quản lý khám bệnh và hồ sơ bệnh án điện tử NOVAMED",
   generator: "v0.app",
   icons: {
     icon: [

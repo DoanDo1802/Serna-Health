@@ -30,7 +30,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/ClinicalNotePage"
         "400":
           description: Invalid request
           content:
@@ -113,7 +113,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/ClinicalNote"
         "400":
           description: Invalid request
           content:
@@ -168,7 +168,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ClinicalDraftRequest"
+              $ref: "#/components/schemas/CreateClinicalNoteRequest"
   /clinical-notes/{noteId}:
     get:
       tags:
@@ -198,7 +198,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/ClinicalNote"
         "400":
           description: Invalid request
           content:
@@ -279,7 +279,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/ClinicalNoteVersionPage"
         "400":
           description: Invalid request
           content:
@@ -355,10 +355,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/ClinicalNoteVersion"
         "400":
           description: Invalid request
           content:
@@ -435,10 +437,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/ClinicalNoteVersion"
         "400":
           description: Invalid request
           content:
@@ -505,7 +509,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ClinicalDraftRequest"
+              $ref: "#/components/schemas/UpdateClinicalNoteDraftRequest"
   /clinical-note-versions/{versionId}/actions/finalize:
     post:
       tags:
@@ -535,10 +539,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/ClinicalNoteVersion"
         "400":
           description: Invalid request
           content:
@@ -600,12 +606,6 @@ paths:
         - R1-11
       x-medicore-scenarios: *a1
       x-medicore-idempotent: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Resource"
   /clinical-note-versions/{versionId}/actions/amend:
     post:
       tags:
@@ -635,10 +635,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/ClinicalNoteVersion"
         "400":
           description: Invalid request
           content:
@@ -705,7 +707,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /clinical-note-versions/{versionId}/actions/enter-in-error:
     post:
       tags:
@@ -734,10 +736,12 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
+            ETag:
+              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/ClinicalNoteVersion"
         "400":
           description: Invalid request
           content:
@@ -804,7 +808,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /encounters/{encounterId}/diagnoses:
     get:
       tags:

@@ -167,7 +167,7 @@ export function ScheduleContent() {
     if (showSpinner) setIsLoading(true)
     try {
       const page = await workSchedulesApi.list(monthBounds(month))
-      setSchedules(page.items)
+      setSchedules(page.items.filter((item) => item.status === "ACTIVE"))
       setError("")
     } catch (loadError) {
       setError(errorMessage(loadError))
@@ -206,15 +206,16 @@ export function ScheduleContent() {
     () => catalog?.rooms.filter((room) => room.departmentId === selectedDepartmentId) ?? [],
     [catalog, selectedDepartmentId],
   )
-  const allSchedulesByDate = useMemo(() => schedules.reduce<Record<string, WorkSchedule[]>>((result, schedule) => {
+  const activeSchedules = useMemo(() => schedules.filter((schedule) => schedule.status === "ACTIVE"), [schedules])
+  const allSchedulesByDate = useMemo(() => activeSchedules.reduce<Record<string, WorkSchedule[]>>((result, schedule) => {
     ;(result[schedule.localDate] ??= []).push(schedule)
     return result
-  }, {}), [schedules])
+  }, {}), [activeSchedules])
 
   const visibleSchedules = useMemo(() => {
-    if (!selectedDoctor?.practitionerRoleId) return schedules
-    return schedules.filter((schedule) => schedule.practitionerRoleId === selectedDoctor.practitionerRoleId)
-  }, [schedules, selectedDoctor?.practitionerRoleId])
+    if (!selectedDoctor?.practitionerRoleId) return activeSchedules
+    return activeSchedules.filter((schedule) => schedule.practitionerRoleId === selectedDoctor.practitionerRoleId)
+  }, [activeSchedules, selectedDoctor?.practitionerRoleId])
   const schedulesByDate = useMemo(() => visibleSchedules.reduce<Record<string, WorkSchedule[]>>((result, schedule) => {
     ;(result[schedule.localDate] ??= []).push(schedule)
     return result
@@ -272,6 +273,7 @@ export function ScheduleContent() {
       setError("Chọn bác sĩ đang hoạt động trước khi tạo lịch.")
       return
     }
+    const practitionerRoleId = selectedDoctor.practitionerRoleId
     if (!selectedDepartmentId) {
       setError("Bác sĩ này chưa được gán khoa. Cập nhật hồ sơ bác sĩ trước khi tạo lịch.")
       return
@@ -303,37 +305,60 @@ export function ScheduleContent() {
     setIsSaving(true)
     setError("")
     setSuccess("")
-    const created: WorkSchedule[] = []
-    const failed: string[] = []
     try {
-      for (const date of targetDates) {
-        for (const session of sessions) {
-          try {
-            const result = await workSchedulesApi.create({
-              practitionerRoleId: selectedDoctor.practitionerRoleId,
-              departmentId: selectedDepartmentId,
-              roomId: form.roomId,
-              serviceId: form.serviceId,
-              localDate: date,
-              session,
-              capacity,
-            })
-            created.push(result.data)
-            setEtags((current) => ({ ...current, [result.data.id]: result.etag ?? `"${result.data.version}"` }))
-          } catch (requestError) {
-            failed.push(`${date} · ${SESSION_SHORT_LABEL[session]}: ${errorMessage(requestError)}`)
+      const results = await Promise.all(
+        targetDates.map(async (date) => {
+          const dateCreated: WorkSchedule[] = []
+          const dateEtags: Record<string, string> = {}
+          const dateFailed: string[] = []
+          for (const session of sessions) {
+            try {
+              const result = await workSchedulesApi.create({
+                practitionerRoleId,
+                departmentId: selectedDepartmentId,
+                roomId: form.roomId,
+                serviceId: form.serviceId,
+                localDate: date,
+                session,
+                capacity,
+              })
+              dateCreated.push(result.data)
+              dateEtags[result.data.id] = result.etag ?? `"${result.data.version}"`
+            } catch (requestError) {
+              dateFailed.push(`${date} · ${SESSION_SHORT_LABEL[session]}: ${errorMessage(requestError)}`)
+            }
           }
-        }
+          return { dateCreated, dateEtags, dateFailed }
+        }),
+      )
+
+      const created = results.flatMap((r) => r.dateCreated)
+      const failed = results.flatMap((r) => r.dateFailed)
+      const mergedEtags: Record<string, string> = {}
+      for (const r of results) {
+        Object.assign(mergedEtags, r.dateEtags)
       }
+
+      if (Object.keys(mergedEtags).length > 0) {
+        setEtags((current) => ({ ...current, ...mergedEtags }))
+      }
+
       if (created.length > 0) {
-        setSchedules((current) => [...current.filter((schedule) => !created.some((item) => item.id === schedule.id)), ...created])
-        setSuccess(`Đã tạo ${created.length} ca trực cho ${new Set(created.map((item) => item.localDate)).size} ngày.`)
+        const createdIds = new Set(created.map((item) => item.id))
+        const successDates = new Set(created.map((item) => item.localDate))
+        setSchedules((current) => [
+          ...current.filter((schedule) => !createdIds.has(schedule.id)),
+          ...created,
+        ])
+        setSuccess(`Đã tạo ${created.length} ca trực cho ${successDates.size} ngày.`)
+        setSelectedDates((current) => current.filter((d) => !successDates.has(d)))
       }
+
       if (targetDates.length < selectedDates.length) {
         failed.unshift("Một số ngày/ca đã qua giờ bắt đầu nên không được tạo.")
       }
       if (failed.length > 0) setError(failed.slice(0, 3).join(" — "))
-      await loadMonth(viewMonth, false)
+      void loadMonth(viewMonth, false)
     } finally {
       setIsSaving(false)
     }
@@ -435,10 +460,10 @@ export function ScheduleContent() {
       setSchedules((current) => current.map((item) => (item.id === editingSchedule.id ? result.data : item)))
       setSuccess("Đã cập nhật ca trực thành công.")
       setEditingSchedule(null)
-      await reloadCurrentMonth()
+      void loadMonth(viewMonth, false)
     } catch (saveError) {
       setEditError(errorMessage(saveError))
-      await reloadCurrentMonth()
+      void loadMonth(viewMonth, false)
     } finally {
       setIsEditingSaving(false)
     }
@@ -449,14 +474,18 @@ export function ScheduleContent() {
     setIsSaving(true)
     setError("")
     try {
-      const result = await workSchedulesApi.cancel(schedule.id, etags[schedule.id] ?? `"${schedule.version}"`)
-      setEtags((current) => ({ ...current, [schedule.id]: result.etag ?? `"${result.data.version}"` }))
-      setSchedules((current) => current.map((item) => item.id === schedule.id ? result.data : item))
-      setSuccess("Đã hủy lịch trực.")
-      await reloadCurrentMonth()
+      await workSchedulesApi.cancel(schedule.id, etags[schedule.id] ?? `"${schedule.version}"`)
+      setEtags((current) => {
+        const next = { ...current }
+        delete next[schedule.id]
+        return next
+      })
+      setSchedules((current) => current.filter((item) => item.id !== schedule.id))
+      setSuccess("Đã hủy lịch trực thành công.")
+      void loadMonth(viewMonth, false)
     } catch (saveError) {
       setError(errorMessage(saveError))
-      await reloadCurrentMonth()
+      void loadMonth(viewMonth, false)
     } finally {
       setIsSaving(false)
     }
@@ -631,9 +660,7 @@ export function ScheduleContent() {
                               title={details}
                               className={cn(
                                 "rounded px-1.5 py-1 text-[10px] leading-tight border transition-colors",
-                                schedule.status === "CANCELLED"
-                                  ? "bg-muted/80 text-muted-foreground line-through opacity-60 border-transparent"
-                                  : isMorning
+                                isMorning
                                   ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50"
                                   : "bg-amber-50 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800/50",
                               )}
@@ -709,7 +736,7 @@ export function ScheduleContent() {
         </Card>
 
         {/* RIGHT COLUMN */}
-        <div className="flex flex-col gap-4 h-full">
+        <div className="flex flex-col gap-4 h-full min-h-0">
           {/* Card 1: Gán lịch ca trực */}
           <Card className="p-4 shadow-sm shrink-0">
             <div className="mb-3 flex items-center justify-between pb-2 border-b border-border/50">
@@ -839,7 +866,7 @@ export function ScheduleContent() {
           </Card>
 
           {/* Card 2: Ca trực ngày đang xem */}
-          <Card className="p-4 shadow-sm flex-1 flex flex-col min-h-0">
+          <Card className="p-4 shadow-sm flex-1 flex flex-col min-h-0 max-h-[340px] xl:max-h-[360px] overflow-hidden">
             <div className="mb-2.5 flex items-center justify-between pb-2 border-b border-border/50 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="p-1 rounded bg-muted text-muted-foreground">
@@ -860,16 +887,11 @@ export function ScheduleContent() {
             </div>
 
             {selectedSchedules.length > 0 ? (
-              <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 min-h-0">
+              <div className="flex-1 overflow-y-auto space-y-2.5 min-h-0 max-h-[250px] xl:max-h-[270px] pr-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {selectedSchedules.map((schedule) => (
                   <div
                     key={schedule.id}
-                    className={cn(
-                      "rounded-lg border p-2.5 text-xs transition-colors",
-                      schedule.status === "ACTIVE"
-                        ? "bg-card border-border hover:border-primary/40 shadow-2xs"
-                        : "bg-muted/40 opacity-60 border-dashed",
-                    )}
+                    className="rounded-lg border p-2.5 text-xs transition-colors bg-card border-border hover:border-primary/40 shadow-2xs"
                   >
                     {/* Top line: Shift badge + Room + Status */}
                     <div className="flex items-center justify-between gap-2">
@@ -891,15 +913,8 @@ export function ScheduleContent() {
                         </span>
                       </div>
 
-                      <span
-                        className={cn(
-                          "px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0",
-                          schedule.status === "ACTIVE"
-                            ? "text-emerald-700 bg-emerald-500/10 border border-emerald-500/20"
-                            : "text-muted-foreground bg-muted",
-                        )}
-                      >
-                        {schedule.status === "ACTIVE" ? "Đang mở" : "Đã hủy"}
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 text-emerald-700 bg-emerald-500/10 border border-emerald-500/20">
+                        Đang mở
                       </span>
                     </div>
 

@@ -14,7 +14,7 @@ export default function AccessPendingPage() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
           <ShieldCheck className="h-6 w-6" />
         </div>
-        <p className="mt-6 text-xs font-bold uppercase tracking-wider text-primary">MediCore Control Center</p>
+        <p className="mt-6 text-xs font-bold uppercase tracking-wider text-primary">NOVAMED Control Center</p>
         <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-foreground">Đăng nhập thành công</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           {isDoctor

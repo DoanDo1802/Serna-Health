@@ -9697,7 +9697,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/CheckIn'
         '400':
           description: Invalid request
           content:
@@ -9756,7 +9756,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/CheckInAppointmentRequest'
   /check-ins/{checkInId}:
     get:
       tags:
@@ -9786,7 +9786,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/CheckIn'
         '400':
           description: Invalid request
           content:
@@ -9851,6 +9851,17 @@ paths:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
+        - name: patientId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/VisitStatus'
         - $ref: '#/components/parameters/TabContext'
       security:
         - sessionCookie: []
@@ -9865,7 +9876,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/VisitPage'
         '400':
           description: Invalid request
           content:
@@ -9945,10 +9956,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Visit'
         '400':
           description: Invalid request
           content:
@@ -10031,10 +10044,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Visit'
         '400':
           description: Invalid request
           content:
@@ -10100,12 +10115,6 @@ paths:
         - SC-R1-CHECKIN-02
         - SC-R1-QUEUE-01
       x-medicore-idempotent: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Resource'
   /visits/{visitId}/actions/cancel:
     post:
       tags:
@@ -10134,10 +10143,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Visit'
         '400':
           description: Invalid request
           content:
@@ -10208,7 +10219,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/ReasonCommand'
   /visits/{visitId}/actions/enter-in-error:
     post:
       tags:
@@ -10237,10 +10248,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Visit'
         '400':
           description: Invalid request
           content:
@@ -10311,7 +10324,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/ReasonCommand'
   /visits/{visitId}/encounters:
     get:
       tags:
@@ -10343,7 +10356,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/EncounterPage'
         '400':
           description: Invalid request
           content:
@@ -10423,10 +10436,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Encounter'
         '400':
           description: Invalid request
           content:
@@ -10508,10 +10523,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Encounter'
         '400':
           description: Invalid request
           content:
@@ -10577,12 +10594,6 @@ paths:
         - SC-R1-CHECKIN-02
         - SC-R1-QUEUE-01
       x-medicore-idempotent: false
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Resource'
   /encounters/{encounterId}/actions/complete:
     post:
       tags:
@@ -10611,10 +10622,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Encounter'
         '400':
           description: Invalid request
           content:
@@ -10680,12 +10693,6 @@ paths:
         - SC-R1-CHECKIN-02
         - SC-R1-QUEUE-01
       x-medicore-idempotent: false
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Resource'
   /encounters/{encounterId}/actions/cancel:
     post:
       tags:
@@ -10714,10 +10721,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Encounter'
         '400':
           description: Invalid request
           content:
@@ -10788,13 +10797,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/ReasonCommand'
   /encounters/{encounterId}/actions/enter-in-error:
     post:
       tags:
         - ReceptionQueue
-      summary: Enter In Error Encounter
-      operationId: enterInErrorEncounter
+      summary: Enter Encounter In Error
+      operationId: enterEncounterInError
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - $ref: '#/components/parameters/CorrelationId'
@@ -10817,10 +10826,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/Encounter'
         '400':
           description: Invalid request
           content:
@@ -10891,7 +10902,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/ReasonCommand'
   /queue-entries:
     get:
       tags:
@@ -12162,7 +12173,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/ClinicalNotePage'
         '400':
           description: Invalid request
           content:
@@ -12245,7 +12256,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/ClinicalNote'
         '400':
           description: Invalid request
           content:
@@ -12303,7 +12314,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ClinicalDraftRequest'
+              $ref: '#/components/schemas/CreateClinicalNoteRequest'
   /clinical-notes/{noteId}:
     get:
       tags:
@@ -12333,7 +12344,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/ClinicalNote'
         '400':
           description: Invalid request
           content:
@@ -12417,7 +12428,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CursorPage'
+                $ref: '#/components/schemas/ClinicalNoteVersionPage'
         '400':
           description: Invalid request
           content:
@@ -12496,10 +12507,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/ClinicalNoteVersion'
         '400':
           description: Invalid request
           content:
@@ -12579,10 +12592,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/ClinicalNoteVersion'
         '400':
           description: Invalid request
           content:
@@ -12652,7 +12667,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ClinicalDraftRequest'
+              $ref: '#/components/schemas/UpdateClinicalNoteDraftRequest'
   /clinical-note-versions/{versionId}/actions/finalize:
     post:
       tags:
@@ -12682,10 +12697,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/ClinicalNoteVersion'
         '400':
           description: Invalid request
           content:
@@ -12750,12 +12767,6 @@ paths:
         - SC-R1-CLIN-02
         - SC-R1-BILL-01
       x-medicore-idempotent: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Resource'
   /clinical-note-versions/{versionId}/actions/amend:
     post:
       tags:
@@ -12785,10 +12796,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/ClinicalNoteVersion'
         '400':
           description: Invalid request
           content:
@@ -12858,7 +12871,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/ReasonCommand'
   /clinical-note-versions/{versionId}/actions/enter-in-error:
     post:
       tags:
@@ -12887,10 +12900,12 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Resource'
+                $ref: '#/components/schemas/ClinicalNoteVersion'
         '400':
           description: Invalid request
           content:
@@ -12960,7 +12975,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Resource'
+              $ref: '#/components/schemas/ReasonCommand'
   /encounters/{encounterId}/diagnoses:
     get:
       tags:
@@ -19529,6 +19544,440 @@ components:
           maxLength: 1024
         hasMore:
           type: boolean
+    VisitStatus:
+      type: string
+      enum:
+        - ARRIVED
+        - IN_PROGRESS
+        - COMPLETED
+        - CANCELLED
+        - ENTERED_IN_ERROR
+    CheckIn:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - appointmentId
+        - visitId
+        - checkedInAt
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        appointmentId:
+          type: string
+          format: uuid
+        visitId:
+          type: string
+          format: uuid
+        checkedInAt:
+          type: string
+          format: date-time
+        checkedInByAccountId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        notes:
+          type:
+            - string
+            - 'null'
+          maxLength: 500
+        createdAt:
+          type: string
+          format: date-time
+    CheckInAppointmentRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        notes:
+          type: string
+          maxLength: 500
+    Visit:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - patientId
+        - appointmentId
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        patientId:
+          type: string
+          format: uuid
+        appointmentId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/VisitStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    VisitPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Visit'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    EncounterStatus:
+      type: string
+      enum:
+        - PLANNED
+        - IN_PROGRESS
+        - COMPLETED
+        - CANCELLED
+        - ENTERED_IN_ERROR
+    EncounterParticipantRoleType:
+      type: string
+      enum:
+        - PRIMARY_PERFORMER
+        - SECONDARY_PERFORMER
+        - CONSULTANT
+    EncounterParticipantStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - COMPLETED
+        - WITHDRAWN
+    EncounterParticipant:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - encounterId
+        - practitionerRoleId
+        - roleType
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        encounterId:
+          type: string
+          format: uuid
+        practitionerRoleId:
+          type: string
+          format: uuid
+        practitionerName:
+          type:
+            - string
+            - 'null'
+        practitionerRoleCode:
+          type:
+            - string
+            - 'null'
+        roleType:
+          $ref: '#/components/schemas/EncounterParticipantRoleType'
+        status:
+          $ref: '#/components/schemas/EncounterParticipantStatus'
+        createdAt:
+          type: string
+          format: date-time
+    Encounter:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - visitId
+        - patientId
+        - departmentId
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        visitId:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        departmentId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/EncounterStatus'
+        startAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        endAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/EncounterParticipant'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    EncounterPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Encounter'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    ClinicalNoteStatus:
+      type: string
+      enum:
+        - DRAFT
+        - FINALIZED
+        - AMENDED
+        - ENTERED_IN_ERROR
+    ClinicalNoteType:
+      type: string
+      enum:
+        - EXAMINATION
+        - CONSULTATION
+        - PROGRESS
+        - DISCHARGE
+    ClinicalNoteVersion:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - clinicalNoteId
+        - versionNumber
+        - status
+        - contentSchemaVersion
+        - content
+        - digest
+        - authorPractitionerRoleId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        clinicalNoteId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/ClinicalNoteStatus'
+        contentSchemaVersion:
+          type: string
+          maxLength: 32
+        content:
+          type: object
+          additionalProperties: true
+        digest:
+          type: string
+          maxLength: 64
+        authorPractitionerRoleId:
+          type: string
+          format: uuid
+        authorPractitionerName:
+          type:
+            - string
+            - 'null'
+        finalizedByPractitionerRoleId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        finalizedByPractitionerName:
+          type:
+            - string
+            - 'null'
+        finalizedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        amendedFromVersionId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        amendmentReason:
+          type:
+            - string
+            - 'null'
+          maxLength: 500
+        errorReason:
+          type:
+            - string
+            - 'null'
+          maxLength: 500
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ClinicalNoteVersionPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClinicalNoteVersion'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    ClinicalNote:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - encounterId
+        - patientId
+        - noteType
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        encounterId:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        noteType:
+          $ref: '#/components/schemas/ClinicalNoteType'
+        status:
+          $ref: '#/components/schemas/ClinicalNoteStatus'
+        currentVersionId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        currentVersion:
+          $ref: '#/components/schemas/ClinicalNoteVersion'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ClinicalNotePage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClinicalNote'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    CreateClinicalNoteRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - noteType
+        - contentSchemaVersion
+        - content
+      properties:
+        noteType:
+          $ref: '#/components/schemas/ClinicalNoteType'
+        contentSchemaVersion:
+          type: string
+          maxLength: 32
+        content:
+          type: object
+          additionalProperties: true
+    UpdateClinicalNoteDraftRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - contentSchemaVersion
+        - content
+      properties:
+        contentSchemaVersion:
+          type: string
+          maxLength: 32
+        content:
+          type: object
+          additionalProperties: true
   parameters:
     RequestId:
       name: X-Request-Id

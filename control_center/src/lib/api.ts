@@ -294,10 +294,176 @@ export const treatmentTemplatesApi = {
   list: (params?: { icd10Code?: string }) => { const query = params?.icd10Code ? `?icd10Code=${encodeURIComponent(params.icd10Code)}` : ""; return request<any[]>(`/admin/treatment-templates${query}`) }, get: (id: string | number) => request<any>(`/admin/treatment-templates/${id}`), create: (data: any) => request<any>("/admin/treatment-templates", { method: "POST", body: JSON.stringify(data) }), update: (id: string | number, data: any) => request<any>(`/admin/treatment-templates/${id}`, { method: "PUT", body: JSON.stringify(data) }), delete: (id: string | number) => request<void>(`/admin/treatment-templates/${id}`, { method: "DELETE" }),
 }
 export const patientsApi = {
-  list: () => request<any[]>("/patients"), get: (id: string | number) => request<any>(`/patients/${id}`), create: (data: any) => request<any>("/patients", { method: "POST", body: JSON.stringify(data) }), update: (id: string | number, data: any) => request<any>(`/patients/${id}`, { method: "PUT", body: JSON.stringify(data) }), delete: (id: string | number) => request<void>(`/patients/${id}`, { method: "DELETE" }),
+  list: () => request<any[]>("/patients"), get: (id: string | number) => request<any>(`/patients/${id}`), create: (data: any) => request<any>("/patients", { method: "POST", body: JSON.stringify(data) }), update: (id: string | number, data: any, etag?: string) => request<any>(`/patients/${id}`, { method: "PATCH", headers: etag ? { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` } : {}, body: JSON.stringify(data) }), delete: (id: string | number) => request<void>(`/patients/${id}`, { method: "DELETE" }),
 }
-export const medicalRecordsApi = {
-  create: (data: any) => request<any>("/clinical/medical-records", { method: "POST", body: JSON.stringify(data) }), getByAppointment: (appointmentId: string | number) => request<any>(`/clinical/medical-records/appointment/${appointmentId}`), listDoctorRecords: () => request<any[]>("/clinical/medical-records/doctor-records"), uploadPdf: (appointmentId: string | number, pdfBlob: Blob) => { const formData = new FormData(); formData.append("file", pdfBlob, `record-${appointmentId}.pdf`); return request<any>(`/clinical/medical-records/appointment/${appointmentId}/upload-pdf`, { method: "POST", body: formData }) },
+export interface EncounterParticipant {
+  id: string
+  encounterId: string
+  practitionerRoleId: string
+  practitionerName?: string
+  practitionerRoleCode?: string
+  roleType: "PRIMARY_PERFORMER" | "SECONDARY_PERFORMER" | "CONSULTANT"
+  status: "ACTIVE" | "COMPLETED" | "WITHDRAWN"
+  createdAt: string
+}
+
+export interface Encounter {
+  id: string
+  version: number
+  visitId: string
+  patientId: string
+  departmentId: string
+  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
+  startAt?: string | null
+  endAt?: string | null
+  participants: EncounterParticipant[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EncounterPage {
+  items: Encounter[]
+  nextCursor?: string | null
+  hasMore: boolean
+}
+
+export interface ClinicalNoteVersion {
+  id: string
+  version: number
+  clinicalNoteId: string
+  versionNumber: number
+  status: "DRAFT" | "FINALIZED" | "AMENDED" | "ENTERED_IN_ERROR"
+  contentSchemaVersion: string
+  content: any
+  digest: string
+  authorPractitionerRoleId: string
+  authorPractitionerName?: string
+  finalizedByPractitionerRoleId?: string | null
+  finalizedByPractitionerName?: string | null
+  finalizedAt?: string | null
+  amendedFromVersionId?: string | null
+  amendmentReason?: string | null
+  errorReason?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ClinicalNote {
+  id: string
+  version: number
+  encounterId: string
+  patientId: string
+  noteType: "EXAMINATION" | "CONSULTATION" | "PROGRESS" | "DISCHARGE"
+  status: "DRAFT" | "FINALIZED" | "AMENDED" | "ENTERED_IN_ERROR"
+  currentVersionId?: string | null
+  currentVersion?: ClinicalNoteVersion | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ClinicalNotePage {
+  items: ClinicalNote[]
+  nextCursor?: string | null
+  hasMore: boolean
+}
+
+export interface CheckInResponse {
+  visit: any
+  encounter: Encounter
+}
+
+function makeIdempotencyKey(prefix = "idemp"): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+export const receptionApi = {
+  checkIn: (appointmentId: string, notes?: string) =>
+    request<CheckInResponse>(`/appointments/${appointmentId}/check-ins`, {
+      method: "POST",
+      headers: { "Idempotency-Key": makeIdempotencyKey("checkin") },
+      body: JSON.stringify({ notes }),
+    }),
+
+  getEncounter: (encounterId: string) =>
+    requestWithMeta<Encounter>(`/encounters/${encounterId}`),
+
+  startEncounter: (encounterId: string, etag: string) =>
+    requestWithMeta<Encounter>(`/encounters/${encounterId}/actions/start`, {
+      method: "POST",
+      headers: {
+        "If-Match": etag.startsWith('"') ? etag : `"${etag}"`,
+        "Idempotency-Key": makeIdempotencyKey("start"),
+      },
+    }),
+
+  completeEncounter: (encounterId: string, etag: string) =>
+    requestWithMeta<Encounter>(`/encounters/${encounterId}/actions/complete`, {
+      method: "POST",
+      headers: {
+        "If-Match": etag.startsWith('"') ? etag : `"${etag}"`,
+        "Idempotency-Key": makeIdempotencyKey("comp"),
+      },
+    }),
+
+  listEncounters: (params?: { practitionerRoleId?: string; date?: string; patientId?: string; status?: string; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.practitionerRoleId) query.set("practitionerRoleId", params.practitionerRoleId)
+    if (params?.date) query.set("date", params.date)
+    if (params?.patientId) query.set("patientId", params.patientId)
+    if (params?.status) query.set("status", params.status)
+    if (params?.limit) query.set("limit", String(params.limit))
+    return request<EncounterPage>(`/encounters?${query.toString()}`)
+  },
+}
+
+export const clinicalCareApi = {
+  listEncounterNotes: (encounterId: string) =>
+    request<ClinicalNotePage>(`/encounters/${encounterId}/clinical-notes`),
+
+  createNote: (encounterId: string, payload: { noteType: string; contentSchemaVersion?: string; content: any }) =>
+    requestWithMeta<ClinicalNote>(`/encounters/${encounterId}/clinical-notes`, {
+      method: "POST",
+      headers: { "Idempotency-Key": makeIdempotencyKey("note") },
+      body: JSON.stringify(payload),
+    }),
+
+  getNote: (noteId: string) =>
+    requestWithMeta<ClinicalNote>(`/clinical-notes/${noteId}`),
+
+  getNoteVersion: (versionId: string) =>
+    requestWithMeta<ClinicalNoteVersion>(`/clinical-note-versions/${versionId}`),
+
+  updateDraft: (versionId: string, etag: string, payload: { contentSchemaVersion?: string; content: any }) =>
+    requestWithMeta<ClinicalNoteVersion>(`/clinical-note-versions/${versionId}`, {
+      method: "PATCH",
+      headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+      body: JSON.stringify(payload),
+    }),
+
+  finalizeNote: (versionId: string, etag: string) =>
+    requestWithMeta<ClinicalNoteVersion>(`/clinical-note-versions/${versionId}/actions/finalize`, {
+      method: "POST",
+      headers: {
+        "If-Match": etag.startsWith('"') ? etag : `"${etag}"`,
+        "Idempotency-Key": makeIdempotencyKey("fin"),
+      },
+    }),
+
+  amendNote: (versionId: string, etag: string, payload: { amendmentReason: string; contentSchemaVersion?: string; content: any }) =>
+    requestWithMeta<ClinicalNoteVersion>(`/clinical-note-versions/${versionId}/actions/amend`, {
+      method: "POST",
+      headers: {
+        "If-Match": etag.startsWith('"') ? etag : `"${etag}"`,
+        "Idempotency-Key": makeIdempotencyKey("amend"),
+      },
+      body: JSON.stringify(payload),
+    }),
+
+  listPatientNotes: (patientId: string, limit = 50, cursor?: string) => {
+    const query = new URLSearchParams({ limit: String(limit) })
+    if (cursor) query.set("cursor", cursor)
+    return request<ClinicalNotePage>(`/patients/${patientId}/clinical-notes?${query.toString()}`)
+  },
 }
 
 export interface PatientAppointment { id: string; version: number; patientId: string; slotId: string; status: string; departmentName: string; roomName: string; serviceName: string; practitionerName: string; practitionerRoleCode: string; startAt: string; endAt: string; session: "MORNING" | "AFTERNOON"; requiredDepositAmount?: string; paidDepositAmount?: string; currency?: string; depositState?: string; canCancel?: boolean; canReschedule?: boolean; createdAt?: string; updatedAt?: string; patientDbId?: string | number; patientName?: string; patientDateOfBirth?: string; specialtyId?: string | number; appointmentDate?: string; timeSlot?: string; symptomsInitial?: string; icdCode?: string; mainDiagnosis?: string; doctorId?: string | number }

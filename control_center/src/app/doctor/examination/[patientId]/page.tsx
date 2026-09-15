@@ -8,7 +8,7 @@ export default function ExaminationRoute({
   searchParams,
 }: {
   params: Promise<{ patientId: string }>
-  searchParams: Promise<{ appointmentId?: string }>
+  searchParams: Promise<{ appointmentId?: string; encounterId?: string }>
 }) {
   const resolvedParams = use(params)
   const resolvedSearchParams = use(searchParams)
@@ -17,6 +17,7 @@ export default function ExaminationRoute({
     <ExaminationPageWrapper
       patientId={resolvedParams.patientId}
       appointmentId={resolvedSearchParams.appointmentId}
+      encounterId={resolvedSearchParams.encounterId}
     />
   )
 }

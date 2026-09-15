@@ -1431,3 +1431,185 @@ schemas:
       items: { type: array, items: { $ref: '#/schemas/PatientDuplicateCandidate' } }
       nextCursor: { type: [string, 'null'], maxLength: 1024 }
       hasMore: { type: boolean }
+
+  VisitStatus:
+    type: string
+    enum: [ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED, ENTERED_IN_ERROR]
+
+  CheckIn:
+    type: object
+    additionalProperties: false
+    required: [id, version, appointmentId, visitId, checkedInAt, createdAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      appointmentId: { type: string, format: uuid }
+      visitId: { type: string, format: uuid }
+      checkedInAt: { type: string, format: date-time }
+      checkedInByAccountId: { type: [string, 'null'], format: uuid }
+      notes: { type: [string, 'null'], maxLength: 500 }
+      createdAt: { type: string, format: date-time }
+
+  CheckInAppointmentRequest:
+    type: object
+    additionalProperties: false
+    properties:
+      notes: { type: string, maxLength: 500 }
+
+  Visit:
+    type: object
+    additionalProperties: false
+    required: [id, version, patientId, appointmentId, status, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      patientId: { type: string, format: uuid }
+      appointmentId: { type: string, format: uuid }
+      status: { $ref: '#/schemas/VisitStatus' }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+
+  VisitPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/Visit' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  EncounterStatus:
+    type: string
+    enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED, ENTERED_IN_ERROR]
+
+  EncounterParticipantRoleType:
+    type: string
+    enum: [PRIMARY_PERFORMER, SECONDARY_PERFORMER, CONSULTANT]
+
+  EncounterParticipantStatus:
+    type: string
+    enum: [ACTIVE, COMPLETED, WITHDRAWN]
+
+  EncounterParticipant:
+    type: object
+    additionalProperties: false
+    required: [id, encounterId, practitionerRoleId, roleType, status, createdAt]
+    properties:
+      id: { type: string, format: uuid }
+      encounterId: { type: string, format: uuid }
+      practitionerRoleId: { type: string, format: uuid }
+      practitionerName: { type: [string, 'null'] }
+      practitionerRoleCode: { type: [string, 'null'] }
+      roleType: { $ref: '#/schemas/EncounterParticipantRoleType' }
+      status: { $ref: '#/schemas/EncounterParticipantStatus' }
+      createdAt: { type: string, format: date-time }
+
+  Encounter:
+    type: object
+    additionalProperties: false
+    required: [id, version, visitId, patientId, departmentId, status, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      visitId: { type: string, format: uuid }
+      patientId: { type: string, format: uuid }
+      departmentId: { type: string, format: uuid }
+      status: { $ref: '#/schemas/EncounterStatus' }
+      startAt: { type: [string, 'null'], format: date-time }
+      endAt: { type: [string, 'null'], format: date-time }
+      participants: { type: array, items: { $ref: '#/schemas/EncounterParticipant' } }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+
+  EncounterPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/Encounter' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  ClinicalNoteStatus:
+    type: string
+    enum: [DRAFT, FINALIZED, AMENDED, ENTERED_IN_ERROR]
+
+  ClinicalNoteType:
+    type: string
+    enum: [EXAMINATION, CONSULTATION, PROGRESS, DISCHARGE]
+
+  ClinicalNoteVersion:
+    type: object
+    additionalProperties: false
+    required: [id, version, clinicalNoteId, versionNumber, status, contentSchemaVersion, content, digest, authorPractitionerRoleId, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      clinicalNoteId: { type: string, format: uuid }
+      versionNumber: { type: integer, minimum: 1 }
+      status: { $ref: '#/schemas/ClinicalNoteStatus' }
+      contentSchemaVersion: { type: string, maxLength: 32 }
+      content: { type: object, additionalProperties: true }
+      digest: { type: string, maxLength: 64 }
+      authorPractitionerRoleId: { type: string, format: uuid }
+      authorPractitionerName: { type: [string, 'null'] }
+      finalizedByPractitionerRoleId: { type: [string, 'null'], format: uuid }
+      finalizedByPractitionerName: { type: [string, 'null'] }
+      finalizedAt: { type: [string, 'null'], format: date-time }
+      amendedFromVersionId: { type: [string, 'null'], format: uuid }
+      amendmentReason: { type: [string, 'null'], maxLength: 500 }
+      errorReason: { type: [string, 'null'], maxLength: 500 }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+
+  ClinicalNoteVersionPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/ClinicalNoteVersion' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  ClinicalNote:
+    type: object
+    additionalProperties: false
+    required: [id, version, encounterId, patientId, noteType, status, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      encounterId: { type: string, format: uuid }
+      patientId: { type: string, format: uuid }
+      noteType: { $ref: '#/schemas/ClinicalNoteType' }
+      status: { $ref: '#/schemas/ClinicalNoteStatus' }
+      currentVersionId: { type: [string, 'null'], format: uuid }
+      currentVersion: { $ref: '#/schemas/ClinicalNoteVersion' }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+
+  ClinicalNotePage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/ClinicalNote' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  CreateClinicalNoteRequest:
+    type: object
+    additionalProperties: false
+    required: [noteType, contentSchemaVersion, content]
+    properties:
+      noteType: { $ref: '#/schemas/ClinicalNoteType' }
+      contentSchemaVersion: { type: string, maxLength: 32 }
+      content: { type: object, additionalProperties: true }
+
+  UpdateClinicalNoteDraftRequest:
+    type: object
+    additionalProperties: false
+    required: [contentSchemaVersion, content]
+    properties:
+      contentSchemaVersion: { type: string, maxLength: 32 }
+      content: { type: object, additionalProperties: true }
+

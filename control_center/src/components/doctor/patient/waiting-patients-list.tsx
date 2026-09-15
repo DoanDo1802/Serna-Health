@@ -22,7 +22,7 @@ import {
   CheckCircle2,
   Activity,
 } from "lucide-react"
-import { practitionersApi, type PractitionerView } from "@/lib/api"
+import { receptionApi, practitionersApi, type PractitionerView } from "@/lib/api"
 import type { Patient, Appointment } from "@/types/medical"
 import { cn } from "@/lib/utils"
 
@@ -238,7 +238,22 @@ export function WaitingPatientsList() {
 
   const handleStartExamination = async (patient: Patient, appointment: Appointment | null) => {
     try {
+      let encounterId: string | undefined = undefined
+
       if (appointment) {
+        try {
+          const checkInRes = await receptionApi.checkIn(appointment.id, "Bắt đầu lượt khám")
+          const encounter = checkInRes?.encounter
+          if (encounter) {
+            encounterId = encounter.id
+            if (encounter.status === "PLANNED") {
+              await receptionApi.startEncounter(encounter.id, String(encounter.version))
+            }
+          }
+        } catch (apiErr) {
+          console.warn("Kích hoạt lượt khám qua receptionApi cảnh báo:", apiErr)
+        }
+
         await updateAppointment(appointment.id, {
           ...appointment,
           status: "IN_PROGRESS",
@@ -250,8 +265,11 @@ export function WaitingPatientsList() {
         status: "in-examination",
       })
 
-      const appointmentQuery = appointment ? `?appointmentId=${appointment.id}` : ""
-      router.push(`/doctor/examination/${patient.id}${appointmentQuery}`)
+      const params = new URLSearchParams()
+      if (appointment) params.set("appointmentId", appointment.id)
+      if (encounterId) params.set("encounterId", encounterId)
+      const queryStr = params.toString() ? `?${params.toString()}` : ""
+      router.push(`/doctor/examination/${patient.id}${queryStr}`)
     } catch (error) {
       console.error("Không thể bắt đầu khám bệnh", error)
       toast({

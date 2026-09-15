@@ -419,8 +419,8 @@ export default function MedicalRecordPdfDocument(props: MedicalRecordPdfProps) {
         <View style={s.headerRow}>
           <View>
             <View style={s.clinicTitleContainer}>
-              <Text style={s.clinicLogoText}>MC</Text>
-              <Text style={s.clinicName}>MEDICORE CLINIC</Text>
+              <Text style={s.clinicLogoText}>NM</Text>
+              <Text style={s.clinicName}>NOVAMED CLINIC</Text>
             </View>
             <Text style={s.clinicSub}>Hệ thống y tế kỹ thuật số hiện đại</Text>
           </View>
@@ -648,7 +648,7 @@ export default function MedicalRecordPdfDocument(props: MedicalRecordPdfProps) {
             <Text style={s.qrLabel}>Tra cứu hồ sơ</Text>
           </View>
           <View style={s.bottomRight}>
-            <Text>Hệ thống hồ sơ bệnh án điện tử MediCore</Text>
+            <Text>Hệ thống hồ sơ bệnh án điện tử NOVAMED</Text>
             <Text>Thời gian xuất: {now.toLocaleString("vi-VN")}</Text>
           </View>
         </View>

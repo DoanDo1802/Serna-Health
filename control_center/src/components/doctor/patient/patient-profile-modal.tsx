@@ -171,7 +171,7 @@ export function PatientProfileModal({
                     {/* Header phòng khám */}
                     <div className="flex justify-between items-start pb-3 border-b border-border text-xs">
                       <div>
-                        <h4 className="font-extrabold text-primary uppercase tracking-wider">Medicore Clinic</h4>
+                        <h4 className="font-extrabold text-primary uppercase tracking-wider">NOVAMED CLINIC</h4>
                         <p className="text-[9px] text-muted-foreground mt-0.5">Hệ thống y tế kỹ thuật số hiện đại</p>
                       </div>
                       <div className="text-right font-mono">

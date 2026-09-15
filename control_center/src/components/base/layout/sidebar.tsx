@@ -7,6 +7,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useAuth } from "@/components/base/providers/auth-provider"
 import { Button } from "@/components/base/ui/button"
+import { NovaLogo } from "@/components/base/nova-logo"
 
 export function Sidebar() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
@@ -30,16 +31,11 @@ export function Sidebar() {
     <aside className="fixed top-0 left-0 w-64 bg-card border-r border-border p-4 h-screen flex flex-col justify-between lg:flex z-40">
       <div>
         <div className="flex items-center gap-2 mb-6 group cursor-pointer">
-          <Link href={isAdmin ? "/" : "/access-pending"} className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center transition-transform group-hover:scale-110 duration-300">
-              <span className="relative flex items-center justify-center">
-                <span className="absolute w-4 h-1 bg-primary-foreground rounded-full" />
-                <span className="absolute w-1 h-4 bg-primary-foreground rounded-full" />
-              </span>
-            </div>
+          <Link href={isAdmin ? "/" : "/access-pending"} className="flex items-center gap-2.5">
+            <NovaLogo size={32} />
             <div className="flex flex-col leading-tight">
-              <span className="text-lg font-semibold text-foreground">MediCore</span>
-              <span className="text-[10px] text-muted-foreground">Hệ thống bệnh án điện tử</span>
+              <span className="text-lg font-bold tracking-tight text-foreground">NOVAMED</span>
+              <span className="text-[10px] text-muted-foreground font-medium">Control Center</span>
             </div>
           </Link>
         </div>

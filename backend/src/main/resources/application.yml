@@ -46,7 +46,7 @@ medicore:
       max-failures: 5
       duration: 15m
     session:
-      idle-timeout: 30m
+      idle-timeout: 12h
       absolute-timeout: 12h
       cookie-name-prefix: __Host-MEDICORE_SESSION_
       secure-cookie: true

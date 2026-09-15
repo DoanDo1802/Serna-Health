@@ -23,6 +23,16 @@ import {
   X,
   ShieldAlert,
 } from 'lucide-react';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/base/ui/table';
+import { EmptyState } from '@/components/base/ui/empty-state';
+import { Button } from '@/components/base/ui/button';
 
 interface BookingPageProps {
   onRescheduleComplete?: (newAppointmentId: string) => void;
@@ -250,21 +260,44 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
     departments.find((department) => department.id === departmentId)?.name || 'Khoa Khám Bệnh';
   const serviceName = (serviceId: string) =>
     services.find((service) => service.id === serviceId)?.name || 'Dịch vụ khám';
+
+  const isSlotPast = (startAt: string, disabledReason?: string | null, localDate?: string) => {
+    if (disabledReason === 'SLOT_PAST') return true;
+    const todayStr = getRelativeDate(0);
+    if (localDate && localDate < todayStr) return true;
+    const start = new Date(startAt);
+    if (!isNaN(start.getTime())) {
+      if (start.getTime() <= Date.now()) return true;
+      const slotYear = start.getFullYear();
+      const slotMonth = String(start.getMonth() + 1).padStart(2, '0');
+      const slotDay = String(start.getDate()).padStart(2, '0');
+      if (`${slotYear}-${slotMonth}-${slotDay}` < todayStr) return true;
+    }
+    return false;
+  };
+
   const isNormalBooking = !isRescheduleMode;
-  const normalSessions = bookingSessions.filter((session) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase().trim();
-    return serviceName(session.serviceId).toLowerCase().includes(query)
-      || departmentName(session.departmentId).toLowerCase().includes(query);
-  });
-  const filteredSlots = enrichedSlots.filter((slot) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase().trim();
-    return slot.serviceName?.toLowerCase().includes(query)
-      || slot.departmentName?.toLowerCase().includes(query)
-      || slot.practitionerName?.toLowerCase().includes(query)
-      || slot.roomName?.toLowerCase().includes(query);
-  });
+  const normalSessions = bookingSessions
+    .filter((session) => !isSlotPast(session.startAt, session.disabledReason, session.localDate))
+    .filter((session) => {
+      if (!searchQuery.trim()) return true;
+      const query = searchQuery.toLowerCase().trim();
+      return serviceName(session.serviceId).toLowerCase().includes(query)
+        || departmentName(session.departmentId).toLowerCase().includes(query);
+    })
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+
+  const filteredSlots = enrichedSlots
+    .filter((slot) => !isSlotPast(slot.startAt, slot.disabledReason))
+    .filter((slot) => {
+      if (!searchQuery.trim()) return true;
+      const query = searchQuery.toLowerCase().trim();
+      return slot.serviceName?.toLowerCase().includes(query)
+        || slot.departmentName?.toLowerCase().includes(query)
+        || slot.practitionerName?.toLowerCase().includes(query)
+        || slot.roomName?.toLowerCase().includes(query);
+    })
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
   const displayItems = isNormalBooking ? normalSessions : filteredSlots;
   const selectedNormalSession = isNormalBooking && selectedSlotForDetail
     ? selectedSlotForDetail as BookingSessionAvailability
@@ -326,7 +359,7 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
         {/* ========================================================= */}
         {/* LEFT COLUMN: FILTERS CARD */}
         {/* ========================================================= */}
-        <div className="w-full lg:w-72 xl:w-80 shrink-0 bg-surface border border-outline-variant/80 rounded-3xl p-5 shadow-card flex flex-col gap-4 min-h-[540px]">
+        <div className="w-full lg:w-72 xl:w-80 shrink-0 bg-surface border border-outline-variant/80 rounded-3xl p-5 shadow-card flex flex-col gap-4 lg:h-[650px] lg:min-h-[650px] overflow-y-auto">
           {/* Header */}
           <div className="flex items-center justify-between pb-3.5 border-b border-outline-variant/60">
             <h3 className="text-xs sm:text-sm font-bold tracking-tight text-content-primary m-0">
@@ -451,6 +484,7 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
             </label>
             <input
               type="date"
+              min={getRelativeDate(0)}
               value={filters.date}
               onChange={(e) => {
                 setDateFilter(e.target.value);
@@ -517,9 +551,9 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
         {/* ========================================================= */}
         {/* RIGHT COLUMN: DATA TABLE CARD */}
         {/* ========================================================= */}
-        <div className="flex-1 min-w-0 w-full bg-surface border border-outline-variant/80 rounded-3xl overflow-hidden shadow-card flex flex-col justify-between min-h-[540px]">
+        <div className="flex-1 min-w-0 w-full bg-surface border border-outline-variant/80 rounded-3xl overflow-hidden shadow-card flex flex-col justify-between lg:h-[650px] lg:min-h-[650px]">
           {/* Top Bar inside Card */}
-          <div className="p-3.5 sm:p-4 px-5 flex items-center justify-between gap-3 border-b border-outline-variant/60 bg-surface-container/20">
+          <div className="p-3.5 sm:p-4 px-5 flex items-center justify-between gap-3 border-b border-outline-variant/60 bg-surface-container/20 shrink-0">
             <span className="text-xs font-semibold text-content-secondary">
               Danh sách ca khám
             </span>
@@ -588,129 +622,131 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
               </p>
             </div>
           ) : displayItems.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-content-secondary min-h-[360px]">
-              <h3 className="text-base font-bold tracking-tight text-content-primary m-0 mb-1">
-                {searchQuery ? 'Không tìm thấy ca khám phù hợp' : 'Chưa có ca khám nào'}
-              </h3>
-              <p className="text-xs text-content-secondary max-w-sm mx-auto mb-5">
-                {searchQuery
-                  ? 'Thử thay đổi từ khóa tìm kiếm hoặc chọn bộ lọc khác ở cột bên trái.'
-                  : 'Không có ca khám nào mở theo tiêu chí đã chọn. Vui lòng đổi bộ lọc.'}
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  resetFilters();
-                  setSearchQuery('');
-                  setCurrentPage(1);
-                }}
-                className="px-5 py-2 rounded-full bg-primary hover:bg-primary-hover text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs inline-flex items-center gap-1.5"
-              >
-                <span>Xem tất cả ca khám</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+            <div className="p-6 sm:p-8 flex-1 flex flex-col justify-center">
+              <EmptyState
+                icon={<CalendarIcon className="w-8 h-8" />}
+                title={searchQuery ? 'Không tìm thấy ca khám phù hợp' : 'Chưa có ca khám nào'}
+                description={
+                  searchQuery
+                    ? 'Thử thay đổi từ khóa tìm kiếm hoặc chọn bộ lọc khác ở cột bên trái.'
+                    : 'Không có ca khám nào mở theo tiêu chí đã chọn. Vui lòng đổi bộ lọc.'
+                }
+                action={
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      resetFilters();
+                      setSearchQuery('');
+                      setCurrentPage(1);
+                    }}
+                    size="sm"
+                    className="gap-1.5"
+                  >
+                    <span>Xem tất cả ca khám</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Button>
+                }
+              />
             </div>
           ) : (
-            <div className="flex-1 overflow-x-auto flex flex-col justify-between">
-              <table className="w-full text-left border-collapse min-w-[540px]">
-                <thead
-                  style={{ backgroundColor: 'rgba(255, 255, 255, 0.03)' }}
-                  className="border-b border-outline-variant/60"
-                >
-                  <tr className="border-b border-outline-variant/60 !bg-transparent text-[11px] font-bold text-content-secondary uppercase tracking-wider">
-                    <th
-                      style={{
-                        backgroundColor: 'transparent',
-                        color: 'rgba(255, 255, 255, 0.65)',
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                      }}
-                      className="py-3.5 px-5 font-semibold w-[28%]"
-                    >
-                      Thời gian khám
-                    </th>
-                    <th
-                      style={{
-                        backgroundColor: 'transparent',
-                        color: 'rgba(255, 255, 255, 0.65)',
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                      }}
-                      className="py-3.5 px-5 font-semibold w-[46%]"
-                    >
-                      {isNormalBooking ? 'Dịch vụ & khoa' : 'Dịch vụ & Bác sĩ'}
-                    </th>
-                    <th
-                      style={{
-                        backgroundColor: 'transparent',
-                        color: 'rgba(255, 255, 255, 0.65)',
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                      }}
-                      className="py-3.5 px-5 font-semibold w-[14%]"
-                    >
-                      Giá khám
-                    </th>
-                    <th
-                      style={{
-                        backgroundColor: 'transparent',
-                        color: 'rgba(255, 255, 255, 0.65)',
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                      }}
-                      className="py-3.5 px-5 text-right font-semibold w-[12%]"
-                    >
-                      <span className="sr-only">Thao tác</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/40 text-xs sm:text-sm">
-                  {paginatedItems.map((item) => {
-                    const session = item as BookingSessionAvailability | EnrichedAppointmentSlot;
-                    const { dateStr, timeStr } = formatSlotDateTime(session.startAt, session.endAt);
-                    const normalSession = isNormalBooking ? session as BookingSessionAvailability : null;
-                    const slot = isNormalBooking ? null : session as EnrichedAppointmentSlot;
-                    const service = normalSession ? services.find((value) => value.id === normalSession.serviceId) : null;
-                    const available = session.canCreateHold !== false;
-                    return (
-                      <tr key={session.id} onClick={() => available && handleSelectSlot(session)} className={`transition-colors group ${available ? 'cursor-pointer hover:bg-surface-container/30' : 'opacity-65 cursor-not-allowed hover:bg-surface-container/15'}`}>
-                        <td className="py-4 px-5 whitespace-nowrap align-middle"><div className="font-semibold text-content-primary">{dateStr}</div><div className="text-xs text-content-muted font-mono mt-0.5">{timeStr}</div></td>
-                        <td className="py-4 px-5 align-middle"><div className="font-bold text-content-primary group-hover:text-primary transition-colors text-xs sm:text-sm line-clamp-1">{normalSession ? serviceName(normalSession.serviceId) : slot!.serviceName}</div><div className="text-xs text-content-muted mt-0.5 line-clamp-1">{normalSession ? `${departmentName(normalSession.departmentId)} · Bác sĩ được hệ thống phân công` : `${slot!.practitionerName} · ${slot!.departmentName}`}</div></td>
-                        <td className="py-4 px-5 whitespace-nowrap align-middle"><div className="font-mono font-bold text-content-primary text-xs sm:text-sm">{normalSession ? formatPrice(service?.priceAmount ?? 0, service?.priceCurrency ?? 'VND') : formatPrice(slot!.priceAmount, slot!.priceCurrency)}</div>{normalSession && <div className="text-[11px] text-content-muted mt-0.5">Còn {normalSession.remainingCapacity}/{normalSession.totalCapacity} chỗ</div>}{!available && <span className="inline-flex items-center gap-1 mt-0.5 text-[11px] font-medium text-rose-400"><span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" /><span>{formatSlotShortReason(session.disabledReason)}</span></span>}</td>
-                        <td className="py-4 px-5 text-right whitespace-nowrap align-middle">{!available ? <span className="text-xs font-medium text-content-muted">Không khả dụng</span> : <button type="button" onClick={(event) => { event.stopPropagation(); handleSelectSlot(session); }} disabled={bookingInProgress} className="px-3.5 py-1.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-xs hover:shadow-card transition-all inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40"><span>Chọn ca</span><ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" /></button>}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="flex-1 min-h-0 flex flex-col justify-between overflow-hidden">
+              <div className="w-full overflow-x-auto flex-1">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[28%]">Thời gian khám</TableHead>
+                      <TableHead className="w-[46%]">
+                        {isNormalBooking ? 'Dịch vụ & Khoa' : 'Dịch vụ & Bác sĩ'}
+                      </TableHead>
+                      <TableHead className="w-[14%]">Giá khám</TableHead>
+                      <TableHead className="w-[12%] text-right pr-5">Thao tác</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedItems.map((item) => {
+                      const session = item as BookingSessionAvailability | EnrichedAppointmentSlot;
+                      const { dateStr, timeStr } = formatSlotDateTime(session.startAt, session.endAt);
+                      const normalSession = isNormalBooking ? session as BookingSessionAvailability : null;
+                      const slot = isNormalBooking ? null : session as EnrichedAppointmentSlot;
+                      const service = normalSession ? services.find((value) => value.id === normalSession.serviceId) : null;
+                      const available = session.canCreateHold !== false;
+                      return (
+                        <TableRow
+                          key={session.id}
+                          onClick={() => available && handleSelectSlot(session)}
+                          className={`h-[62px] group ${available ? 'cursor-pointer' : 'opacity-65 cursor-not-allowed'}`}
+                        >
+                          <TableCell className="py-2.5 sm:py-3 whitespace-nowrap">
+                            <div className="font-semibold text-content-primary">{dateStr}</div>
+                            <div className="text-xs text-content-muted font-mono mt-0.5">{timeStr}</div>
+                          </TableCell>
+                          <TableCell className="py-2.5 sm:py-3">
+                            <div className="font-bold text-content-primary group-hover:text-primary transition-colors text-xs sm:text-sm line-clamp-1">
+                              {normalSession ? serviceName(normalSession.serviceId) : slot!.serviceName}
+                            </div>
+                            <div className="text-xs text-content-muted mt-0.5 line-clamp-1">
+                              {normalSession ? `${departmentName(normalSession.departmentId)} · Bác sĩ phân công tự động` : `${slot!.practitionerName} · ${slot!.departmentName}`}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2.5 sm:py-3 whitespace-nowrap">
+                            <div className="font-mono font-bold text-content-primary text-xs sm:text-sm">
+                              {normalSession ? formatPrice(service?.priceAmount ?? 0, service?.priceCurrency ?? 'VND') : formatPrice(slot!.priceAmount, slot!.priceCurrency)}
+                            </div>
+                            {normalSession && <div className="text-[11px] text-content-muted mt-0.5">Còn {normalSession.remainingCapacity}/{normalSession.totalCapacity} chỗ</div>}
+                            {!available && <span className="inline-flex items-center gap-1 mt-0.5 text-[11px] font-medium text-rose-400"><span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" /><span>{formatSlotShortReason(session.disabledReason)}</span></span>}
+                          </TableCell>
+                          <TableCell className="py-2.5 sm:py-3 text-right whitespace-nowrap pr-5">
+                            {!available ? (
+                              <span className="text-xs font-medium text-content-muted">Không khả dụng</span>
+                            ) : (
+                              <Button
+                                type="button"
+                                onClick={(event) => { event.stopPropagation(); handleSelectSlot(session); }}
+                                disabled={bookingInProgress}
+                                size="sm"
+                                className="gap-1.5"
+                              >
+                                <span>Chọn ca</span>
+                                <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
 
               {/* Table Footer with Simple Prev/Next Pagination */}
-              {totalPages > 1 && (
-                <div className="mt-auto px-5 py-3 border-t border-outline-variant/60 bg-surface-container/20 flex items-center justify-end gap-3 text-xs text-content-secondary">
-                  <span className="font-medium text-content-secondary">
-                    Trang <strong className="text-content-primary font-mono">{currentPage}</strong> / <span className="font-mono">{totalPages}</span>
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="px-3 py-1.5 rounded-full border border-outline-variant hover:bg-surface-container hover:text-content-primary disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-content-secondary transition-colors cursor-pointer inline-flex items-center gap-1 font-medium text-xs"
-                      aria-label="Trang trước"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                      <span>Trước</span>
-                    </button>
+              <div className="mt-auto shrink-0 px-5 py-3 border-t border-outline-variant/60 bg-surface-container/20 flex items-center justify-end gap-3 text-xs text-content-secondary">
+                <span className="font-medium text-content-secondary">
+                  Trang <strong className="text-content-primary font-mono">{currentPage}</strong> / <span className="font-mono">{totalPages}</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    className="px-3 py-1.5 rounded-full border border-outline-variant hover:bg-surface-container hover:text-content-primary disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-content-secondary transition-colors cursor-pointer inline-flex items-center gap-1 font-medium text-xs"
+                    aria-label="Trang trước"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Trước</span>
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage >= totalPages}
-                      className="px-3 py-1.5 rounded-full border border-outline-variant hover:bg-surface-container hover:text-content-primary disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-content-secondary transition-colors cursor-pointer inline-flex items-center gap-1 font-medium text-xs"
-                      aria-label="Trang sau"
-                    >
-                      <span>Sau</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                    className="px-3 py-1.5 rounded-full border border-outline-variant hover:bg-surface-container hover:text-content-primary disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-content-secondary transition-colors cursor-pointer inline-flex items-center gap-1 font-medium text-xs"
+                    aria-label="Trang sau"
+                  >
+                    <span>Sau</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-              )}
+              </div>
             </div>
           )}
         </div>
