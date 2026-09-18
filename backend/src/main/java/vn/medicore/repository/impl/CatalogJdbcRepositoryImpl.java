@@ -91,7 +91,7 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
 
     @Override
     public int countRoomsByDepartmentId(UUID departmentId) {
-        Integer count = jdbc.queryForObject("select count(*) from room where department_id = ?", Integer.class, departmentId);
+        Integer count = jdbc.queryForObject("select count(*) from room_department where department_id = ?", Integer.class, departmentId);
         return count != null ? count : 0;
     }
 
@@ -119,16 +119,15 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     public void insertRoom(RoomRow row) {
         update("""
                 insert into room(id, department_id, code, name, active, version, created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, null, ?, ?, ?, ?, ?, ?)
                 """,
-                row.id(), row.departmentId(), row.code(), row.name(),
-                row.active(), row.version(), ts(row.createdAt()), ts(row.updatedAt()));
+                row.id(), row.code(), row.name(), row.active(), row.version(), ts(row.createdAt()), ts(row.updatedAt()));
     }
 
     @Override
     public Optional<RoomView> roomById(UUID id) {
         return queryOne("""
-                select id, department_id, code, name, active, version, created_at, updated_at
+                select id, code, name, active, version, created_at, updated_at
                 from room where id = ?
                 """, this::roomView, id);
     }
@@ -136,35 +135,24 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     @Override
     public Optional<RoomView> roomByIdForUpdate(UUID id) {
         return queryOne("""
-                select id, department_id, code, name, active, version, created_at, updated_at
+                select id, code, name, active, version, created_at, updated_at
                 from room where id = ? for update
                 """, this::roomView, id);
     }
 
     @Override
     public List<RoomView> listRooms(UUID departmentId, Boolean active, int limit, int offset) {
-        if (departmentId != null && active != null) {
-            return jdbc.query("""
-                    select id, department_id, code, name, active, version, created_at, updated_at
-                    from room where department_id = ? and active = ? order by name, id limit ? offset ?
-                    """, this::roomView, departmentId, active, limit, offset);
-        }
-        if (departmentId != null) {
-            return jdbc.query("""
-                    select id, department_id, code, name, active, version, created_at, updated_at
-                    from room where department_id = ? order by name, id limit ? offset ?
-                    """, this::roomView, departmentId, limit, offset);
-        }
-        if (active != null) {
-            return jdbc.query("""
-                    select id, department_id, code, name, active, version, created_at, updated_at
-                    from room where active = ? order by name, id limit ? offset ?
-                    """, this::roomView, active, limit, offset);
-        }
-        return jdbc.query("""
-                select id, department_id, code, name, active, version, created_at, updated_at
-                from room order by name, id limit ? offset ?
-                """, this::roomView, limit, offset);
+        String filters = "";
+        if (departmentId != null) filters += " join room_department rd on rd.room_id = r.id";
+        filters += " where 1 = 1";
+        if (departmentId != null) filters += " and rd.department_id = ?";
+        if (active != null) filters += " and r.active = ?";
+        String sql = "select r.id, r.code, r.name, r.active, r.version, r.created_at, r.updated_at from room r"
+                + filters + " order by r.name, r.id limit ? offset ?";
+        if (departmentId != null && active != null) return jdbc.query(sql, this::roomView, departmentId, active, limit, offset);
+        if (departmentId != null) return jdbc.query(sql, this::roomView, departmentId, limit, offset);
+        if (active != null) return jdbc.query(sql, this::roomView, active, limit, offset);
+        return jdbc.query(sql, this::roomView, limit, offset);
     }
 
     @Override
@@ -178,6 +166,76 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
                 ts(row.updatedAt()), row.id(), expectedVersion);
         if (updated != 1) throw new StaleVersionException();
         return updated;
+    }
+
+    @Override
+    public List<UUID> roomDepartmentIds(UUID roomId) {
+        return jdbc.query("select department_id from room_department where room_id = ? order by department_id",
+                (rs, rowNum) -> rs.getObject(1, UUID.class), roomId);
+    }
+
+    @Override
+    public List<UUID> roomServiceIds(UUID roomId) {
+        return jdbc.query("select service_id from room_service where room_id = ? order by service_id",
+                (rs, rowNum) -> rs.getObject(1, UUID.class), roomId);
+    }
+
+    @Override
+    public void replaceRoomAssignments(UUID roomId, List<UUID> departmentIds, List<UUID> serviceIds, Instant createdAt) {
+        update("delete from room_department where room_id = ?", roomId);
+        update("delete from room_service where room_id = ?", roomId);
+        for (UUID departmentId : departmentIds) {
+            update("insert into room_department(room_id, department_id, created_at) values (?, ?, ?)",
+                    roomId, departmentId, ts(createdAt));
+        }
+        for (UUID serviceId : serviceIds) {
+            update("insert into room_service(room_id, service_id, created_at) values (?, ?, ?)",
+                    roomId, serviceId, ts(createdAt));
+        }
+    }
+
+    @Override
+    public int countActiveOrFutureSchedulesUsingRoomDepartmentOrService(
+            UUID roomId, List<UUID> removedDepartmentIds, List<UUID> removedServiceIds, Instant now) {
+        if (removedDepartmentIds.isEmpty() && removedServiceIds.isEmpty()) return 0;
+        String sql = """
+                select count(*)
+                from work_schedule ws
+                join booking_session bs on bs.id = ws.booking_session_id
+                where ws.room_id = ? and ws.status = 'ACTIVE' and bs.status = 'ACTIVE' and bs.end_at > ?
+                  and ((cardinality(?::uuid[]) > 0 and bs.department_id = any(?::uuid[]))
+                    or (cardinality(?::uuid[]) > 0 and bs.service_id = any(?::uuid[])))
+                """;
+        java.sql.Array departmentArray = jdbc.execute((java.sql.Connection connection) ->
+                connection.createArrayOf("uuid", removedDepartmentIds.toArray(UUID[]::new)));
+        java.sql.Array serviceArray = jdbc.execute((java.sql.Connection connection) ->
+                connection.createArrayOf("uuid", removedServiceIds.toArray(UUID[]::new)));
+        try {
+            Integer count = jdbc.queryForObject(sql, Integer.class, roomId, ts(now), departmentArray, departmentArray,
+                    serviceArray, serviceArray);
+            return count == null ? 0 : count;
+        } finally {
+            try { departmentArray.free(); } catch (java.sql.SQLException ignored) { }
+            try { serviceArray.free(); } catch (java.sql.SQLException ignored) { }
+        }
+    }
+
+    @Override
+    public int countSchedulesByRoomId(UUID roomId) {
+        Integer count = jdbc.queryForObject(
+                "select count(*) from work_schedule where room_id = ?",
+                Integer.class, roomId);
+        return count == null ? 0 : count;
+    }
+
+    @Override
+    public int deleteRoom(UUID roomId, long expectedVersion) {
+        update("delete from room_department where room_id = ?", roomId);
+        update("delete from room_service where room_id = ?", roomId);
+        update("update facility_floor_element set room_id = null where room_id = ?", roomId);
+        int deleted = update("delete from room where id = ? and version = ?", roomId, expectedVersion);
+        if (deleted != 1) throw new StaleVersionException();
+        return deleted;
     }
 
     // ===========================================================
@@ -611,7 +669,6 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
         return new RoomView(
                 uuid(rs, "id"),
                 rs.getLong("version"),
-                uuid(rs, "department_id"),
                 rs.getString("code"),
                 rs.getString("name"),
                 rs.getBoolean("active"),

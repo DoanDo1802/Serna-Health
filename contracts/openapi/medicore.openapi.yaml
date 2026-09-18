@@ -3745,6 +3745,89 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateRoomRequest'
+    delete:
+      tags:
+        - Catalog
+      summary: Delete Room
+      operationId: deleteRoom
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IfMatch'
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Command completed.
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '412':
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '428':
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: catalog
+      x-medicore-permission: room.update
+      x-medicore-audit-action: room.delete
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-CATALOG-CONSTRAINTS
+      x-medicore-idempotent: false
   /rooms/{roomId}/actions/deactivate:
     post:
       tags:

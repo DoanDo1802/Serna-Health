@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,7 @@ import vn.medicore.dto.CatalogModels.DepartmentView;
 import vn.medicore.dto.CatalogModels.Page;
 import vn.medicore.dto.CatalogModels.PractitionerRoleView;
 import vn.medicore.dto.CatalogModels.PractitionerView;
+import vn.medicore.dto.CatalogModels.RoomAssignmentsView;
 import vn.medicore.dto.CatalogModels.RoomView;
 import vn.medicore.dto.CatalogModels.ServicePriceView;
 import vn.medicore.dto.CatalogModels.ServiceView;
@@ -130,11 +132,10 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
-    public RoomView createRoom(UUID departmentId, String code, String name, CatalogAuditContext context) {
-        store.departmentById(departmentId).orElseThrow(ResourceNotFoundException::new);
+    public RoomView createRoom(String code, String name, CatalogAuditContext context) {
         Instant now = clock.instant();
         UUID id = ids.next();
-        store.insertRoom(new RoomRow(id, departmentId, code.strip(), name.strip(), true, 0, now, now));
+        store.insertRoom(new RoomRow(id, code.strip(), name.strip(), true, 0, now, now));
         RoomView view = store.roomById(id).orElseThrow();
         record(context, "room.create", "Room", view.id(), view.version(), "created");
         return view;
@@ -144,8 +145,8 @@ public class CatalogServiceImpl implements CatalogService {
     public RoomView updateRoom(UUID id, String code, String name, long version, CatalogAuditContext context) {
         RoomView existing = store.roomByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
-        store.updateRoom(new RoomRow(id, existing.departmentId(), code.strip(), name.strip(),
-                existing.active(), version + 1, existing.createdAt(), now), version);
+        store.updateRoom(new RoomRow(id, code.strip(), name.strip(), existing.active(),
+                version + 1, existing.createdAt(), now), version);
         RoomView view = store.roomById(id).orElseThrow();
         record(context, "room.update", "Room", view.id(), view.version(), "updated");
         return view;
@@ -155,10 +156,58 @@ public class CatalogServiceImpl implements CatalogService {
     public RoomView deactivateRoom(UUID id, long version, CatalogAuditContext context) {
         RoomView existing = store.roomByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
-        store.updateRoom(new RoomRow(id, existing.departmentId(), existing.code(), existing.name(),
-                false, version + 1, existing.createdAt(), now), version);
+        store.updateRoom(new RoomRow(id, existing.code(), existing.name(), false,
+                version + 1, existing.createdAt(), now), version);
         RoomView view = store.roomById(id).orElseThrow();
         record(context, "room.update", "Room", view.id(), view.version(), "deactivated");
+        return view;
+    }
+
+    @Override
+    public void deleteRoom(UUID id, long version, CatalogAuditContext context) {
+        store.roomByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        if (store.countSchedulesByRoomId(id) > 0) {
+            throw new IllegalStateException("Không thể xóa phòng đang có lịch trực hoặc ca khám liên kết. Vui lòng tạm ngừng phòng.");
+        }
+        store.deleteRoom(id, version);
+        record(context, "room.delete", "Room", id, version, "deleted");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public RoomAssignmentsView getRoomAssignments(UUID id) {
+        RoomView room = store.roomById(id).orElseThrow(ResourceNotFoundException::new);
+        return assignments(room);
+    }
+
+    @Override
+    public RoomAssignmentsView replaceRoomAssignments(
+            UUID id, List<UUID> departmentIds, List<UUID> serviceIds, long version, CatalogAuditContext context) {
+        RoomView room = store.roomByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
+        List<UUID> departments = distinctIds(departmentIds, "departmentIds");
+        List<UUID> services = distinctIds(serviceIds, "serviceIds");
+        for (UUID departmentId : departments) {
+            var department = store.departmentById(departmentId).orElseThrow(ResourceNotFoundException::new);
+            if (!department.active()) throw new IllegalStateException("Không thể gán chuyên khoa đã tạm ngừng.");
+        }
+        for (UUID serviceId : services) {
+            var service = store.serviceById(serviceId).orElseThrow(ResourceNotFoundException::new);
+            if (!service.active()) throw new IllegalStateException("Không thể gán dịch vụ đã tạm ngừng.");
+        }
+        List<UUID> oldDepartments = store.roomDepartmentIds(id);
+        List<UUID> oldServices = store.roomServiceIds(id);
+        List<UUID> removedDepartments = oldDepartments.stream().filter(value -> !departments.contains(value)).toList();
+        List<UUID> removedServices = oldServices.stream().filter(value -> !services.contains(value)).toList();
+        Instant now = clock.instant();
+        if (store.countActiveOrFutureSchedulesUsingRoomDepartmentOrService(id, removedDepartments, removedServices, now) > 0) {
+            throw new IllegalStateException("Không thể gỡ khả năng phòng đang được lịch làm việc hiện tại hoặc tương lai sử dụng.");
+        }
+        store.replaceRoomAssignments(id, departments, services, now);
+        store.updateRoom(new RoomRow(id, room.code(), room.name(), room.active(), version + 1,
+                room.createdAt(), now), version);
+        RoomView updated = store.roomById(id).orElseThrow();
+        RoomAssignmentsView view = assignments(updated);
+        record(context, "room.assignments.update", "Room", id, updated.version(), "assignments replaced");
         return view;
     }
 
@@ -338,6 +387,19 @@ public class CatalogServiceImpl implements CatalogService {
         PractitionerRoleView view = store.practitionerRoleById(id).orElseThrow();
         record(context, "practitioner_role.update", "PractitionerRole", view.id(), view.version(), "revoked");
         return view;
+    }
+
+    private RoomAssignmentsView assignments(RoomView room) {
+        return new RoomAssignmentsView(room.id(), room.version(),
+                store.roomDepartmentIds(room.id()), store.roomServiceIds(room.id()));
+    }
+
+    private static List<UUID> distinctIds(List<UUID> values, String field) {
+        if (values == null) return List.of();
+        if (values.stream().anyMatch(java.util.Objects::isNull) || Set.copyOf(values).size() != values.size()) {
+            throw new IllegalArgumentException(field + " must contain unique UUID values");
+        }
+        return List.copyOf(values);
     }
 
     private void record(

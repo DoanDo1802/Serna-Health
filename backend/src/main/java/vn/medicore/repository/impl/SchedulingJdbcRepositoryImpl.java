@@ -214,15 +214,16 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 order by d.name, d.id
                 """, params, (rs, row) -> new BookingDepartment(rs.getObject("id", UUID.class), rs.getString("name")));
         List<BookingRoom> rooms = jdbc.query("""
-                select distinct r.id, r.department_id, r.name
+                select distinct r.id, r.name,
+                    array(select department_id from room_department where room_id = r.id order by department_id) as department_ids,
+                    array(select service_id from room_service where room_id = r.id order by service_id) as service_ids
                 from appointment_slot slot
                 join room r on r.id = slot.room_id
                 join department d on d.id = slot.department_id
                 where slot.status = 'ACTIVE' and slot.start_at > :now and r.active and d.active
                   and d.effective_from <= :now and (d.effective_to is null or d.effective_to > :now)
                 order by r.name, r.id
-                """, params, (rs, row) -> new BookingRoom(rs.getObject("id", UUID.class),
-                rs.getObject("department_id", UUID.class), rs.getString("name")));
+                """, params, this::bookingRoom);
         List<BookingService> services = jdbc.query("""
                 select distinct s.id, s.name, price.amount, price.currency
                 from appointment_slot slot
@@ -269,14 +270,18 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 order by d.name, d.id
                 """, params, (rs, row) -> new BookingDepartment(rs.getObject("id", UUID.class), rs.getString("name")));
         List<BookingRoom> rooms = jdbc.query("""
-                select r.id, r.department_id, r.name
+                select r.id, r.name,
+                    array_agg(distinct rd.department_id order by rd.department_id) as department_ids,
+                    array_agg(distinct rs.service_id order by rs.service_id) as service_ids
                 from room r
-                join department d on d.id = r.department_id
+                join room_department rd on rd.room_id = r.id
+                join department d on d.id = rd.department_id
+                join room_service rs on rs.room_id = r.id
                 where r.active and d.active and d.effective_from <= :now
                   and (d.effective_to is null or d.effective_to > :now)
+                group by r.id, r.name
                 order by r.name, r.id
-                """, params, (rs, row) -> new BookingRoom(rs.getObject("id", UUID.class),
-                rs.getObject("department_id", UUID.class), rs.getString("name")));
+                """, params, this::bookingRoom);
         List<BookingService> services = jdbc.query("""
                 select s.id, s.name, price.amount, price.currency
                 from service s
@@ -305,7 +310,11 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 from practitioner_role role
                 join practitioner practitioner on practitioner.id = role.practitioner_id
                 join department department on department.id = :departmentId
-                join room room on room.id = :roomId and room.department_id = department.id
+                join room room on room.id = :roomId
+                join room_department room_department on room_department.room_id = room.id
+                    and room_department.department_id = department.id
+                join room_service room_service on room_service.room_id = room.id
+                    and room_service.service_id = :serviceId
                 join service service on service.id = :serviceId
                 where role.id = :practitionerRoleId
                   and role.department_id = department.id
@@ -440,14 +449,16 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                           and role.effective_from <= :now and (role.effective_to is null or role.effective_to > :now)
                           and department.active and department.effective_from <= :now
                           and (department.effective_to is null or department.effective_to > :now)
-                          and room.active and service.active and price.service_id is not null
+                          and room.active and room_department.room_id is not null and room_service.room_id is not null
+                          and service.active and price.service_id is not null
                         then slot.capacity else 0 end), 0)::integer as total_capacity,
                     coalesce(sum(case when ws.status = 'ACTIVE' and slot.status = 'ACTIVE'
                           and practitioner.active and role.status = 'ACTIVE'
                           and role.effective_from <= :now and (role.effective_to is null or role.effective_to > :now)
                           and department.active and department.effective_from <= :now
                           and (department.effective_to is null or department.effective_to > :now)
-                          and room.active and service.active and price.service_id is not null
+                          and room.active and room_department.room_id is not null and room_service.room_id is not null
+                          and service.active and price.service_id is not null
                         then (select count(*) from slot_hold h where h.slot_id = slot.id and h.status = 'ACTIVE' and h.expires_at > :now)
                            + (select count(*) from appointment a where a.slot_id = slot.id and a.status in ('CONFIRMED', 'FULFILLED'))
                         else 0 end), 0)::integer as reserved_capacity,
@@ -470,7 +481,11 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 left join appointment_slot slot on slot.work_schedule_id = ws.id
                 left join practitioner_role role on role.id = ws.practitioner_role_id
                 left join practitioner practitioner on practitioner.id = role.practitioner_id
-                left join room room on room.id = ws.room_id and room.department_id = bs.department_id
+                left join room room on room.id = ws.room_id
+                left join room_department room_department on room_department.room_id = room.id
+                    and room_department.department_id = bs.department_id
+                left join room_service room_service on room_service.room_id = room.id
+                    and room_service.service_id = bs.service_id
                 left join department department on department.id = bs.department_id
                 left join service service on service.id = bs.service_id
                 left join lateral (
@@ -516,7 +531,9 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 join appointment_slot slot on slot.work_schedule_id = ws.id
                 join practitioner_role role on role.id = ws.practitioner_role_id
                 join practitioner p on p.id = role.practitioner_id
-                join room r on r.id = ws.room_id and r.department_id = bs.department_id
+                join room r on r.id = ws.room_id
+                join room_department rd on rd.room_id = r.id and rd.department_id = bs.department_id
+                join room_service room_service on room_service.room_id = r.id and room_service.service_id = bs.service_id
                 join department d on d.id = bs.department_id
                 join service service on service.id = bs.service_id
                 join lateral (
@@ -1160,6 +1177,22 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 .addValue("expiresAt", ts(row.expiresAt())).addValue("depositAmount", row.depositAmount()).addValue("currency", row.currency())
                 .addValue("status", row.status()).addValue("version", row.version()).addValue("createdAt", ts(row.createdAt()))
                 .addValue("updatedAt", ts(row.updatedAt()));
+    }
+
+    private BookingRoom bookingRoom(ResultSet rs, int rowNum) throws SQLException {
+        return new BookingRoom(rs.getObject("id", UUID.class), uuidList(rs, "department_ids"),
+                uuidList(rs, "service_ids"), rs.getString("name"));
+    }
+
+    private static List<UUID> uuidList(ResultSet rs, String column) throws SQLException {
+        java.sql.Array array = rs.getArray(column);
+        if (array == null) return List.of();
+        try {
+            Object[] values = (Object[]) array.getArray();
+            return java.util.Arrays.stream(values).map(UUID.class::cast).toList();
+        } finally {
+            array.free();
+        }
     }
 
     private BookingSessionRow mapBookingSession(ResultSet rs, int rowNum) throws SQLException {

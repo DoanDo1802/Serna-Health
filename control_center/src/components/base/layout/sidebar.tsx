@@ -1,6 +1,6 @@
 "use client"
 
-import { LayoutDashboard, Stethoscope, FolderHeart, Pill, FileText, CalendarClock, Users, ClipboardList, LogOut } from "lucide-react"
+import { LayoutDashboard, Stethoscope, FolderHeart, Building2, Pill, FileText, CalendarClock, Users, ClipboardList, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 import Link from "next/link"
@@ -19,6 +19,7 @@ export function Sidebar() {
     { icon: Stethoscope, label: "Quản lý nhân sự", href: "/admin/doctors" },
     { icon: CalendarClock, label: "Lịch trực", href: "/admin/schedule" },
     { icon: FolderHeart, label: "Quản lý Chuyên khoa", href: "/admin/specialties" },
+    { icon: Building2, label: "Quản lý Phòng khám", href: "/admin/clinics" },
     { icon: Pill, label: "Quản lý Thuốc", href: "/admin/medicines" },
     { icon: FileText, label: "Quản lý ICD-10", href: "/admin/icd" },
     { icon: ClipboardList, label: "Combo thuốc ICD-10", href: "/admin/treatment-templates" },

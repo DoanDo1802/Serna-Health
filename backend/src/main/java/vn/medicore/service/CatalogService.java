@@ -2,12 +2,14 @@ package vn.medicore.service;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import vn.medicore.dto.CatalogAuditContext;
 import vn.medicore.dto.CatalogModels.DepartmentView;
 import vn.medicore.dto.CatalogModels.Page;
 import vn.medicore.dto.CatalogModels.PractitionerRoleView;
 import vn.medicore.dto.CatalogModels.PractitionerView;
+import vn.medicore.dto.CatalogModels.RoomAssignmentsView;
 import vn.medicore.dto.CatalogModels.RoomView;
 import vn.medicore.dto.CatalogModels.ServicePriceView;
 import vn.medicore.dto.CatalogModels.ServiceView;
@@ -34,11 +36,18 @@ public interface CatalogService {
 
     RoomView getRoom(UUID id);
 
-    RoomView createRoom(UUID departmentId, String code, String name, CatalogAuditContext audit);
+    RoomView createRoom(String code, String name, CatalogAuditContext audit);
 
     RoomView updateRoom(UUID id, String code, String name, long version, CatalogAuditContext audit);
 
     RoomView deactivateRoom(UUID id, long version, CatalogAuditContext audit);
+
+    void deleteRoom(UUID id, long version, CatalogAuditContext audit);
+
+    RoomAssignmentsView getRoomAssignments(UUID id);
+
+    RoomAssignmentsView replaceRoomAssignments(
+            UUID id, List<UUID> departmentIds, List<UUID> serviceIds, long version, CatalogAuditContext audit);
 
     // ---- Service ----
     Page<ServiceView> listServices(String serviceType, Boolean active, String cursor, int limit);

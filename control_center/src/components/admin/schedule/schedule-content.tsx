@@ -203,8 +203,8 @@ export function ScheduleContent() {
   const selectedDoctor = doctors.find((doctor) => doctor.accountId === form.doctorAccountId)
   const selectedDepartmentId = selectedDoctor?.departmentId ?? ""
   const rooms = useMemo(
-    () => catalog?.rooms.filter((room) => room.departmentId === selectedDepartmentId) ?? [],
-    [catalog, selectedDepartmentId],
+    () => catalog?.rooms.filter((room) => room.departmentIds.includes(selectedDepartmentId) && room.serviceIds.includes(form.serviceId)) ?? [],
+    [catalog, selectedDepartmentId, form.serviceId],
   )
   const activeSchedules = useMemo(() => schedules.filter((schedule) => schedule.status === "ACTIVE"), [schedules])
   const allSchedulesByDate = useMemo(() => activeSchedules.reduce<Record<string, WorkSchedule[]>>((result, schedule) => {
@@ -405,8 +405,8 @@ export function ScheduleContent() {
   const editDoctor = doctors.find((d) => d.accountId === editForm.doctorAccountId)
   const editDepartmentId = editDoctor?.departmentId ?? ""
   const editRooms = useMemo(
-    () => (catalog?.rooms ?? []).filter((room) => room.departmentId === editDepartmentId),
-    [catalog, editDepartmentId],
+    () => (catalog?.rooms ?? []).filter((room) => room.departmentIds.includes(editDepartmentId) && room.serviceIds.includes(editForm.serviceId)),
+    [catalog, editDepartmentId, editForm.serviceId],
   )
 
   const saveScheduleEdit = async (event: FormEvent) => {
@@ -1028,7 +1028,7 @@ export function ScheduleContent() {
                   onChange={(e) => {
                     const newDoctor = doctors.find((d) => d.accountId === e.target.value)
                     const newDeptId = newDoctor?.departmentId ?? ""
-                    const deptRooms = catalog?.rooms.filter((r) => r.departmentId === newDeptId) ?? []
+                    const deptRooms = catalog?.rooms.filter((r) => r.departmentIds.includes(newDeptId) && r.serviceIds.includes(editForm.serviceId)) ?? []
                     setEditForm((prev) => ({
                       ...prev,
                       doctorAccountId: e.target.value,

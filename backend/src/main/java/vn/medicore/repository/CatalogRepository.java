@@ -44,6 +44,19 @@ public interface CatalogRepository {
 
     int updateRoom(RoomRow row, long expectedVersion);
 
+    List<UUID> roomDepartmentIds(UUID roomId);
+
+    List<UUID> roomServiceIds(UUID roomId);
+
+    void replaceRoomAssignments(UUID roomId, List<UUID> departmentIds, List<UUID> serviceIds, Instant createdAt);
+
+    int countActiveOrFutureSchedulesUsingRoomDepartmentOrService(
+            UUID roomId, List<UUID> removedDepartmentIds, List<UUID> removedServiceIds, Instant now);
+
+    int countSchedulesByRoomId(UUID roomId);
+
+    int deleteRoom(UUID roomId, long expectedVersion);
+
     // ---- Service ----
 
     void insertService(ServiceRow row);
@@ -134,7 +147,6 @@ public interface CatalogRepository {
 
     record RoomRow(
             UUID id,
-            UUID departmentId,
             String code,
             String name,
             boolean active,

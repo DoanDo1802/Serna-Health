@@ -50,8 +50,11 @@ async function responsePayload(response: Response): Promise<unknown> {
 
 function apiError(response: Response, result: unknown): ApiError {
   const problem = result as { detail?: string; title?: string; message?: string; code?: string } | undefined
+  const message = problem?.detail || problem?.message || problem?.title
   return new ApiError(
-    problem?.detail || problem?.message || problem?.title || `Yêu cầu thất bại với mã lỗi ${response.status}`,
+    response.status === 403 && (!message || message === "Access denied")
+      ? "Tài khoản hiện tại chưa có quyền thực hiện thao tác này."
+      : message || `Yêu cầu thất bại với mã lỗi ${response.status}`,
     response.status,
     problem?.code,
   )
@@ -133,6 +136,29 @@ export interface Department {
   effectiveFrom: string
   effectiveTo?: string | null
   version: number
+}
+
+export interface Room {
+  id: string
+  code: string
+  name: string
+  active: boolean
+  version: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface RoomAssignments {
+  roomId: string
+  version: number
+  departmentIds: string[]
+  serviceIds: string[]
+}
+
+export interface RoomPage {
+  items: Room[]
+  nextCursor?: string | null
+  hasMore: boolean
 }
 
 export interface DoctorProfessionalProfileInput {
@@ -235,6 +261,204 @@ export const departmentsApi = {
   delete: (id: string, etag: string) => request<void>(`/departments/${id}`, { method: "DELETE", headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` } }),
 }
 
+export interface Service {
+  id: string
+  code: string
+  name: string
+  serviceType: string
+  active: boolean
+  allowsCritical: boolean
+  version: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface ServicePage {
+  items: Service[]
+  nextCursor?: string | null
+  hasMore: boolean
+}
+
+export const servicesApi = {
+  list: (params: { serviceType?: string; active?: boolean; cursor?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams({ limit: String(params.limit ?? 100) })
+    if (params.serviceType) query.set("serviceType", params.serviceType)
+    if (params.active !== undefined) query.set("active", String(params.active))
+    if (params.cursor) query.set("cursor", params.cursor)
+    return request<ServicePage>(`/services?${query.toString()}`)
+  },
+}
+
+export const roomsApi = {
+  list: (params: { departmentId?: string; active?: boolean; cursor?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams({ limit: String(params.limit ?? 100) })
+    if (params.departmentId) query.set("departmentId", params.departmentId)
+    if (params.active !== undefined) query.set("active", String(params.active))
+    if (params.cursor) query.set("cursor", params.cursor)
+    return request<RoomPage>(`/rooms?${query.toString()}`)
+  },
+  get: (id: string) => requestWithMeta<Room>(`/rooms/${id}`),
+  create: (data: { code: string; name: string }) =>
+    requestWithMeta<Room>("/rooms", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey() },
+      body: JSON.stringify({ code: data.code.trim(), name: data.name.trim() }),
+    }),
+  update: (id: string, data: { code: string; name: string }, etag: string) =>
+    requestWithMeta<Room>(`/rooms/${id}`, {
+      method: "PATCH",
+      headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+      body: JSON.stringify({ code: data.code.trim(), name: data.name.trim() }),
+    }),
+  deactivate: (id: string, etag: string) =>
+    requestWithMeta<Room>(`/rooms/${id}/actions/deactivate`, {
+      method: "POST",
+      headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+    }),
+  assignments: (id: string) => requestWithMeta<RoomAssignments>(`/rooms/${id}/assignments`),
+  replaceAssignments: (id: string, data: { departmentIds: string[]; serviceIds: string[] }, etag: string) =>
+    requestWithMeta<RoomAssignments>(`/rooms/${id}/assignments`, {
+      method: "PUT",
+      headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string, etag: string) =>
+    request<void>(`/rooms/${id}`, {
+      method: "DELETE",
+      headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+    }),
+}
+
+export type FacilityElementType =
+  | "ROOM"
+  | "WALKWAY"
+  | "ELEVATOR"
+  | "STAIRS"
+  | "WC"
+  | "RECEPTION"
+  | "EQUIPMENT"
+  | "WAITING_AREA"
+  | "EMERGENCY_EXIT"
+  | "OTHER"
+
+export type DoorSide = "NORTH" | "EAST" | "SOUTH" | "WEST"
+
+export type FacilitySymbolType = "WALL_STRAIGHT" | "WALL_CURVED" | "PARTITION" | "DOOR" | "STAIRS" | "ELEVATOR" | "WC" | "SKYWELL"
+export type FacilityPoint = { x: number; y: number }
+export type FacilitySymbolGeometry =
+  | { start: FacilityPoint; end: FacilityPoint; thickness: number }
+  | { center: FacilityPoint; radius: number; startAngle: number; sweepAngle: number; thickness: number }
+  | { hinge: FacilityPoint; radius: number; startAngle: number; sweepAngle: 90 | -90; openingDirection: "CLOCKWISE" | "COUNTERCLOCKWISE" }
+  | { x: number; y: number; width: number; height: number; rotation: 0 | 90 | 180 | 270 }
+
+export interface FacilityFloor {
+  id: string
+  version: number
+  code: string
+  name: string
+  level: number
+  description?: string | null
+  gridColumns: number
+  gridRows: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface FacilityFloorElement {
+  id: string
+  floorId: string
+  roomId?: string | null
+  version: number
+  elementType: FacilityElementType
+  label: string
+  gridX: number
+  gridY: number
+  gridWidth: number
+  gridHeight: number
+  zIndex: number
+  doorSide?: DoorSide | null
+  notes?: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface FacilityFloorPage {
+  items: FacilityFloor[]
+  nextCursor?: string | null
+  hasMore: boolean
+}
+
+export interface FacilityFloorElementPage {
+  items: FacilityFloorElement[]
+  nextCursor?: string | null
+  hasMore: boolean
+}
+
+export interface FacilityFloorSymbol {
+  id: string
+  floorId: string
+  version: number
+  symbolType: FacilitySymbolType
+  label: string
+  geometry: FacilitySymbolGeometry
+  zIndex: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface FacilityFloorSymbolPage {
+  items: FacilityFloorSymbol[]
+  nextCursor?: string | null
+  hasMore: boolean
+}
+
+export const facilityLayoutApi = {
+  listFloors: () => request<FacilityFloorPage>("/facility-floors?limit=100"),
+  getFloor: (id: string) => requestWithMeta<FacilityFloor>(`/facility-floors/${id}`),
+  createFloor: (data: Omit<FacilityFloor, "id" | "version" | "createdAt" | "updatedAt">) =>
+    requestWithMeta<FacilityFloor>("/facility-floors", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey() },
+      body: JSON.stringify(data),
+    }),
+  updateFloor: (id: string, data: Omit<FacilityFloor, "id" | "version" | "createdAt" | "updatedAt">, etag: string) =>
+    requestWithMeta<FacilityFloor>(`/facility-floors/${id}`, {
+      method: "PATCH",
+      headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+      body: JSON.stringify(data),
+    }),
+  deleteFloor: (id: string, etag: string) =>
+    request<void>(`/facility-floors/${id}`, { method: "DELETE", headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` } }),
+  listElements: (floorId: string) => request<FacilityFloorElementPage>(`/facility-floors/${floorId}/elements?limit=100`),
+  getElement: (id: string) => requestWithMeta<FacilityFloorElement>(`/facility-floor-elements/${id}`),
+  createElement: (floorId: string, data: Omit<FacilityFloorElement, "id" | "floorId" | "version" | "createdAt" | "updatedAt">) =>
+    requestWithMeta<FacilityFloorElement>(`/facility-floors/${floorId}/elements`, {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey() },
+      body: JSON.stringify(data),
+    }),
+  updateElement: (id: string, data: Omit<FacilityFloorElement, "id" | "floorId" | "version" | "createdAt" | "updatedAt">, etag: string) =>
+    requestWithMeta<FacilityFloorElement>(`/facility-floor-elements/${id}`, {
+      method: "PATCH",
+      headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+      body: JSON.stringify(data),
+    }),
+  deleteElement: (id: string, etag: string) =>
+    request<void>(`/facility-floor-elements/${id}`, { method: "DELETE", headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` } }),
+  listSymbols: (floorId: string) => request<FacilityFloorSymbolPage>(`/facility-floors/${floorId}/symbols?limit=100`),
+  getSymbol: (id: string) => requestWithMeta<FacilityFloorSymbol>(`/facility-floor-symbols/${id}`),
+  createSymbol: (floorId: string, data: Omit<FacilityFloorSymbol, "id" | "floorId" | "version" | "createdAt" | "updatedAt">) =>
+    requestWithMeta<FacilityFloorSymbol>(`/facility-floors/${floorId}/symbols`, {
+      method: "POST", headers: { "Idempotency-Key": idempotencyKey() }, body: JSON.stringify(data),
+    }),
+  updateSymbol: (id: string, data: Omit<FacilityFloorSymbol, "id" | "floorId" | "version" | "createdAt" | "updatedAt">, etag: string) =>
+    requestWithMeta<FacilityFloorSymbol>(`/facility-floor-symbols/${id}`, {
+      method: "PATCH", headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` }, body: JSON.stringify(data),
+    }),
+  deleteSymbol: (id: string, etag: string) =>
+    request<void>(`/facility-floor-symbols/${id}`, { method: "DELETE", headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` } }),
+}
+
 export const personnelApi = {
   list: (params: { type?: PersonnelType; active?: boolean } = {}) => {
     const query = new URLSearchParams({ limit: "100" })
@@ -258,7 +482,7 @@ export const practitionersApi = {
 }
 
 export type AppointmentSlotSession = "MORNING" | "AFTERNOON"
-export interface WorkScheduleCatalog { departments: Pick<Department, "id" | "name">[]; rooms: Array<{ id: string; departmentId: string; name: string }>; services: Array<{ id: string; name: string; priceAmount: number; priceCurrency: string }> }
+export interface WorkScheduleCatalog { departments: Pick<Department, "id" | "name">[]; rooms: Array<{ id: string; departmentIds: string[]; serviceIds: string[]; name: string }>; services: Array<{ id: string; name: string; priceAmount: number; priceCurrency: string }> }
 export interface WorkSchedule { id: string; bookingSessionId: string; practitionerRoleId: string; departmentId: string; roomId: string; serviceId: string; localDate: string; session: AppointmentSlotSession; capacity: number; status: "ACTIVE" | "CANCELLED"; version: number; createdAt: string; updatedAt: string; slotId: string; reservedCapacity: number; remainingCapacity: number }
 export interface WorkSchedulePage { items: WorkSchedule[]; nextCursor?: string | null; hasMore: boolean }
 export interface CreateWorkScheduleRequest { practitionerRoleId: string; departmentId: string; roomId: string; serviceId: string; localDate: string; session: AppointmentSlotSession; capacity: number }

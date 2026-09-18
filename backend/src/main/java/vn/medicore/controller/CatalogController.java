@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -34,6 +35,7 @@ import vn.medicore.dto.CatalogModels.DepartmentView;
 import vn.medicore.dto.CatalogModels.Page;
 import vn.medicore.dto.CatalogModels.PractitionerRoleView;
 import vn.medicore.dto.CatalogModels.PractitionerView;
+import vn.medicore.dto.CatalogModels.RoomAssignmentsView;
 import vn.medicore.dto.CatalogModels.RoomView;
 import vn.medicore.dto.CatalogModels.ServicePriceView;
 import vn.medicore.dto.CatalogModels.ServiceView;
@@ -123,7 +125,7 @@ public class CatalogController {
     @PreAuthorize("hasAuthority('room.create')")
     ResponseEntity<RoomView> createRoom(HttpServletRequest request, @AuthenticationPrincipal AuthenticatedAccount principal,
             @Valid @RequestBody RoomCreateRequest body) {
-        RoomView view = catalog.createRoom(body.departmentId(), body.code(), body.name(), auditContext(request, principal));
+        RoomView view = catalog.createRoom(body.code(), body.name(), auditContext(request, principal));
         return versioned(view, view.version());
     }
 
@@ -136,12 +138,37 @@ public class CatalogController {
         return versioned(view, view.version());
     }
 
+    @GetMapping("/rooms/{id}/assignments")
+    @PreAuthorize("hasAuthority('room.read')")
+    ResponseEntity<RoomAssignmentsView> getRoomAssignments(@PathVariable UUID id) {
+        RoomAssignmentsView view = catalog.getRoomAssignments(id);
+        return versioned(view, view.version());
+    }
+
+    @PutMapping("/rooms/{id}/assignments")
+    @PreAuthorize("hasAuthority('room.update')")
+    ResponseEntity<RoomAssignmentsView> replaceRoomAssignments(HttpServletRequest request, @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedAccount principal, @RequestHeader("If-Match") String ifMatch,
+            @Valid @RequestBody RoomAssignmentsRequest body) {
+        RoomAssignmentsView view = catalog.replaceRoomAssignments(id, body.departmentIds(), body.serviceIds(),
+                version(ifMatch), auditContext(request, principal));
+        return versioned(view, view.version());
+    }
+
     @PostMapping("/rooms/{id}/actions/deactivate")
     @PreAuthorize("hasAuthority('room.update')")
     ResponseEntity<RoomView> deactivateRoom(HttpServletRequest request, @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal, @RequestHeader("If-Match") String ifMatch) {
         RoomView view = catalog.deactivateRoom(id, version(ifMatch), auditContext(request, principal));
         return versioned(view, view.version());
+    }
+
+    @DeleteMapping("/rooms/{id}")
+    @PreAuthorize("hasAuthority('room.update')")
+    ResponseEntity<Void> deleteRoom(HttpServletRequest request, @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedAccount principal, @RequestHeader("If-Match") String ifMatch) {
+        catalog.deleteRoom(id, version(ifMatch), auditContext(request, principal));
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/services")
@@ -305,9 +332,11 @@ public class CatalogController {
                                    @NotNull Instant effectiveFrom, Instant effectiveTo) {}
     record DepartmentUpdateRequest(@NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 200) String name,
                                    @NotNull Instant effectiveFrom, Instant effectiveTo) {}
-    record RoomCreateRequest(@NotNull UUID departmentId, @NotBlank @Size(max = 64) String code,
+    record RoomCreateRequest(@NotBlank @Size(max = 64) String code,
                              @NotBlank @Size(max = 200) String name) {}
     record RoomUpdateRequest(@NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 200) String name) {}
+    record RoomAssignmentsRequest(@NotNull @Size(max = 100) List<@NotNull UUID> departmentIds,
+                                  @NotNull @Size(max = 100) List<@NotNull UUID> serviceIds) {}
     record ServiceCreateRequest(@NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 200) String name,
                                 @NotBlank @Pattern(regexp = "CONSULTATION|PROCEDURE|DIAGNOSTIC|LAB|IMAGING|THERAPY|OTHER") String serviceType) {}
     record ServiceUpdateRequest(@NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 200) String name,

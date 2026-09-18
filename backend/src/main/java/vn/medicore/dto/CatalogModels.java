@@ -25,12 +25,18 @@ public final class CatalogModels {
     public record RoomView(
             UUID id,
             long version,
-            UUID departmentId,
             String code,
             String name,
             boolean active,
             Instant createdAt,
             Instant updatedAt) {
+    }
+
+    public record RoomAssignmentsView(
+            UUID roomId,
+            long version,
+            List<UUID> departmentIds,
+            List<UUID> serviceIds) {
     }
 
     public record ServiceView(
