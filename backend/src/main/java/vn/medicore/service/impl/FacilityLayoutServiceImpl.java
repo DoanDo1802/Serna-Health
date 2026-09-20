@@ -4,19 +4,30 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.exception.ResourceNotFoundException;
+import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.dto.FacilityLayoutAuditContext;
+import vn.medicore.dto.FacilityLayoutModels.CreateElementItem;
+import vn.medicore.dto.FacilityLayoutModels.DeleteElementItem;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorElementView;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorSymbolView;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorView;
+import vn.medicore.dto.FacilityLayoutModels.FacilityLayoutSnapshot;
+import vn.medicore.dto.FacilityLayoutModels.LayoutChangesCommand;
 import vn.medicore.dto.FacilityLayoutModels.Page;
+import vn.medicore.dto.FacilityLayoutModels.RoomPlacementView;
+import vn.medicore.dto.FacilityLayoutModels.UpdateElementItem;
 import vn.medicore.dto.SecurityAuditRecorder;
 import vn.medicore.repository.FacilityLayoutRepository;
 import vn.medicore.repository.FacilityLayoutRepository.ElementRow;
@@ -61,6 +72,169 @@ public class FacilityLayoutServiceImpl implements FacilityLayoutService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public FacilityLayoutSnapshot getLayoutSnapshot(UUID floorId) {
+        FacilityFloorView floor = getFloor(floorId);
+        List<FacilityFloorElementView> elements = store.allElementsForFloor(floorId);
+        List<FacilityFloorSymbolView> symbols = store.allSymbolsForFloor(floorId);
+        return new FacilityLayoutSnapshot(floor, elements, symbols);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RoomPlacementView> getRoomPlacements() {
+        return store.allRoomPlacements();
+    }
+
+    @Override
+    public FacilityLayoutSnapshot applyLayoutChanges(UUID floorId, LayoutChangesCommand command, FacilityLayoutAuditContext context) {
+        FacilityFloorView floor = store.floorByIdForUpdate(floorId).orElseThrow(ResourceNotFoundException::new);
+        List<CreateElementItem> creates = command.creates() != null ? command.creates() : List.of();
+        List<UpdateElementItem> updates = command.updates() != null ? command.updates() : List.of();
+        List<DeleteElementItem> deletes = command.deletes() != null ? command.deletes() : List.of();
+
+        // 1. Verify delete targets
+        for (DeleteElementItem del : deletes) {
+            FacilityFloorElementView element = store.elementByIdForUpdate(del.id()).orElseThrow(ResourceNotFoundException::new);
+            if (!element.floorId().equals(floorId)) {
+                throw new IllegalStateException("Phần tử không thuộc tầng này.");
+            }
+            if (element.version() != del.expectedVersion()) {
+                throw new StaleVersionException();
+            }
+        }
+
+        // 2. Verify update targets
+        for (UpdateElementItem upd : updates) {
+            FacilityFloorElementView element = store.elementByIdForUpdate(upd.id()).orElseThrow(ResourceNotFoundException::new);
+            if (!element.floorId().equals(floorId)) {
+                throw new IllegalStateException("Phần tử không thuộc tầng này.");
+            }
+            if (element.version() != upd.expectedVersion()) {
+                throw new StaleVersionException();
+            }
+        }
+
+        // 3. Build candidate final element set for geometry & constraint validation
+        List<FacilityFloorElementView> existingElements = store.allElementsForFloor(floorId);
+        Map<UUID, StagedElement> finalElements = new LinkedHashMap<>();
+        for (FacilityFloorElementView el : existingElements) {
+            finalElements.put(el.id(), new StagedElement(el.id(), el.roomId(), el.elementType(), el.label(),
+                    el.gridX(), el.gridY(), el.gridWidth(), el.gridHeight(), el.doorSide(), el.notes(), el.version()));
+        }
+
+        // Remove deletes
+        for (DeleteElementItem del : deletes) {
+            finalElements.remove(del.id());
+        }
+
+        // Apply updates
+        for (UpdateElementItem upd : updates) {
+            validateElementCommand(upd.elementType(), upd.label(), upd.doorSide(), upd.roomId(),
+                    floor.gridColumns(), floor.gridRows(), upd.gridX(), upd.gridY(), upd.gridWidth(), upd.gridHeight());
+            finalElements.put(upd.id(), new StagedElement(upd.id(), upd.roomId(), upd.elementType(), upd.label().strip(),
+                    upd.gridX(), upd.gridY(), upd.gridWidth(), upd.gridHeight(), upd.doorSide(), nullable(upd.notes()), upd.expectedVersion() + 1));
+        }
+
+        // Apply creates
+        List<ElementRow> rowsToInsert = new ArrayList<>();
+        Instant now = clock.instant();
+        for (CreateElementItem cr : creates) {
+            validateElementCommand(cr.elementType(), cr.label(), cr.doorSide(), cr.roomId(),
+                    floor.gridColumns(), floor.gridRows(), cr.gridX(), cr.gridY(), cr.gridWidth(), cr.gridHeight());
+            UUID newId = ids.next();
+            StagedElement staged = new StagedElement(newId, cr.roomId(), cr.elementType(), cr.label().strip(),
+                    cr.gridX(), cr.gridY(), cr.gridWidth(), cr.gridHeight(), cr.doorSide(), nullable(cr.notes()), 0);
+            finalElements.put(newId, staged);
+            rowsToInsert.add(new ElementRow(newId, floorId, cr.roomId(), cr.elementType(), cr.label().strip(),
+                    cr.gridX(), cr.gridY(), cr.gridWidth(), cr.gridHeight(), cr.zIndex(),
+                    nullable(cr.doorSide()), nullable(cr.notes()), 0, now, now));
+        }
+
+        // 4. Validate room constraints on final elements
+        Set<UUID> batchRoomIds = new HashSet<>();
+        for (StagedElement el : finalElements.values()) {
+            if (el.roomId() != null) {
+                if (!"ROOM".equals(el.elementType())) {
+                    throw new IllegalArgumentException("Only ROOM element can link roomId");
+                }
+                if (!store.roomIsActive(el.roomId())) {
+                    throw new IllegalStateException("Phòng không tồn tại hoặc đã tạm ngừng.");
+                }
+                if (!batchRoomIds.add(el.roomId())) {
+                    throw new IllegalStateException("Phòng bị trùng lặp trong mặt bằng.");
+                }
+                if (store.roomIsPlacedElsewhere(el.roomId(), el.id())) {
+                    throw new IllegalStateException("Phòng đã được đặt trên mặt bằng khác.");
+                }
+            }
+        }
+
+        // 5. Validate pairwise geometric intersections
+        List<StagedElement> elementList = new ArrayList<>(finalElements.values());
+        for (int i = 0; i < elementList.size(); i++) {
+            StagedElement a = elementList.get(i);
+            for (int j = i + 1; j < elementList.size(); j++) {
+                StagedElement b = elementList.get(j);
+                if (intersects(a.gridX(), a.gridY(), a.gridWidth(), a.gridHeight(),
+                               b.gridX(), b.gridY(), b.gridWidth(), b.gridHeight())) {
+                    throw new IllegalStateException("Phần tử mặt bằng chồng lấn với phần tử khác.");
+                }
+            }
+        }
+
+        // 6. Execute DB mutations: Deletes -> Updates -> Inserts
+        for (DeleteElementItem del : deletes) {
+            store.deleteElement(del.id(), del.expectedVersion());
+            record(context, "floorplan.element.delete", "FacilityFloorElement", del.id(), del.expectedVersion(), "batch deleted");
+        }
+
+        for (UpdateElementItem upd : updates) {
+            FacilityFloorElementView orig = store.elementById(upd.id()).orElseThrow(ResourceNotFoundException::new);
+            store.updateElement(new ElementRow(upd.id(), floorId, upd.roomId(), upd.elementType(), upd.label().strip(),
+                    upd.gridX(), upd.gridY(), upd.gridWidth(), upd.gridHeight(), upd.zIndex(),
+                    nullable(upd.doorSide()), nullable(upd.notes()), upd.expectedVersion() + 1, orig.createdAt(), now), upd.expectedVersion());
+            record(context, "floorplan.element.update", "FacilityFloorElement", upd.id(), upd.expectedVersion() + 1, "batch updated");
+        }
+
+        for (ElementRow row : rowsToInsert) {
+            store.insertElement(row);
+            record(context, "floorplan.element.create", "FacilityFloorElement", row.id(), 0, "batch created");
+        }
+
+        return getLayoutSnapshot(floorId);
+    }
+
+    private void validateElementCommand(String elementType, String label, String doorSide, UUID roomId,
+                                        int cols, int rows, int x, int y, int w, int h) {
+        if (elementType == null || !ELEMENT_TYPES.contains(elementType)) {
+            throw new IllegalArgumentException("elementType is invalid");
+        }
+        if (label == null || label.isBlank()) {
+            throw new IllegalArgumentException("label must not be blank");
+        }
+        if (doorSide != null && !doorSide.isBlank() && !DOOR_SIDES.contains(doorSide)) {
+            throw new IllegalArgumentException("doorSide is invalid");
+        }
+        if ("ROOM".equals(elementType) && roomId == null) {
+            throw new IllegalArgumentException("ROOM element requires roomId");
+        }
+        if (!"ROOM".equals(elementType) && roomId != null) {
+            throw new IllegalArgumentException("Only ROOM element can link roomId");
+        }
+        ensureWithinBounds(cols, rows, x, y, w, h);
+    }
+
+    private static boolean intersects(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh) {
+        return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+    }
+
+    private record StagedElement(UUID id, UUID roomId, String elementType, String label,
+                                 int gridX, int gridY, int gridWidth, int gridHeight,
+                                 String doorSide, String notes, long version) {
+    }
+
+    @Override
     public FacilityFloorView createFloor(FloorCommand command, FacilityLayoutAuditContext context) {
         validateFloor(command);
         Instant now = clock.instant();
@@ -76,16 +250,11 @@ public class FacilityLayoutServiceImpl implements FacilityLayoutService {
     public FacilityFloorView updateFloor(UUID id, FloorCommand command, long version, FacilityLayoutAuditContext context) {
         FacilityFloorView floor = store.floorByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         validateFloor(command);
-        int offset = 0;
-        List<FacilityFloorElementView> elements;
-        do {
-            elements = store.listElements(id, 100, offset);
-            for (FacilityFloorElementView element : elements) {
-                ensureWithinBounds(command.gridColumns(), command.gridRows(), element.gridX(), element.gridY(),
-                        element.gridWidth(), element.gridHeight());
+        if (command.gridColumns() < floor.gridColumns() || command.gridRows() < floor.gridRows()) {
+            if (store.hasElementsOutOfBounds(id, command.gridColumns(), command.gridRows())) {
+                throw new IllegalStateException("Phần tử mặt bằng nằm ngoài kích thước lưới mới.");
             }
-            offset += elements.size();
-        } while (elements.size() == 100);
+        }
         Instant now = clock.instant();
         store.updateFloor(new FloorRow(id, command.code().strip(), command.name().strip(), command.level(), nullable(command.description()),
                 command.gridColumns(), command.gridRows(), version + 1, floor.createdAt(), now), version);

@@ -1613,3 +1613,227 @@ schemas:
       contentSchemaVersion: { type: string, maxLength: 32 }
       content: { type: object, additionalProperties: true }
 
+  FacilityFloor:
+    type: object
+    additionalProperties: false
+    required: [id, version, code, name, level, gridColumns, gridRows, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      code: { type: string, maxLength: 64 }
+      name: { type: string, maxLength: 200 }
+      level: { type: integer }
+      description: { type: [string, 'null'], maxLength: 1000 }
+      gridColumns: { type: integer, minimum: 1, maximum: 100 }
+      gridRows: { type: integer, minimum: 1, maximum: 100 }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+
+  CreateFacilityFloorRequest:
+    type: object
+    additionalProperties: false
+    required: [code, name, level, gridColumns, gridRows]
+    properties:
+      code: { type: string, maxLength: 64 }
+      name: { type: string, maxLength: 200 }
+      level: { type: integer }
+      description: { type: [string, 'null'], maxLength: 1000 }
+      gridColumns: { type: integer, minimum: 1, maximum: 100 }
+      gridRows: { type: integer, minimum: 1, maximum: 100 }
+
+  UpdateFacilityFloorRequest:
+    type: object
+    additionalProperties: false
+    required: [code, name, level, gridColumns, gridRows]
+    properties:
+      code: { type: string, maxLength: 64 }
+      name: { type: string, maxLength: 200 }
+      level: { type: integer }
+      description: { type: [string, 'null'], maxLength: 1000 }
+      gridColumns: { type: integer, minimum: 1, maximum: 100 }
+      gridRows: { type: integer, minimum: 1, maximum: 100 }
+
+  FacilityFloorPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/FacilityFloor' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  FacilityElementType:
+    type: string
+    enum: [ROOM, WALKWAY, ELEVATOR, STAIRS, WC, RECEPTION, EQUIPMENT, WAITING_AREA, EMERGENCY_EXIT, OTHER]
+
+  FacilityDoorSide:
+    type: string
+    enum: [NORTH, EAST, SOUTH, WEST]
+
+  FacilityFloorElement:
+    type: object
+    additionalProperties: false
+    required: [id, floorId, version, elementType, label, gridX, gridY, gridWidth, gridHeight, zIndex, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      floorId: { type: string, format: uuid }
+      roomId: { type: [string, 'null'], format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      elementType: { $ref: '#/schemas/FacilityElementType' }
+      label: { type: string, maxLength: 200 }
+      gridX: { type: integer, minimum: 0 }
+      gridY: { type: integer, minimum: 0 }
+      gridWidth: { type: integer, minimum: 1, maximum: 100 }
+      gridHeight: { type: integer, minimum: 1, maximum: 100 }
+      zIndex: { type: integer }
+      doorSide: { type: [string, 'null'], enum: [NORTH, EAST, SOUTH, WEST] }
+      notes: { type: [string, 'null'], maxLength: 1000 }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+
+  CreateFacilityFloorElementRequest:
+    type: object
+    additionalProperties: false
+    required: [elementType, label, gridX, gridY, gridWidth, gridHeight, zIndex]
+    properties:
+      roomId: { type: [string, 'null'], format: uuid }
+      elementType: { $ref: '#/schemas/FacilityElementType' }
+      label: { type: string, maxLength: 200 }
+      gridX: { type: integer, minimum: 0 }
+      gridY: { type: integer, minimum: 0 }
+      gridWidth: { type: integer, minimum: 1, maximum: 100 }
+      gridHeight: { type: integer, minimum: 1, maximum: 100 }
+      zIndex: { type: integer }
+      doorSide: { type: [string, 'null'], enum: [NORTH, EAST, SOUTH, WEST] }
+      notes: { type: [string, 'null'], maxLength: 1000 }
+
+  UpdateFacilityFloorElementRequest:
+    type: object
+    additionalProperties: false
+    required: [elementType, label, gridX, gridY, gridWidth, gridHeight, zIndex]
+    properties:
+      roomId: { type: [string, 'null'], format: uuid }
+      elementType: { $ref: '#/schemas/FacilityElementType' }
+      label: { type: string, maxLength: 200 }
+      gridX: { type: integer, minimum: 0 }
+      gridY: { type: integer, minimum: 0 }
+      gridWidth: { type: integer, minimum: 1, maximum: 100 }
+      gridHeight: { type: integer, minimum: 1, maximum: 100 }
+      zIndex: { type: integer }
+      doorSide: { type: [string, 'null'], enum: [NORTH, EAST, SOUTH, WEST] }
+      notes: { type: [string, 'null'], maxLength: 1000 }
+
+  FacilityFloorElementPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/FacilityFloorElement' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  FacilityFloorSymbol:
+    type: object
+    additionalProperties: false
+    required: [id, floorId, version, symbolType, label, geometry, zIndex, createdAt, updatedAt]
+    properties:
+      id: { type: string, format: uuid }
+      floorId: { type: string, format: uuid }
+      version: { type: integer, format: int64, minimum: 0 }
+      symbolType: { type: string, maxLength: 64 }
+      label: { type: string, maxLength: 200 }
+      geometry: { type: object, additionalProperties: true }
+      zIndex: { type: integer }
+      createdAt: { type: string, format: date-time }
+      updatedAt: { type: string, format: date-time }
+
+  CreateFacilityFloorSymbolRequest:
+    type: object
+    additionalProperties: false
+    required: [symbolType, label, geometry, zIndex]
+    properties:
+      symbolType: { type: string, maxLength: 64 }
+      label: { type: string, maxLength: 200 }
+      geometry: { type: object, additionalProperties: true }
+      zIndex: { type: integer }
+
+  UpdateFacilityFloorSymbolRequest:
+    type: object
+    additionalProperties: false
+    required: [symbolType, label, geometry, zIndex]
+    properties:
+      symbolType: { type: string, maxLength: 64 }
+      label: { type: string, maxLength: 200 }
+      geometry: { type: object, additionalProperties: true }
+      zIndex: { type: integer }
+
+  FacilityFloorSymbolPage:
+    type: object
+    additionalProperties: false
+    required: [items, hasMore]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/FacilityFloorSymbol' } }
+      nextCursor: { type: [string, 'null'], maxLength: 1024 }
+      hasMore: { type: boolean }
+
+  FacilityFloorLayoutSnapshot:
+    type: object
+    additionalProperties: false
+    required: [floor, elements, symbols]
+    properties:
+      floor: { $ref: '#/schemas/FacilityFloor' }
+      elements: { type: array, items: { $ref: '#/schemas/FacilityFloorElement' } }
+      symbols: { type: array, items: { $ref: '#/schemas/FacilityFloorSymbol' } }
+
+  FacilityRoomPlacement:
+    type: object
+    additionalProperties: false
+    required: [roomId, floorId, elementId]
+    properties:
+      roomId: { type: string, format: uuid }
+      floorId: { type: string, format: uuid }
+      elementId: { type: string, format: uuid }
+
+  FacilityRoomPlacementList:
+    type: object
+    additionalProperties: false
+    required: [items]
+    properties:
+      items: { type: array, items: { $ref: '#/schemas/FacilityRoomPlacement' } }
+
+  FacilityFloorElementChangeItem:
+    type: object
+    additionalProperties: false
+    required: [id, expectedVersion, elementType, label, gridX, gridY, gridWidth, gridHeight, zIndex]
+    properties:
+      id: { type: string, format: uuid }
+      expectedVersion: { type: integer, format: int64, minimum: 0 }
+      roomId: { type: [string, 'null'], format: uuid }
+      elementType: { $ref: '#/schemas/FacilityElementType' }
+      label: { type: string, maxLength: 200 }
+      gridX: { type: integer, minimum: 0 }
+      gridY: { type: integer, minimum: 0 }
+      gridWidth: { type: integer, minimum: 1, maximum: 100 }
+      gridHeight: { type: integer, minimum: 1, maximum: 100 }
+      zIndex: { type: integer }
+      doorSide: { type: [string, 'null'], enum: [NORTH, EAST, SOUTH, WEST] }
+      notes: { type: [string, 'null'], maxLength: 1000 }
+
+  FacilityFloorElementDeleteItem:
+    type: object
+    additionalProperties: false
+    required: [id, expectedVersion]
+    properties:
+      id: { type: string, format: uuid }
+      expectedVersion: { type: integer, format: int64, minimum: 0 }
+
+  FacilityFloorLayoutChangesRequest:
+    type: object
+    additionalProperties: false
+    required: [creates, updates, deletes]
+    properties:
+      creates: { type: array, items: { $ref: '#/schemas/CreateFacilityFloorElementRequest' } }
+      updates: { type: array, items: { $ref: '#/schemas/FacilityFloorElementChangeItem' } }
+      deletes: { type: array, items: { $ref: '#/schemas/FacilityFloorElementDeleteItem' } }
+
+

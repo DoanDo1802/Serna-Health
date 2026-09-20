@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Accessibility,
   AlertTriangle,
@@ -15,6 +15,7 @@ import {
   Copy,
   CopyPlus,
   DoorOpen,
+  Flower2,
   LayoutGrid,
   List,
   Loader2,
@@ -28,6 +29,8 @@ import {
   Settings2,
   ShieldAlert,
   SlidersHorizontal,
+  Sofa,
+  Square,
   Sun,
   Trash2,
   Wrench,
@@ -43,7 +46,11 @@ import {
   type DoorSide,
   type FacilityFloor,
   type FacilityFloorElement,
+  type FacilityFloorElementChangeItem,
+  type FacilityFloorElementDeleteItem,
   type FacilityFloorSymbol,
+  type FacilityLayoutSnapshot,
+  type FacilityRoomPlacement,
   type Room,
   type Service,
 } from "@/lib/api"
@@ -115,7 +122,8 @@ export function ClinicsContent() {
   const [isSavingDesign, setIsSavingDesign] = useState(false)
   const [unsavedWarning, setUnsavedWarning] = useState<{ action: "switch_floor" | "exit_design"; targetFloorId?: string } | null>(null)
   const [loading, setLoading] = useState(true)
-  const [designMode, setDesignMode] = useState(true)
+  const [isLayoutReady, setIsLayoutReady] = useState(false)
+  const [designMode, setDesignMode] = useState(false)
   const [viewMode, setViewMode] = useState<"floorplan" | "list">("floorplan")
   const [displayMode, setDisplayMode] = useState<CanvasDisplayMode>("cad")
   const [leftTab, setLeftTab] = useState<LeftTab>("tools")
@@ -137,9 +145,45 @@ export function ClinicsContent() {
   const [inspectorNotes, setInspectorNotes] = useState("")
   const [inspectorCorners, setInspectorCorners] = useState<CornerConfig>({})
 
+  const [roomPlacements, setRoomPlacements] = useState<FacilityRoomPlacement[]>([])
+  const [floorSnapshots, setFloorSnapshots] = useState<Record<string, FacilityLayoutSnapshot>>({})
+  const floorSnapshotsRef = useRef<Record<string, FacilityLayoutSnapshot>>({})
+
   const currentFloor = useMemo(() => floors.find((floor) => floor.id === selectedFloorId) ?? null, [floors, selectedFloorId])
   const roomById = useMemo(() => new Map(rooms.map((room) => [room.id, room])), [rooms])
-  const placedRoomIds = useMemo(() => new Set(elements.flatMap((element) => (element.roomId ? [element.roomId] : []))), [elements])
+
+  // Placed room IDs across ALL floors (both saved on other floors and working elements on current floor)
+  const placedRoomIds = useMemo(() => {
+    const ids = new Set<string>()
+    // 1. Rooms placed on OTHER floors (from server placements)
+    for (const p of roomPlacements) {
+      if (p.floorId !== selectedFloorId) {
+        ids.add(p.roomId)
+      }
+    }
+    // 2. Rooms placed on CURRENT floor (working state: elements includes drafts, excludes staged deletions)
+    for (const el of elements) {
+      if (el.roomId) {
+        ids.add(el.roomId)
+      }
+    }
+    return ids
+  }, [roomPlacements, selectedFloorId, elements])
+
+  // List of rooms placed on other floors with floor name for clarity
+  const roomsPlacedOnOtherFloors = useMemo(() => {
+    const floorNameMap = new Map(floors.map((f) => [f.id, f.name]))
+    const list: { room: RoomWithEtag; floorName: string }[] = []
+    for (const p of roomPlacements) {
+      if (p.floorId !== selectedFloorId) {
+        const r = roomById.get(p.roomId)
+        if (r) {
+          list.push({ room: r, floorName: floorNameMap.get(p.floorId) ?? "Tầng khác" })
+        }
+      }
+    }
+    return list
+  }, [roomPlacements, selectedFloorId, floors, roomById])
 
   // Helper to determine if an element has modified geometry, label, door, notes, or zIndex
   const isElementModified = useCallback((curr: FacilityFloorElement, orig?: FacilityFloorElement) => {
@@ -183,20 +227,56 @@ export function ClinicsContent() {
   }, [selectedElement])
 
   const loadCatalog = useCallback(async () => {
-    const [departmentPage, servicePage, roomPage, floorPage] = await Promise.all([
+    const [departmentPage, servicePage, roomPage, floorPage, placementsRes] = await Promise.all([
       departmentsApi.list(),
       servicesApi.list(),
       roomsApi.list(),
       facilityLayoutApi.listFloors(),
+      facilityLayoutApi.getRoomPlacements(),
     ])
+
+    const initialFloorId = floorPage.items[0]?.id || ""
+    let initialSnapshot: FacilityLayoutSnapshot | null = null
+    let initialEtag: string | null = null
+
+    if (initialFloorId) {
+      try {
+        const snapRes = await facilityLayoutApi.getLayoutSnapshot(initialFloorId)
+        initialSnapshot = snapRes.data
+        initialEtag = snapRes.etag
+      } catch (err) {
+        console.error("Failed to load initial layout snapshot", err)
+      }
+    }
+
     setDepartments(departmentPage.items)
     setServices(servicePage.items)
-    setRooms(roomPage.items)
     setFloors(floorPage.items)
-    setSelectedFloorId((current) => current || floorPage.items[0]?.id || "")
+    setRoomPlacements(placementsRes.items)
+    setRooms(roomPage.items)
+
+    if (initialSnapshot && initialFloorId) {
+      setElements(initialSnapshot.elements)
+      setServerElements(initialSnapshot.elements)
+      setStagedDeletedIds(new Set())
+      setSymbols(initialSnapshot.symbols)
+      const etags: Record<string, string> = {}
+      for (const el of initialSnapshot.elements) {
+        etags[el.id] = `"${el.version}"`
+      }
+      setElementEtags(etags)
+      if (initialEtag) {
+        setFloorEtags((prev) => ({ ...prev, [initialFloorId]: initialEtag }))
+      }
+      floorSnapshotsRef.current[initialFloorId] = initialSnapshot
+      setFloorSnapshots({ [initialFloorId]: initialSnapshot })
+    }
+
+    setSelectedFloorId(initialFloorId)
+    setIsLayoutReady(true)
   }, [])
 
-  const loadElements = useCallback(async (floorId: string) => {
+  const loadElements = useCallback(async (floorId: string, force = false) => {
     if (!floorId) {
       setElements([])
       setServerElements([])
@@ -204,16 +284,36 @@ export function ClinicsContent() {
       setSymbols([])
       return
     }
-    const [page, symbolPage] = await Promise.all([facilityLayoutApi.listElements(floorId), facilityLayoutApi.listSymbols(floorId)])
-    setElements(page.items)
-    setServerElements(page.items)
+
+    if (!force && floorSnapshotsRef.current[floorId]) {
+      const snapshot = floorSnapshotsRef.current[floorId]
+      setElements(snapshot.elements)
+      setServerElements(snapshot.elements)
+      setStagedDeletedIds(new Set())
+      setSymbols(snapshot.symbols)
+      const etags: Record<string, string> = {}
+      for (const element of snapshot.elements) {
+        etags[element.id] = `"${element.version}"`
+      }
+      setElementEtags(etags)
+      return
+    }
+
+    const { data: snapshot, etag } = await facilityLayoutApi.getLayoutSnapshot(floorId)
+    setElements(snapshot.elements)
+    setServerElements(snapshot.elements)
     setStagedDeletedIds(new Set())
-    setSymbols(symbolPage.items)
+    setSymbols(snapshot.symbols)
     const etags: Record<string, string> = {}
-    for (const element of page.items) {
+    for (const element of snapshot.elements) {
       etags[element.id] = `"${element.version}"`
     }
     setElementEtags(etags)
+    if (etag) {
+      setFloorEtags((prev) => ({ ...prev, [floorId]: etag }))
+    }
+    floorSnapshotsRef.current[floorId] = snapshot
+    setFloorSnapshots((prev) => ({ ...prev, [floorId]: snapshot }))
   }, [])
 
   const refresh = useCallback(async () => {
@@ -236,6 +336,7 @@ export function ClinicsContent() {
   }, [refresh])
 
   useEffect(() => {
+    if (!selectedFloorId) return
     void loadElements(selectedFloorId).catch((error) =>
       toast({
         title: "Không thể tải mặt bằng",
@@ -248,7 +349,7 @@ export function ClinicsContent() {
   const reloadAfterConflict = async (error: unknown) => {
     if (!(error instanceof ApiError) || (error.status !== 412 && error.status !== 404)) return false
     await refresh()
-    if (selectedFloorId) await loadElements(selectedFloorId)
+    if (selectedFloorId) await loadElements(selectedFloorId, true)
     toast({
       title: "Dữ liệu đã thay đổi",
       description: "Mặt bằng đã được đồng bộ lại với máy chủ.",
@@ -289,11 +390,35 @@ export function ClinicsContent() {
         )
         setFloors((current) => current.map((floor) => (floor.id === result.data.id ? result.data : floor)))
         setFloorEtags((current) => ({ ...current, [result.data.id]: result.etag ?? `"${result.data.version}"` }))
+        if (floorSnapshotsRef.current[result.data.id]) {
+          floorSnapshotsRef.current[result.data.id] = {
+            ...floorSnapshotsRef.current[result.data.id],
+            floor: result.data,
+          }
+          setFloorSnapshots((prev) => ({
+            ...prev,
+            [result.data.id]: {
+              ...prev[result.data.id],
+              floor: result.data,
+            },
+          }))
+        }
       } else {
         const result = await facilityLayoutApi.createFloor(data)
         setFloors((current) => [...current, result.data])
         setFloorEtags((current) => ({ ...current, [result.data.id]: result.etag ?? `"${result.data.version}"` }))
         setSelectedFloorId(result.data.id)
+        const emptySnapshot: FacilityLayoutSnapshot = {
+          floor: result.data,
+          elements: [],
+          symbols: [],
+        }
+        floorSnapshotsRef.current[result.data.id] = emptySnapshot
+        setFloorSnapshots((prev) => ({ ...prev, [result.data.id]: emptySnapshot }))
+        setElements([])
+        setServerElements([])
+        setStagedDeletedIds(new Set())
+        setSymbols([])
       }
       toast({ title: "Đã lưu tầng" })
     } catch (error) {
@@ -389,10 +514,16 @@ export function ClinicsContent() {
       setElements((current) => [...current, newElement])
       setSelectedElement(newElement)
       setActiveTool(null)
+      setLeftTab("properties")
       return
     }
 
     const defaultLabel = defaultElementLabel(tool.elementType, tool.customLabel)
+    let initialNotes: string | null = null
+    if (tool.propType) {
+      initialNotes = `<!--prop:${tool.propType}-->`
+    }
+
     const newElement: FacilityFloorElement = {
       id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       floorId: currentFloor.id,
@@ -401,8 +532,9 @@ export function ClinicsContent() {
       label: defaultLabel,
       ...geometry,
       zIndex: 0,
-      doorSide: null,
-      notes: null,
+      doorSide:
+        tool.elementType === "EQUIPMENT" || tool.elementType === "RECEPTION" ? "SOUTH" : null,
+      notes: initialNotes,
       version: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -410,11 +542,12 @@ export function ClinicsContent() {
     setElements((current) => [...current, newElement])
     setSelectedElement(newElement)
     setActiveTool(null)
+    setLeftTab("properties")
   }
 
   const updateElement = async (
     element: FacilityFloorElement,
-    update: Pick<FacilityFloorElement, "label" | "gridX" | "gridY" | "gridWidth" | "gridHeight" | "zIndex" | "doorSide" | "notes">
+    update: Pick<FacilityFloorElement, "label" | "gridX" | "gridY" | "gridWidth" | "gridHeight" | "zIndex" | "doorSide" | "notes"> & { roomId?: string | null }
   ) => {
     setElements((current) =>
       current.map((item) => (item.id === element.id ? { ...item, ...update } : item))
@@ -449,7 +582,8 @@ export function ClinicsContent() {
   // Quick Corner Style change directly from Inspector (in-memory draft)
   const setQuickCorners = async (element: FacilityFloorElement, newCorners: CornerConfig) => {
     setInspectorCorners(newCorners)
-    const formattedNotes = formatNotesWithCorners(inspectorNotes.trim(), newCorners)
+    const { rotation, propType } = parseNotesAndCorners(element.notes)
+    const formattedNotes = formatNotesWithCorners(inspectorNotes.trim(), newCorners, rotation, propType)
     await updateElement(element, {
       label: element.label,
       gridX: element.gridX,
@@ -466,7 +600,8 @@ export function ClinicsContent() {
   const saveInspectorChanges = async () => {
     if (!selectedElement) return
     const trimmedLabel = inspectorLabel.trim() || selectedElement.label
-    const formattedNotes = formatNotesWithCorners(inspectorNotes.trim(), inspectorCorners)
+    const { rotation, propType } = parseNotesAndCorners(selectedElement.notes)
+    const formattedNotes = formatNotesWithCorners(inspectorNotes.trim(), inspectorCorners, rotation, propType)
     if (trimmedLabel !== selectedElement.label || formattedNotes !== (selectedElement.notes ?? null)) {
       await updateElement(selectedElement, {
         label: trimmedLabel,
@@ -487,7 +622,7 @@ export function ClinicsContent() {
 
     // Ensure we use the latest state of the element
     const current = elements.find((e) => e.id === element.id) ?? element
-    const { notes: cleanNotes, corners, rotation } = parseNotesAndCorners(current.notes)
+    const { notes: cleanNotes, corners, rotation, propType } = parseNotesAndCorners(current.notes)
 
     // 1. Swap width and height
     const newWidth = current.gridHeight
@@ -566,7 +701,7 @@ export function ClinicsContent() {
         ? ((rotation + 90) % 360 as RotationAngle)
         : ((rotation + 270) % 360 as RotationAngle)
 
-    const newNotes = formatNotesWithCorners(cleanNotes, newCorners, newRotation)
+    const newNotes = formatNotesWithCorners(cleanNotes, newCorners, newRotation, propType)
 
     // Update inspector local inputs if this is the selected element
     if (selectedElement?.id === current.id) {
@@ -603,7 +738,7 @@ export function ClinicsContent() {
       gridHeight: element.gridHeight,
       zIndex: element.zIndex,
       doorSide: element.doorSide ?? null,
-      notes: element.notes ?? null,
+      notes: element.roomId ? `${element.notes ?? ""} <!--src_room:${element.roomId}-->`.trim() : (element.notes ?? null),
     })
     toast({
       title: "Đã sao chép vào bộ nhớ tạm",
@@ -741,7 +876,7 @@ export function ClinicsContent() {
       gridHeight: targetHeight,
       zIndex: element.zIndex,
       doorSide: element.doorSide ?? null,
-      notes: element.notes ?? null,
+      notes: element.roomId ? `${element.notes ?? ""} <!--src_room:${element.roomId}-->`.trim() : (element.notes ?? null),
       version: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -773,6 +908,14 @@ export function ClinicsContent() {
       const isMac = typeof navigator !== "undefined" && navigator.platform.toUpperCase().indexOf("MAC") >= 0
       const isCmdOrCtrl = isMac ? event.metaKey : event.ctrlKey
 
+      if (!designMode) {
+        if (event.key === "Escape") {
+          setSelectedElement(null)
+          setActiveTool(null)
+        }
+        return
+      }
+
       if (isCmdOrCtrl) {
         if ((event.key === "c" || event.key === "C") && selectedElement) {
           event.preventDefault()
@@ -784,7 +927,7 @@ export function ClinicsContent() {
           event.preventDefault()
           duplicateElement(selectedElement)
         }
-      } else if (designMode && selectedElement && !activeTool) {
+      } else if (selectedElement && !activeTool) {
         if (event.key === "r" || event.key === "R") {
           event.preventDefault()
           rotateElement(selectedElement, event.shiftKey ? "CCW" : "CW")
@@ -806,47 +949,78 @@ export function ClinicsContent() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [selectedElement, clipboard, copyElement, pasteElement, duplicateElement, designMode, activeTool, rotateElement])
 
-  // Batch Save all changes to the database
+  // Batch Save all changes to the database using atomic applyLayoutChanges
   const saveAllDesignChanges = async () => {
     if (!currentFloor || !isDirty) return
     setIsSavingDesign(true)
     try {
-      // 1. Delete removed elements
-      for (const id of stagedDeletedIds) {
+      const deletes: FacilityFloorElementDeleteItem[] = Array.from(stagedDeletedIds).map((id) => {
         const orig = serverElements.find((e) => e.id === id)
-        const etag = elementEtags[id] ?? `"${orig?.version ?? 0}"`
-        try {
-          await facilityLayoutApi.deleteElement(id, etag)
-        } catch (error) {
-          if (error instanceof ApiError && error.status === 404) {
-            // Already removed on server, consider successfully deleted
-            continue
-          }
-          throw error
+        return {
+          id,
+          expectedVersion: orig?.version ?? 0,
         }
-      }
+      })
 
-      // 2. Update modified existing elements
-      for (const el of dirtyChanges.updated) {
-        const etag = elementEtags[el.id] ?? `"${el.version}"`
-        try {
-          await facilityLayoutApi.updateElement(el.id, elementPayload(el), etag)
-        } catch (error) {
-          if (error instanceof ApiError && error.status === 404) {
-            // Element no longer exists on server, skip
-            continue
-          }
-          throw error
-        }
-      }
+      const updates: FacilityFloorElementChangeItem[] = dirtyChanges.updated.map((el) => ({
+        id: el.id,
+        roomId: el.roomId ?? null,
+        elementType: el.elementType,
+        label: el.label,
+        gridX: el.gridX,
+        gridY: el.gridY,
+        gridWidth: el.gridWidth,
+        gridHeight: el.gridHeight,
+        zIndex: el.zIndex,
+        doorSide: el.doorSide ?? null,
+        notes: el.notes ?? null,
+      }))
 
-      // 3. Create newly drawn elements
-      for (const el of dirtyChanges.created) {
-        await facilityLayoutApi.createElement(currentFloor.id, elementPayload(el))
-      }
+      const creates: FacilityFloorElementChangeItem[] = dirtyChanges.created.map((el) => ({
+        roomId: el.roomId ?? null,
+        elementType: el.elementType,
+        label: el.label,
+        gridX: el.gridX,
+        gridY: el.gridY,
+        gridWidth: el.gridWidth,
+        gridHeight: el.gridHeight,
+        zIndex: el.zIndex,
+        doorSide: el.doorSide ?? null,
+        notes: el.notes ?? null,
+      }))
 
-      // 4. Reload authoritative snapshot from server
-      await loadElements(currentFloor.id)
+      const result = await facilityLayoutApi.applyLayoutChanges(currentFloor.id, {
+        expectedFloorVersion: currentFloor.version,
+        creates,
+        updates,
+        deletes,
+      })
+
+      const snapshot = result.data
+      setFloors((current) => current.map((f) => (f.id === snapshot.floor.id ? snapshot.floor : f)))
+      setFloorEtags((current) => ({ ...current, [snapshot.floor.id]: result.etag ?? `"${snapshot.floor.version}"` }))
+      setElements(snapshot.elements)
+      setServerElements(snapshot.elements)
+      setStagedDeletedIds(new Set())
+      setSymbols(snapshot.symbols)
+
+      const etags: Record<string, string> = {}
+      for (const el of snapshot.elements) {
+        etags[el.id] = `"${el.version}"`
+      }
+      setElementEtags(etags)
+
+      floorSnapshotsRef.current[currentFloor.id] = snapshot
+      setFloorSnapshots((prev) => ({ ...prev, [currentFloor.id]: snapshot }))
+
+      setRoomPlacements((current) => {
+        const otherPlacements = current.filter((p) => p.floorId !== currentFloor.id)
+        const currentFloorPlacements = snapshot.elements
+          .filter((e) => e.roomId)
+          .map((e) => ({ roomId: e.roomId!, floorId: currentFloor.id, elementId: e.id }))
+        return [...otherPlacements, ...currentFloorPlacements]
+      })
+
       setSelectedElement(null)
 
       toast({
@@ -885,7 +1059,12 @@ export function ClinicsContent() {
       return
     }
     setDesignMode((value) => {
-      if (value) setActiveTool(null)
+      if (value) {
+        setActiveTool(null)
+        setSelectedElement(null)
+      } else {
+        setLeftTab("tools")
+      }
       return !value
     })
   }
@@ -926,12 +1105,17 @@ export function ClinicsContent() {
     setUnsavedWarning(null)
   }
 
-  // Tool selection helper that activates design mode
+  // Tool selection helper (requires designMode to be active)
   const selectTool = (tool: FloorPlanTool) => {
-    setDesignMode(true)
+    if (!designMode) return
     setActiveTool((curr) => {
       if (!curr) return tool
-      if (curr.elementType === tool.elementType && curr.roomId === tool.roomId && curr.customLabel === tool.customLabel) {
+      if (
+        curr.elementType === tool.elementType &&
+        curr.roomId === tool.roomId &&
+        curr.customLabel === tool.customLabel &&
+        curr.propType === tool.propType
+      ) {
         return null
       }
       return tool
@@ -1029,7 +1213,7 @@ export function ClinicsContent() {
               }
             >
               <PencilRuler className="mr-1.5 h-3.5 w-3.5" />
-              {designMode ? "Chế độ Thiết kế (Bật)" : "Bật Chế độ Thiết kế"}
+              {designMode ? "Thoát Chế độ Thiết kế" : "Bật Chế độ Thiết kế"}
             </Button>
           </div>
         </div>
@@ -1150,18 +1334,63 @@ export function ClinicsContent() {
 
           {/* 2. CÔNG CỤ VẼ & THUỘC TÍNH */}
           <Card className="p-3 space-y-3 shadow-2xs">
-            {/* Smart 3-Tab Selector: [Công cụ] | [Chưa đặt (X)] | [Thuộc tính] */}
-            <div className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/60 p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setLeftTab("tools")}
-                className={`flex items-center justify-center gap-1 rounded py-1 font-semibold transition-all ${
-                  leftTab === "tools" ? "bg-background shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Compass className="h-3.5 w-3.5" />
-                Công cụ
-              </button>
+            {!designMode ? (
+              <div className="space-y-3 py-2 text-center">
+                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <PencilRuler className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground">Chế độ Xem Mặt bằng</h4>
+                  <p className="mt-1 text-xs text-muted-foreground px-1 leading-relaxed">
+                    Mặt bằng đang ở chế độ hiển thị an toàn. Bật chế độ thiết kế để thêm phòng, bố trí nội thất, vẽ tường hoặc chỉnh sửa sơ đồ.
+                  </p>
+                </div>
+                {selectedElement && (
+                  <div className="rounded-lg border bg-muted/40 p-2.5 text-left text-xs space-y-1.5 mt-2">
+                    <div className="font-semibold text-foreground flex items-center justify-between gap-1">
+                      <span className="truncate">{selectedRoom?.name ?? selectedElement.label}</span>
+                      <Badge variant="outline" className="text-[10px] shrink-0">
+                        {ELEMENT_LABELS[selectedElement.elementType]}
+                      </Badge>
+                    </div>
+                    {selectedRoom?.code && (
+                      <div className="text-muted-foreground">
+                        Mã phòng: <span className="font-mono text-foreground font-semibold">{selectedRoom.code}</span>
+                      </div>
+                    )}
+                    <div className="text-muted-foreground">
+                      Tọa độ: X={selectedElement.gridX}, Y={selectedElement.gridY} ({selectedElement.gridWidth}×{selectedElement.gridHeight})
+                    </div>
+                    {selectedElement.notes && (
+                      <div className="text-muted-foreground italic text-[11px] border-t pt-1 mt-1">
+                        {parseNotesAndCorners(selectedElement.notes).notes || "Không có ghi chú"}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <Button
+                  className="w-full font-semibold"
+                  size="sm"
+                  onClick={() => handleToggleDesignMode()}
+                >
+                  <PencilRuler className="mr-1.5 h-3.5 w-3.5" />
+                  Bật Chế độ Thiết kế
+                </Button>
+              </div>
+            ) : (
+              <>
+                {/* Smart 3-Tab Selector: [Công cụ] | [Chưa đặt (X)] | [Thuộc tính] */}
+                <div className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/60 p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setLeftTab("tools")}
+                    className={`flex items-center justify-center gap-1 rounded py-1 font-semibold transition-all ${
+                      leftTab === "tools" ? "bg-background shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Compass className="h-3.5 w-3.5" />
+                    Công cụ
+                  </button>
               <button
                 type="button"
                 onClick={() => setLeftTab("unplaced")}
@@ -1170,7 +1399,7 @@ export function ClinicsContent() {
                 }`}
               >
                 <Building2 className="h-3.5 w-3.5" />
-                Chưa đặt ({unplacedRooms.length})
+                Chưa đặt ({isLayoutReady ? unplacedRooms.length : "..."})
               </button>
               <button
                 type="button"
@@ -1192,11 +1421,11 @@ export function ClinicsContent() {
 
             {/* TAB 1: CAD DRAWING TOOLS */}
             {leftTab === "tools" && (
-              <div className="space-y-3 pt-1 animate-in fade-in duration-150">
-                {/* 1. Không gian & Phòng */}
+              <div className="space-y-3 pt-1 animate-in fade-in duration-150 text-xs">
+                {/* 1. Phòng & Khu chức năng (Tự do đặt tên & ghi chú) */}
                 <div>
                   <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                    <span>1. Không gian & Phòng</span>
+                    <span>1. Phòng & Khu chức năng</span>
                     <span className="text-[10px] text-muted-foreground">Kéo trên lưới</span>
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
@@ -1210,15 +1439,120 @@ export function ClinicsContent() {
                       <Building2 className="mr-1.5 h-3.5 w-3.5 text-amber-600 shrink-0" />
                       <span className="truncate">Phòng</span>
                     </Button>
-                    {/* WAITING_AREA */}
+                    {/* CASHIER */}
                     <Button
                       size="sm"
-                      variant={activeTool?.elementType === "WAITING_AREA" ? "default" : "outline"}
+                      variant={activeTool?.elementType === "RECEPTION" && activeTool.customLabel === "QUẦY THU NGÂN" ? "default" : "outline"}
                       className="h-8 justify-start text-xs font-medium"
-                      onClick={() => selectTool({ elementType: "WAITING_AREA", customLabel: "SẢNH CHỜ" })}
+                      onClick={() => selectTool({ elementType: "RECEPTION", customLabel: "QUẦY THU NGÂN", propType: "cashier" })}
+                      title="Quầy thu ngân với icon nhân viên"
                     >
-                      <Armchair className="mr-1.5 h-3.5 w-3.5 text-teal-600 shrink-0" />
-                      <span className="truncate">Sảnh chờ</span>
+                      <Armchair className="mr-1.5 h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span className="truncate">Quầy thu ngân</span>
+                    </Button>
+                    {/* RECEPTION */}
+                    <Button
+                      size="sm"
+                      variant={activeTool?.elementType === "RECEPTION" && activeTool.customLabel === "KHU VỰC TIẾP NHẬN" ? "default" : "outline"}
+                      className="h-8 justify-start text-xs font-medium"
+                      onClick={() => selectTool({ elementType: "RECEPTION", customLabel: "KHU VỰC TIẾP NHẬN", propType: "cashier" })}
+                      title="Khu vực tiếp nhận hồ sơ / bệnh nhân"
+                    >
+                      <Armchair className="mr-1.5 h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                      <span className="truncate">Tiếp nhận</span>
+                    </Button>
+                    {/* EQUIPMENT */}
+                    <Button
+                      size="sm"
+                      variant={activeTool?.elementType === "EQUIPMENT" && activeTool.customLabel === "KHO / THIẾT BỊ" ? "default" : "outline"}
+                      className="h-8 justify-start text-xs font-medium"
+                      onClick={() => selectTool({ elementType: "EQUIPMENT", customLabel: "KHO / THIẾT BỊ" })}
+                    >
+                      <Wrench className="mr-1.5 h-3.5 w-3.5 text-cyan-600 shrink-0" />
+                      <span className="truncate">Kho / Thiết bị</span>
+                    </Button>
+                    {/* SECURITY */}
+                    <Button
+                      size="sm"
+                      variant={activeTool?.elementType === "EQUIPMENT" && activeTool.customLabel === "BẢO VỆ" ? "default" : "outline"}
+                      className="h-8 justify-start text-xs font-medium"
+                      onClick={() => selectTool({ elementType: "EQUIPMENT", customLabel: "BẢO VỆ" })}
+                    >
+                      <ShieldAlert className="mr-1.5 h-3.5 w-3.5 text-blue-600 shrink-0" />
+                      <span className="truncate">Bảo vệ</span>
+                    </Button>
+                    {/* PHARMACY */}
+                    <Button
+                      size="sm"
+                      variant={activeTool?.elementType === "EQUIPMENT" && activeTool.customLabel === "DƯỢC (NHÀ THUỐC)" ? "default" : "outline"}
+                      className="h-8 justify-start text-xs font-medium"
+                      onClick={() => selectTool({ elementType: "EQUIPMENT", customLabel: "DƯỢC (NHÀ THUỐC)" })}
+                    >
+                      <Building className="mr-1.5 h-3.5 w-3.5 text-purple-600 shrink-0" />
+                      <span className="truncate">Nhà thuốc</span>
+                    </Button>
+                    {/* LAB */}
+                    <Button
+                      size="sm"
+                      variant={activeTool?.elementType === "EQUIPMENT" && activeTool.customLabel === "XÉT NGHIỆM" ? "default" : "outline"}
+                      className="h-8 justify-start text-xs font-medium"
+                      onClick={() => selectTool({ elementType: "EQUIPMENT", customLabel: "XÉT NGHIỆM" })}
+                    >
+                      <Building2 className="mr-1.5 h-3.5 w-3.5 text-rose-600 shrink-0" />
+                      <span className="truncate">Xét nghiệm</span>
+                    </Button>
+                    {/* IMAGING */}
+                    <Button
+                      size="sm"
+                      variant={activeTool?.elementType === "EQUIPMENT" && activeTool.customLabel === "CHẨN ĐOÁN HÌNH ẢNH" ? "default" : "outline"}
+                      className="h-8 justify-start text-xs font-medium"
+                      onClick={() => selectTool({ elementType: "EQUIPMENT", customLabel: "CHẨN ĐOÁN HÌNH ẢNH" })}
+                    >
+                      <Building2 className="mr-1.5 h-3.5 w-3.5 text-teal-600 shrink-0" />
+                      <span className="truncate">CĐ hình ảnh</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* 2. Cảnh quan & Vật dụng nhỏ */}
+                <div className="border-t pt-2.5">
+                  <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    <span>2. Cảnh quan & Vật dụng</span>
+                    <span className="text-[10px] text-muted-foreground">Kéo trên lưới</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {/* POTTED PLANT */}
+                    <Button
+                      size="sm"
+                      variant={activeTool?.customLabel === "CHẬU CÂY" ? "default" : "outline"}
+                      className="h-8 justify-start text-xs font-medium"
+                      onClick={() => selectTool({ elementType: "OTHER", customLabel: "CHẬU CÂY", propType: "plant" })}
+                      title="Chậu cây cảnh phong cách kiến trúc top-down"
+                    >
+                      <Flower2 className="mr-1.5 h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span className="truncate font-semibold text-emerald-700 dark:text-emerald-400">Chậu cây 🪴</span>
+                    </Button>
+                    {/* BENCH / SOFA */}
+                    <Button
+                      size="sm"
+                      variant={activeTool?.customLabel === "GHẾ CHỜ" || (activeTool?.elementType === "WAITING_AREA" && activeTool?.propType === "bench") ? "default" : "outline"}
+                      className="h-8 justify-start text-xs font-medium"
+                      onClick={() => selectTool({ elementType: "WAITING_AREA", customLabel: "GHẾ CHỜ", propType: "bench" })}
+                      title="Băng ghế chờ / Sofa"
+                    >
+                      <Sofa className="mr-1.5 h-3.5 w-3.5 text-teal-600 shrink-0" />
+                      <span className="truncate">Băng ghế</span>
+                    </Button>
+                    {/* WALL / PARTITION */}
+                    <Button
+                      size="sm"
+                      variant={activeTool?.customLabel === "TƯỜNG" ? "default" : "outline"}
+                      className="h-8 justify-start text-xs font-medium"
+                      onClick={() => selectTool({ elementType: "OTHER", customLabel: "TƯỜNG", propType: "wall" })}
+                      title="Tường / Vách ngăn đặc"
+                    >
+                      <Square className="mr-1.5 h-3.5 w-3.5 text-slate-700 shrink-0" />
+                      <span className="truncate">Tường / Vách</span>
                     </Button>
                     {/* WALKWAY */}
                     <Button
@@ -1230,43 +1564,13 @@ export function ClinicsContent() {
                       <DoorOpen className="mr-1.5 h-3.5 w-3.5 text-slate-500 shrink-0" />
                       <span className="truncate">Hành lang</span>
                     </Button>
-                    {/* RECEPTION */}
-                    <Button
-                      size="sm"
-                      variant={activeTool?.elementType === "RECEPTION" ? "default" : "outline"}
-                      className="h-8 justify-start text-xs font-medium"
-                      onClick={() => selectTool({ elementType: "RECEPTION", customLabel: "TIẾP ĐÓN" })}
-                    >
-                      <Armchair className="mr-1.5 h-3.5 w-3.5 text-indigo-600 shrink-0" />
-                      <span className="truncate">Tiếp đón</span>
-                    </Button>
-                    {/* EQUIPMENT */}
-                    <Button
-                      size="sm"
-                      variant={activeTool?.elementType === "EQUIPMENT" ? "default" : "outline"}
-                      className="h-8 justify-start text-xs font-medium"
-                      onClick={() => selectTool({ elementType: "EQUIPMENT", customLabel: "KHO / THIẾT BỊ" })}
-                    >
-                      <Wrench className="mr-1.5 h-3.5 w-3.5 text-cyan-600 shrink-0" />
-                      <span className="truncate">Kho / Thiết bị</span>
-                    </Button>
-                    {/* EMERGENCY_EXIT */}
-                    <Button
-                      size="sm"
-                      variant={activeTool?.elementType === "EMERGENCY_EXIT" ? "default" : "outline"}
-                      className="h-8 justify-start text-xs font-medium"
-                      onClick={() => selectTool({ elementType: "EMERGENCY_EXIT", customLabel: "THOÁT HIỂM" })}
-                    >
-                      <ShieldAlert className="mr-1.5 h-3.5 w-3.5 text-rose-600 shrink-0" />
-                      <span className="truncate">Thoát hiểm</span>
-                    </Button>
                   </div>
                 </div>
 
-                {/* 2. Ký hiệu kiến trúc CAD */}
+                {/* 3. Ký hiệu kiến trúc CAD */}
                 <div className="border-t pt-2.5">
                   <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                    <span>2. Ký hiệu kiến trúc CAD</span>
+                    <span>3. Ký hiệu kiến trúc CAD</span>
                     <span className="text-[10px] text-muted-foreground">Kéo trên lưới</span>
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
@@ -1303,12 +1607,22 @@ export function ClinicsContent() {
                     {/* SKYWELL */}
                     <Button
                       size="sm"
-                      variant={activeTool?.elementType === "OTHER" ? "default" : "outline"}
+                      variant={activeTool?.elementType === "OTHER" && activeTool.customLabel === "GIẾNG TRỜI" ? "default" : "outline"}
                       className="h-8 justify-start text-xs font-medium"
                       onClick={() => selectTool({ elementType: "OTHER", customLabel: "GIẾNG TRỜI" })}
                     >
                       <Sun className="mr-1.5 h-3.5 w-3.5 text-amber-500 shrink-0" />
                       <span className="truncate">Giếng trời</span>
+                    </Button>
+                    {/* EMERGENCY_EXIT */}
+                    <Button
+                      size="sm"
+                      variant={activeTool?.elementType === "EMERGENCY_EXIT" ? "default" : "outline"}
+                      className="h-8 justify-start text-xs font-medium col-span-2"
+                      onClick={() => selectTool({ elementType: "EMERGENCY_EXIT", customLabel: "THOÁT HIỂM" })}
+                    >
+                      <ShieldAlert className="mr-1.5 h-3.5 w-3.5 text-rose-600 shrink-0" />
+                      <span className="truncate">Cửa thoát hiểm</span>
                     </Button>
                   </div>
                 </div>
@@ -1334,69 +1648,105 @@ export function ClinicsContent() {
                   </Button>
                 </div>
 
-                <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
-                  {unplacedRooms.map((room) => (
-                    <div
-                      key={room.id}
-                      className={`flex items-center justify-between gap-1 rounded-lg border p-2 text-xs transition-colors ${
-                        activeTool?.roomId === room.id ? "border-primary bg-primary/10 font-bold" : "hover:bg-muted"
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1 pr-1">
-                        <span className="font-bold text-foreground">{room.code}</span>
-                        <span className="mx-1 text-muted-foreground">—</span>
-                        <span className="truncate text-muted-foreground">{room.name}</span>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                          title="Chỉnh sửa phòng"
-                          onClick={() => {
-                            setEditingRoom(room)
-                            setRoomDialogOpen(true)
-                          }}
+                {!isLayoutReady ? (
+                  <div className="flex flex-col items-center justify-center py-8 gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    <span>Đang kiểm tra phòng trên các tầng...</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
+                      {unplacedRooms.map((room) => (
+                        <div
+                          key={room.id}
+                          className={`flex items-center justify-between gap-1 rounded-lg border p-2 text-xs transition-colors ${
+                            activeTool?.roomId === room.id ? "border-primary bg-primary/10 font-bold" : "hover:bg-muted"
+                          }`}
                         >
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 w-6 p-0 text-rose-500 hover:bg-rose-500/10 hover:text-rose-600"
-                          title="Xóa phòng"
-                          onClick={() => setRoomToDelete(room)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={activeTool?.roomId === room.id ? "default" : "outline"}
-                          className="h-6 px-2 text-[11px]"
-                          disabled={!currentFloor}
-                          onClick={() => {
-                            if (activeTool?.roomId === room.id) {
-                              setActiveTool(null)
-                            } else {
-                              selectTool({
-                                elementType: "ROOM",
-                                roomId: room.id,
-                                customLabel: `${room.code} - ${room.name}`,
-                              })
-                            }
-                          }}
-                        >
-                          {activeTool?.roomId === room.id ? "Đang chọn" : "Đặt lên lưới"}
-                        </Button>
-                      </div>
+                          <div className="min-w-0 flex-1 pr-1">
+                            <span className="font-bold text-foreground">{room.code}</span>
+                            <span className="mx-1 text-muted-foreground">—</span>
+                            <span className="truncate text-muted-foreground">{room.name}</span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                              title="Chỉnh sửa phòng"
+                              onClick={() => {
+                                setEditingRoom(room)
+                                setRoomDialogOpen(true)
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-rose-500 hover:bg-rose-500/10 hover:text-rose-600"
+                              title="Xóa phòng"
+                              onClick={() => setRoomToDelete(room)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={activeTool?.roomId === room.id ? "default" : "outline"}
+                              className="h-6 px-2 text-[11px]"
+                              disabled={!currentFloor}
+                              onClick={() => {
+                                if (activeTool?.roomId === room.id) {
+                                  setActiveTool(null)
+                                } else {
+                                  selectTool({
+                                    elementType: "ROOM",
+                                    roomId: room.id,
+                                    customLabel: `${room.code} - ${room.name}`,
+                                  })
+                                }
+                              }}
+                            >
+                              {activeTool?.roomId === room.id ? "Đang chọn" : "Đặt lên lưới"}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {unplacedRooms.length === 0 && (
+                        <div className="py-8 text-center text-xs text-muted-foreground">
+                          Tất cả các phòng trong danh mục đã được đặt vào mặt bằng.
+                        </div>
+                      )}
                     </div>
-                  ))}
-                  {unplacedRooms.length === 0 && (
-                    <div className="py-8 text-center text-xs text-muted-foreground">
-                      Tất cả các phòng trong danh mục đã được đặt vào mặt bằng.
-                    </div>
-                  )}
-                </div>
+
+                    {/* Collapsible section showing rooms already placed on other floors */}
+                    {roomsPlacedOnOtherFloors.length > 0 && (
+                      <details className="mt-2 rounded-md border bg-muted/20 p-2 text-xs group">
+                        <summary className="flex cursor-pointer select-none items-center justify-between text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+                          <span>Đã đặt ở tầng khác ({roomsPlacedOnOtherFloors.length})</span>
+                          <span className="text-[10px] transition-transform group-open:rotate-180">▼</span>
+                        </summary>
+                        <div className="mt-2 max-h-36 space-y-1 overflow-y-auto pr-1">
+                          {roomsPlacedOnOtherFloors.map(({ room, floorName }) => (
+                            <div
+                              key={room.id}
+                              className="flex items-center justify-between rounded border border-border/40 bg-background/60 px-2 py-1 text-[11px]"
+                            >
+                              <div className="min-w-0 flex-1 truncate pr-1">
+                                <span className="font-medium text-foreground">{room.code}</span>
+                                <span className="mx-1 text-muted-foreground">—</span>
+                                <span className="text-muted-foreground truncate">{room.name}</span>
+                              </div>
+                              <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px] font-medium">
+                                {floorName}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
@@ -1446,7 +1796,7 @@ export function ClinicsContent() {
                 {/* Editable Notes */}
                 <div>
                   <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
-                    Ghi chú riêng của phòng:
+                    Ghi chú / Diễn giải phụ (hiển thị dưới tên):
                   </label>
                   <Input
                     className="h-7 text-xs bg-background"
@@ -1456,7 +1806,7 @@ export function ClinicsContent() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") void saveInspectorChanges()
                     }}
-                    placeholder="Nhập ghi chú tùy ý..."
+                    placeholder="vd: Phòng Khám Tổng Quát, (X-QUANG, SIÊU ÂM)..."
                   />
                 </div>
 
@@ -1589,7 +1939,9 @@ export function ClinicsContent() {
                 </div>
               </div>
             )}
-          </Card>
+            </>
+          )}
+        </Card>
         </aside>
 
         {/* RIGHT MAIN CANVAS AREA */}
@@ -1634,11 +1986,19 @@ export function ClinicsContent() {
                     onRemoveElement={removeElement}
                     onDeselect={() => setSelectedElement(null)}
                     canPaste={Boolean(clipboard)}
-                    onEditFloor={() => {
-                      setEditingFloor(currentFloor)
-                      setFloorDialogOpen(true)
-                    }}
-                    onDeleteFloor={() => setFloorToDelete(currentFloor)}
+                    onEditFloor={
+                      designMode
+                        ? () => {
+                            setEditingFloor(currentFloor)
+                            setFloorDialogOpen(true)
+                          }
+                        : undefined
+                    }
+                    onDeleteFloor={
+                      designMode && elements.length === 0
+                        ? () => setFloorToDelete(currentFloor)
+                        : undefined
+                    }
                   />
                 ) : (
                   <div className="divide-y overflow-hidden rounded-lg border">
@@ -1722,8 +2082,10 @@ export function ClinicsContent() {
         room={selectedRoom}
         departments={departments}
         services={services}
+        existingRooms={rooms}
         getAssignments={roomsApi.assignments}
         onUpdateElement={updateElement}
+        onCreateRoom={createRoom}
         onUpdateRoom={async (room, data) => {
           const result = await roomsApi.update(room.id, data, room.etag ?? `"${room.version}"`)
           const updated = { ...result.data, etag: result.etag }
@@ -1758,6 +2120,13 @@ export function ClinicsContent() {
                   .deleteFloor(floorToDelete.id, floorEtags[floorToDelete.id] ?? `"${floorToDelete.version}"`)
                   .then(() => {
                     setFloors((current) => current.filter((floor) => floor.id !== floorToDelete.id))
+                    delete floorSnapshotsRef.current[floorToDelete.id]
+                    setFloorSnapshots((current) => {
+                      const next = { ...current }
+                      delete next[floorToDelete.id]
+                      return next
+                    })
+                    setRoomPlacements((current) => current.filter((p) => p.floorId !== floorToDelete.id))
                     setSelectedFloorId("")
                     setFloorToDelete(null)
                     toast({ title: "Đã xóa tầng" })

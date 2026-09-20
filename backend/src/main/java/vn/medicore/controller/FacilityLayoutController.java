@@ -28,10 +28,16 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.medicore.common.web.RequestContext;
 import vn.medicore.dto.AuthenticatedAccount;
 import vn.medicore.dto.FacilityLayoutAuditContext;
+import vn.medicore.dto.FacilityLayoutModels.CreateElementItem;
+import vn.medicore.dto.FacilityLayoutModels.DeleteElementItem;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorElementView;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorSymbolView;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorView;
+import vn.medicore.dto.FacilityLayoutModels.FacilityLayoutSnapshot;
+import vn.medicore.dto.FacilityLayoutModels.FacilityRoomPlacementList;
+import vn.medicore.dto.FacilityLayoutModels.LayoutChangesCommand;
 import vn.medicore.dto.FacilityLayoutModels.Page;
+import vn.medicore.dto.FacilityLayoutModels.UpdateElementItem;
 import vn.medicore.service.FacilityLayoutService;
 import vn.medicore.service.FacilityLayoutService.ElementCommand;
 import vn.medicore.service.FacilityLayoutService.FloorCommand;
@@ -47,6 +53,27 @@ public class FacilityLayoutController {
 
     public FacilityLayoutController(FacilityLayoutService service) {
         this.service = service;
+    }
+
+    @GetMapping("/facility-floors/{floorId}/layout")
+    @PreAuthorize("hasAuthority('floorplan.read')")
+    ResponseEntity<FacilityLayoutSnapshot> getLayoutSnapshot(@PathVariable UUID floorId) {
+        FacilityLayoutSnapshot snapshot = service.getLayoutSnapshot(floorId);
+        return versioned(snapshot, snapshot.floor().version());
+    }
+
+    @GetMapping("/facility-floors/room-placements")
+    @PreAuthorize("hasAuthority('floorplan.read')")
+    FacilityRoomPlacementList listRoomPlacements() {
+        return new FacilityRoomPlacementList(service.getRoomPlacements());
+    }
+
+    @PostMapping("/facility-floors/{floorId}/layout/changes")
+    @PreAuthorize("hasAuthority('floorplan.manage')")
+    ResponseEntity<FacilityLayoutSnapshot> applyLayoutChanges(HttpServletRequest request, @PathVariable UUID floorId,
+            @AuthenticationPrincipal AuthenticatedAccount principal, @Valid @RequestBody LayoutChangesRequest body) {
+        FacilityLayoutSnapshot snapshot = service.applyLayoutChanges(floorId, body.toCommand(), auditContext(request, principal));
+        return versioned(snapshot, snapshot.floor().version());
     }
 
     @GetMapping("/facility-floors")
@@ -205,5 +232,36 @@ public class FacilityLayoutController {
         SymbolCommand toCommand() {
             return new SymbolCommand(symbolType, label, geometry, zIndex);
         }
+    }
+
+    record LayoutChangesRequest(
+            List<@Valid ElementRequest> creates,
+            List<@Valid UpdateElementItemRequest> updates,
+            List<@Valid DeleteElementItemRequest> deletes) {
+        LayoutChangesCommand toCommand() {
+            List<CreateElementItem> createItems = creates == null ? List.of()
+                    : creates.stream().map(c -> new CreateElementItem(
+                            c.roomId(), c.elementType(), c.label(), c.gridX(), c.gridY(),
+                            c.gridWidth(), c.gridHeight(), c.zIndex(), c.doorSide(), c.notes())).toList();
+            List<UpdateElementItem> updateItems = updates == null ? List.of()
+                    : updates.stream().map(u -> new UpdateElementItem(
+                            u.id(), u.expectedVersion(), u.roomId(), u.elementType(), u.label(), u.gridX(), u.gridY(),
+                            u.gridWidth(), u.gridHeight(), u.zIndex(), u.doorSide(), u.notes())).toList();
+            List<DeleteElementItem> deleteItems = deletes == null ? List.of()
+                    : deletes.stream().map(d -> new DeleteElementItem(d.id(), d.expectedVersion())).toList();
+            return new LayoutChangesCommand(createItems, updateItems, deleteItems);
+        }
+    }
+
+    record UpdateElementItemRequest(
+            @NotNull UUID id, long expectedVersion, UUID roomId,
+            @NotBlank @Pattern(regexp = ELEMENT_TYPES) String elementType,
+            @NotBlank @Size(max = 200) String label, @Min(0) int gridX, @Min(0) int gridY,
+            @Min(1) @Max(100) int gridWidth, @Min(1) @Max(100) int gridHeight,
+            int zIndex, @Pattern(regexp = "NORTH|EAST|SOUTH|WEST") String doorSide,
+            @Size(max = 1000) String notes) {
+    }
+
+    record DeleteElementItemRequest(@NotNull UUID id, long expectedVersion) {
     }
 }

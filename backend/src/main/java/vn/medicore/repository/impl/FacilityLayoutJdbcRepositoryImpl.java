@@ -17,6 +17,7 @@ import vn.medicore.common.exception.StaleVersionException;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorElementView;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorSymbolView;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorView;
+import vn.medicore.dto.FacilityLayoutModels.RoomPlacementView;
 import vn.medicore.repository.FacilityLayoutRepository;
 
 @Repository
@@ -83,6 +84,15 @@ public class FacilityLayoutJdbcRepositoryImpl implements FacilityLayoutRepositor
     }
 
     @Override
+    public boolean hasElementsOutOfBounds(UUID floorId, int gridColumns, int gridRows) {
+        Integer count = jdbc.queryForObject("""
+                select count(*) from facility_floor_element
+                where floor_id = ? and (grid_x + grid_width > ? or grid_y + grid_height > ?)
+                """, Integer.class, floorId, gridColumns, gridRows);
+        return count != null && count > 0;
+    }
+
+    @Override
     public void insertElement(ElementRow row) {
         jdbc.update("""
                 insert into facility_floor_element(id, floor_id, room_id, element_type, label, grid_x, grid_y, grid_width,
@@ -112,6 +122,14 @@ public class FacilityLayoutJdbcRepositoryImpl implements FacilityLayoutRepositor
     }
 
     @Override
+    public List<FacilityFloorElementView> allElementsForFloor(UUID floorId) {
+        return jdbc.query("""
+                select * from facility_floor_element where floor_id = ?
+                order by z_index, grid_y, grid_x, id
+                """, this::element, floorId);
+    }
+
+    @Override
     public void updateElement(ElementRow row, long expectedVersion) {
         int updated = jdbc.update("""
                 update facility_floor_element set floor_id = ?, room_id = ?, element_type = ?, label = ?, grid_x = ?, grid_y = ?,
@@ -126,6 +144,18 @@ public class FacilityLayoutJdbcRepositoryImpl implements FacilityLayoutRepositor
     public void deleteElement(UUID id, long expectedVersion) {
         int deleted = jdbc.update("delete from facility_floor_element where id = ? and version = ?", id, expectedVersion);
         if (deleted != 1) throw new StaleVersionException();
+    }
+
+    @Override
+    public List<RoomPlacementView> allRoomPlacements() {
+        return jdbc.query("""
+                select room_id, floor_id, id from facility_floor_element
+                where room_id is not null
+                order by floor_id, room_id
+                """, (rs, rowNum) -> new RoomPlacementView(
+                        (UUID) rs.getObject("room_id"),
+                        (UUID) rs.getObject("floor_id"),
+                        (UUID) rs.getObject("id")));
     }
 
     @Override
@@ -153,6 +183,14 @@ public class FacilityLayoutJdbcRepositoryImpl implements FacilityLayoutRepositor
                 select * from facility_floor_symbol where floor_id = ?
                 order by z_index, id limit ? offset ?
                 """, this::symbol, floorId, limit, offset);
+    }
+
+    @Override
+    public List<FacilityFloorSymbolView> allSymbolsForFloor(UUID floorId) {
+        return jdbc.query("""
+                select * from facility_floor_symbol where floor_id = ?
+                order by z_index, id
+                """, this::symbol, floorId);
     }
 
     @Override

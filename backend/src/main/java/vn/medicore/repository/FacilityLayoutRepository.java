@@ -8,6 +8,7 @@ import java.util.UUID;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorElementView;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorSymbolView;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorView;
+import vn.medicore.dto.FacilityLayoutModels.RoomPlacementView;
 
 public interface FacilityLayoutRepository {
 
@@ -27,6 +28,8 @@ public interface FacilityLayoutRepository {
 
     boolean floorHasSymbols(UUID floorId);
 
+    boolean hasElementsOutOfBounds(UUID floorId, int gridColumns, int gridRows);
+
     void insertElement(ElementRow row);
 
     Optional<FacilityFloorElementView> elementById(UUID id);
@@ -34,6 +37,8 @@ public interface FacilityLayoutRepository {
     Optional<FacilityFloorElementView> elementByIdForUpdate(UUID id);
 
     List<FacilityFloorElementView> listElements(UUID floorId, int limit, int offset);
+
+    List<FacilityFloorElementView> allElementsForFloor(UUID floorId);
 
     void updateElement(ElementRow row, long expectedVersion);
 
@@ -45,6 +50,8 @@ public interface FacilityLayoutRepository {
 
     boolean hasIntersectingElement(UUID floorId, int gridX, int gridY, int gridWidth, int gridHeight, UUID excludedElementId);
 
+    List<RoomPlacementView> allRoomPlacements();
+
     void insertSymbol(SymbolRow row);
 
     Optional<FacilityFloorSymbolView> symbolById(UUID id);
@@ -52,6 +59,8 @@ public interface FacilityLayoutRepository {
     Optional<FacilityFloorSymbolView> symbolByIdForUpdate(UUID id);
 
     List<FacilityFloorSymbolView> listSymbols(UUID floorId, int limit, int offset);
+
+    List<FacilityFloorSymbolView> allSymbolsForFloor(UUID floorId);
 
     void updateSymbol(SymbolRow row, long expectedVersion);
 

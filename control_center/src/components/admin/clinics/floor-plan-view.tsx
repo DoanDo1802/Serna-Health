@@ -920,10 +920,184 @@ function ElementContent({
   const isCad = displayMode === "cad"
   const label = element.elementType === "ROOM" ? room?.name ?? element.label : element.label
   const code = room?.code ?? ""
-  const { notes: cleanNotes, rotation = 0 } = parseNotesAndCorners(element.notes)
+  const { notes: cleanNotes, rotation = 0, propType } = parseNotesAndCorners(element.notes)
+  const isPlant = propType === "plant" || label.toUpperCase().includes("CÂY") || label.toUpperCase().includes("PLANT")
+  const isWall = propType === "wall" || label.toUpperCase().includes("TƯỜNG") || label.toUpperCase().includes("VÁCH")
+  const isCashier = propType === "cashier" || element.elementType === "RECEPTION" || label.toUpperCase().includes("THU NGÂN") || label.toUpperCase().includes("TIẾP NHẬN") || label.toUpperCase().includes("TIẾP ĐÓN")
+  const isBench = propType === "bench" || (element.elementType === "WAITING_AREA" && !label.toUpperCase().includes("SẢNH CHỜ RỘNG")) || label.toUpperCase().includes("GHẾ") || label.toUpperCase().includes("SOFA")
   const isSkywell =
     element.elementType === "OTHER" &&
+    !isPlant &&
+    !isWall &&
     (label.toUpperCase().includes("TRỜI") || label.toUpperCase().includes("GIẾNG") || label.toUpperCase().includes("THÔNG TẦNG"))
+
+  // PLANT (Chậu cây cảnh): Top-down architectural potted plant
+  if (isPlant) {
+    return (
+      <div className="relative flex h-full w-full flex-col items-center justify-center p-1 select-none overflow-hidden">
+        <svg viewBox="0 0 100 100" className="h-full w-full max-h-16 max-w-16 drop-shadow-xs">
+          {/* Ceramic Pot Base */}
+          <rect x="24" y="24" width="52" height="52" rx="12" fill="#f8fafc" stroke="#1e293b" strokeWidth="3" className="dark:fill-slate-800 dark:stroke-slate-200" />
+          {/* Inner Soil Ring */}
+          <circle cx="50" cy="50" r="20" fill="#78350f" fillOpacity="0.12" stroke="#92400e" strokeWidth="1.5" strokeDasharray="3 2" />
+          {/* Organic Radiating Lush Green Leaves */}
+          <g fill="#10b981" stroke="#047857" strokeWidth="1.5" className="dark:fill-emerald-500 dark:stroke-emerald-300">
+            <path d="M 50 30 C 44 14 56 14 50 30 Z" />
+            <path d="M 50 70 C 44 86 56 86 50 70 Z" />
+            <path d="M 30 50 C 14 44 14 56 30 50 Z" />
+            <path d="M 70 50 C 86 44 86 56 70 50 Z" />
+            <path d="M 36 36 C 22 22 30 18 36 36 Z" />
+            <path d="M 64 36 C 78 22 70 18 64 36 Z" />
+            <path d="M 36 64 C 22 78 18 70 36 64 Z" />
+            <path d="M 64 64 C 78 78 82 70 64 64 Z" />
+            {/* Center Foliage Node */}
+            <circle cx="50" cy="50" r="7" fill="#059669" stroke="#065f46" strokeWidth="1.5" />
+          </g>
+        </svg>
+        {cleanNotes && (
+          <span className="mt-0.5 text-[8px] font-semibold text-emerald-800 dark:text-emerald-300 truncate max-w-full">
+            {cleanNotes}
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  // WALL / PARTITION (Tường / Vách ngăn kiến trúc)
+  if (isWall) {
+    return (
+      <div className="relative flex h-full w-full items-center justify-center bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 select-none overflow-hidden">
+        <svg className="absolute inset-0 h-full w-full opacity-35" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id={`wall-hatch-${element.id}`} width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+              <line x1="0" y1="0" x2="0" y2="8" stroke="currentColor" strokeWidth="2.5" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill={`url(#wall-hatch-${element.id})`} />
+        </svg>
+        <span className="relative z-10 text-[9px] font-bold tracking-widest uppercase opacity-80">
+          {label !== "TƯỜNG" ? label : ""}
+        </span>
+      </div>
+    )
+  }
+
+  // RECEPTION / CASHIER (Quầy thu ngân / Tiếp đón với bàn quầy và biểu tượng nhân viên)
+  if (isCashier) {
+    return (
+      <div className="relative flex h-full w-full flex-col items-center justify-between p-1 text-center select-none overflow-hidden">
+        {/* Title & Subtitle */}
+        <div className="flex flex-col items-center justify-center w-full z-10">
+          <span className="text-[10px] font-bold tracking-tight text-slate-950 dark:text-white uppercase truncate max-w-full">
+            {label || "QUẦY THU NGÂN"}
+          </span>
+          {cleanNotes && (
+            <span className="text-[8px] font-medium text-slate-600 dark:text-slate-400 truncate max-w-full">
+              {cleanNotes}
+            </span>
+          )}
+        </div>
+
+        {/* Curved Counter Desk with Staff/Cashier Icon - rotates with rotation angle */}
+        <div className="relative flex flex-1 w-full items-center justify-center min-h-0">
+          <svg
+            viewBox="0 0 100 100"
+            className="h-full w-full max-h-20 max-w-20 drop-shadow-xs transition-transform duration-200"
+          >
+            <g transform={`rotate(${rotation}, 50, 50)`}>
+              {/* Staff Head & Shoulders sitting behind desk */}
+              <circle
+                cx="50"
+                cy="34"
+                r="7"
+                fill="#0f172a"
+                className="dark:fill-slate-100"
+              />
+              <path
+                d="M 36 50 C 36 42, 64 42, 64 50 Z"
+                fill="#0f172a"
+                className="dark:fill-slate-100"
+              />
+              {/* Elongated Counter Desk */}
+              <rect
+                x="14"
+                y="50"
+                width="72"
+                height="18"
+                rx="6"
+                fill="#ffffff"
+                stroke="#0f172a"
+                strokeWidth="2.5"
+                className="dark:fill-slate-800 dark:stroke-slate-100"
+              />
+              {/* Counter top partition / payment ledge */}
+              <line
+                x1="22"
+                y1="59"
+                x2="78"
+                y2="59"
+                stroke="#94a3b8"
+                strokeWidth="2"
+                strokeLinecap="round"
+                className="dark:stroke-slate-500"
+              />
+              {/* Cash Register / Monitor on Desk */}
+              <rect
+                x="44"
+                y="52"
+                width="12"
+                height="5"
+                rx="1"
+                fill="#475569"
+                className="dark:fill-slate-400"
+              />
+            </g>
+          </svg>
+        </div>
+      </div>
+    )
+  }
+
+  // BENCH / WAITING AREA (Băng ghế chờ / Sofa sảnh)
+  if (isBench) {
+    const isRotatedVertical = rotation === 90 || rotation === 270
+    const seatCount = Math.max(2, Math.min(6, Math.floor((isRotatedVertical ? gridHeight : gridWidth) / 1.5)))
+    return (
+      <div className="relative flex h-full w-full flex-col items-center justify-between p-1 text-center select-none overflow-hidden">
+        <div className="flex flex-col items-center justify-center w-full z-10">
+          <span className="text-[10px] font-bold tracking-wider text-slate-900 dark:text-slate-100 uppercase truncate max-w-full">
+            {label || "SẢNH CHỜ"}
+          </span>
+          {cleanNotes && (
+            <span className="text-[8px] font-medium text-slate-500 dark:text-slate-400 truncate max-w-full">
+              {cleanNotes}
+            </span>
+          )}
+        </div>
+
+        {/* Row of Connected Seats / Sofa with rotation */}
+        <div className="relative flex flex-1 w-full items-center justify-center min-h-0">
+          <div
+            className="flex items-center justify-center gap-1 my-0.5 transition-transform duration-200"
+            style={{ transform: `rotate(${rotation}deg)` }}
+          >
+            {Array.from({ length: seatCount }).map((_, idx) => (
+              <div
+                key={idx}
+                className="relative flex flex-col items-center justify-end rounded-xs border border-slate-800 bg-slate-100/90 p-0.5 shadow-2xs dark:border-slate-200 dark:bg-slate-800"
+                style={{ width: "18px", height: "15px" }}
+              >
+                {/* Seat backrest */}
+                <div className="h-1.5 w-full rounded-xs bg-slate-400 dark:bg-slate-600 -mt-0.5" />
+                {/* Cushion */}
+                <div className="h-2 w-full rounded-xs bg-white dark:bg-slate-700 mt-0.5 border border-slate-300 dark:border-slate-600" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // ELEVATOR: CAD Box with diagonal intersecting cross lines (X)
   if (element.elementType === "ELEVATOR") {
@@ -1110,42 +1284,21 @@ function ElementContent({
     )
   }
 
-  // RECEPTION: CAD Counter desk that curves according to rotation
-  if (element.elementType === "RECEPTION") {
-    return (
-      <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden p-1 text-center">
-        <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {rotation === 90 ? (
-            <path d="M 25 15 Q 85 50 25 85" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-700 dark:text-slate-300" strokeDasharray="3 2" />
-          ) : rotation === 180 ? (
-            <path d="M 15 25 Q 50 85 85 25" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-700 dark:text-slate-300" strokeDasharray="3 2" />
-          ) : rotation === 270 ? (
-            <path d="M 75 15 Q 15 50 75 85" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-700 dark:text-slate-300" strokeDasharray="3 2" />
-          ) : (
-            <path d="M 15 75 Q 50 15 85 75" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-700 dark:text-slate-300" strokeDasharray="3 2" />
-          )}
-        </svg>
-        <span className="relative z-10 max-w-full truncate text-xs font-bold uppercase tracking-tight text-slate-950 dark:text-white">
-          {label || "TIẾP ĐÓN"}
-        </span>
-        {cleanNotes && (
-          <span className="relative z-10 max-w-full truncate text-[9px] font-medium text-slate-500 dark:text-slate-400">
-            {cleanNotes}
-          </span>
-        )}
-      </div>
-    )
-  }
-
-  // SKYWELL: Open void with clean text and user notes
+  // SKYWELL (Giếng trời): Rectangular void with diagonal dashed lines intersecting in the center
   if (isSkywell) {
     return (
-      <div className="relative flex h-full w-full flex-col items-center justify-center border border-dashed border-slate-700 bg-slate-50/50 p-2 text-center dark:border-slate-300 dark:bg-slate-900/30">
-        <span className="font-serif text-sm sm:text-base font-bold tracking-widest text-slate-900 dark:text-white">
-          {label.toUpperCase()}
+      <div className="relative flex h-full w-full flex-col items-center justify-center border-2 border-dashed border-slate-900 bg-slate-50/50 p-2 text-center dark:border-slate-100 dark:bg-slate-900/30 overflow-hidden select-none">
+        <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+          <line x1="0" y1="0" x2="35" y2="50" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2" className="text-slate-700 dark:text-slate-300" />
+          <line x1="0" y1="100" x2="35" y2="50" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2" className="text-slate-700 dark:text-slate-300" />
+          <line x1="100" y1="0" x2="65" y2="50" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2" className="text-slate-700 dark:text-slate-300" />
+          <line x1="100" y1="100" x2="65" y2="50" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2" className="text-slate-700 dark:text-slate-300" />
+        </svg>
+        <span className="relative z-10 font-serif text-xs sm:text-sm font-bold tracking-widest text-slate-900 dark:text-white uppercase">
+          {label || "GIẾNG TRỜI"}
         </span>
         {cleanNotes && (
-          <span className="mt-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-400">
+          <span className="relative z-10 mt-0.5 text-[9px] font-medium text-slate-600 dark:text-slate-400">
             {cleanNotes}
           </span>
         )}

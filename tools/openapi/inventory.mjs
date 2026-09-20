@@ -185,6 +185,36 @@ export const modules = [
       action('/notifications/{notificationId}/actions/cancel', 'cancelNotification', 'notification.cancel'),
     ],
   },
+  {
+    key: 'facility-layout',
+    tag: 'FacilityLayout',
+    story: 'R1-03',
+    typed: true,
+    scenarios: ['R1-03-FACILITY-LAYOUT'],
+    operations: [
+      list('/facility-floors', 'listFacilityFloors', 'floorplan.read', { response: 'FacilityFloorPage' }),
+      get('/facility-floors/{floorId}', 'getFacilityFloor', 'floorplan.read', { response: 'FacilityFloor', etag: true }),
+      create('/facility-floors', 'createFacilityFloor', 'floorplan.manage', { body: 'CreateFacilityFloorRequest', response: 'FacilityFloor', etag: true }),
+      patch('/facility-floors/{floorId}', 'updateFacilityFloor', 'floorplan.manage', { body: 'UpdateFacilityFloorRequest', response: 'FacilityFloor', etag: true }),
+      del('/facility-floors/{floorId}', 'deleteFacilityFloor', 'floorplan.manage'),
+
+      list('/facility-floors/{floorId}/elements', 'listFacilityFloorElements', 'floorplan.read', { response: 'FacilityFloorElementPage' }),
+      create('/facility-floors/{floorId}/elements', 'createFacilityFloorElement', 'floorplan.manage', { body: 'CreateFacilityFloorElementRequest', response: 'FacilityFloorElement', etag: true }),
+      get('/facility-floor-elements/{elementId}', 'getFacilityFloorElement', 'floorplan.read', { response: 'FacilityFloorElement', etag: true }),
+      patch('/facility-floor-elements/{elementId}', 'updateFacilityFloorElement', 'floorplan.manage', { body: 'UpdateFacilityFloorElementRequest', response: 'FacilityFloorElement', etag: true }),
+      del('/facility-floor-elements/{elementId}', 'deleteFacilityFloorElement', 'floorplan.manage'),
+
+      list('/facility-floors/{floorId}/symbols', 'listFacilityFloorSymbols', 'floorplan.read', { response: 'FacilityFloorSymbolPage' }),
+      create('/facility-floors/{floorId}/symbols', 'createFacilityFloorSymbol', 'floorplan.manage', { body: 'CreateFacilityFloorSymbolRequest', response: 'FacilityFloorSymbol', etag: true }),
+      get('/facility-floor-symbols/{symbolId}', 'getFacilityFloorSymbol', 'floorplan.read', { response: 'FacilityFloorSymbol', etag: true }),
+      patch('/facility-floor-symbols/{symbolId}', 'updateFacilityFloorSymbol', 'floorplan.manage', { body: 'UpdateFacilityFloorSymbolRequest', response: 'FacilityFloorSymbol', etag: true }),
+      del('/facility-floor-symbols/{symbolId}', 'deleteFacilityFloorSymbol', 'floorplan.manage'),
+
+      get('/facility-floors/{floorId}/layout', 'getFacilityFloorLayout', 'floorplan.read', { response: 'FacilityFloorLayoutSnapshot' }),
+      get('/facility-floors/room-placements', 'listRoomPlacements', 'floorplan.read', { response: 'FacilityRoomPlacementList' }),
+      create('/facility-floors/{floorId}/layout/changes', 'applyFacilityFloorLayoutChanges', 'floorplan.manage', { body: 'FacilityFloorLayoutChangesRequest', response: 'FacilityFloorLayoutSnapshot' }),
+    ],
+  },
 ]
 
 function op(method, path, operationId, options = {}) { return { method, path, operationId, ...options } }

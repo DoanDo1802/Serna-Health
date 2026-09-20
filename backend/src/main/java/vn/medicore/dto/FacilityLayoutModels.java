@@ -55,4 +55,59 @@ public final class FacilityLayoutModels {
 
     public record Page<T>(List<T> items, String nextCursor, boolean hasMore) {
     }
+
+    public record FacilityLayoutSnapshot(
+            FacilityFloorView floor,
+            List<FacilityFloorElementView> elements,
+            List<FacilityFloorSymbolView> symbols) {
+    }
+
+    public record RoomPlacementView(
+            UUID roomId,
+            UUID floorId,
+            UUID elementId) {
+    }
+
+    public record FacilityRoomPlacementList(
+            List<RoomPlacementView> items) {
+    }
+
+    public record CreateElementItem(
+            UUID roomId,
+            String elementType,
+            String label,
+            int gridX,
+            int gridY,
+            int gridWidth,
+            int gridHeight,
+            int zIndex,
+            String doorSide,
+            String notes) {
+    }
+
+    public record UpdateElementItem(
+            UUID id,
+            long expectedVersion,
+            UUID roomId,
+            String elementType,
+            String label,
+            int gridX,
+            int gridY,
+            int gridWidth,
+            int gridHeight,
+            int zIndex,
+            String doorSide,
+            String notes) {
+    }
+
+    public record DeleteElementItem(
+            UUID id,
+            long expectedVersion) {
+    }
+
+    public record LayoutChangesCommand(
+            List<CreateElementItem> creates,
+            List<UpdateElementItem> updates,
+            List<DeleteElementItem> deletes) {
+    }
 }

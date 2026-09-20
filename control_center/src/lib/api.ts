@@ -412,9 +412,78 @@ export interface FacilityFloorSymbolPage {
   hasMore: boolean
 }
 
+export interface FacilityLayoutSnapshot {
+  floor: FacilityFloor
+  elements: FacilityFloorElement[]
+  symbols: FacilityFloorSymbol[]
+}
+
+export interface FacilityRoomPlacement {
+  roomId: string
+  floorId: string
+  elementId: string
+}
+
+export interface FacilityRoomPlacementList {
+  items: FacilityRoomPlacement[]
+}
+
+export interface FacilityFloorElementChangeItem {
+  id?: string | null
+  roomId?: string | null
+  elementType: FacilityElementType
+  label: string
+  gridX: number
+  gridY: number
+  gridWidth: number
+  gridHeight: number
+  zIndex?: number
+  doorSide?: DoorSide | null
+  notes?: string | null
+}
+
+export interface FacilityFloorElementDeleteItem {
+  id: string
+  expectedVersion: number
+}
+
+export interface FacilityFloorLayoutChangesRequest {
+  expectedFloorVersion: number
+  creates?: FacilityFloorElementChangeItem[]
+  updates?: FacilityFloorElementChangeItem[]
+  deletes?: FacilityFloorElementDeleteItem[]
+}
+
+export async function fetchAllPages<T>(
+  fetchPage: (cursor?: string) => Promise<{ items: T[]; nextCursor?: string | null; hasMore: boolean }>,
+  maxPages = 50,
+): Promise<T[]> {
+  const all: T[] = []
+  let cursor: string | undefined = undefined
+  let pages = 0
+  while (pages < maxPages) {
+    const page = await fetchPage(cursor)
+    all.push(...page.items)
+    pages++
+    if (!page.hasMore || !page.nextCursor) break
+    cursor = page.nextCursor
+  }
+  return all
+}
+
 export const facilityLayoutApi = {
   listFloors: () => request<FacilityFloorPage>("/facility-floors?limit=100"),
   getFloor: (id: string) => requestWithMeta<FacilityFloor>(`/facility-floors/${id}`),
+  getLayoutSnapshot: (floorId: string) =>
+    requestWithMeta<FacilityLayoutSnapshot>(`/facility-floors/${floorId}/layout`),
+  getRoomPlacements: () =>
+    request<FacilityRoomPlacementList>("/facility-floors/room-placements"),
+  applyLayoutChanges: (floorId: string, data: FacilityFloorLayoutChangesRequest, key = idempotencyKey()) =>
+    requestWithMeta<FacilityLayoutSnapshot>(`/facility-floors/${floorId}/layout/changes`, {
+      method: "POST",
+      headers: { "Idempotency-Key": key },
+      body: JSON.stringify(data),
+    }),
   createFloor: (data: Omit<FacilityFloor, "id" | "version" | "createdAt" | "updatedAt">) =>
     requestWithMeta<FacilityFloor>("/facility-floors", {
       method: "POST",
@@ -429,7 +498,8 @@ export const facilityLayoutApi = {
     }),
   deleteFloor: (id: string, etag: string) =>
     request<void>(`/facility-floors/${id}`, { method: "DELETE", headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` } }),
-  listElements: (floorId: string) => request<FacilityFloorElementPage>(`/facility-floors/${floorId}/elements?limit=100`),
+  listElements: (floorId: string, cursor?: string) =>
+    request<FacilityFloorElementPage>(`/facility-floors/${floorId}/elements?limit=100${cursor ? `&cursor=${cursor}` : ""}`),
   getElement: (id: string) => requestWithMeta<FacilityFloorElement>(`/facility-floor-elements/${id}`),
   createElement: (floorId: string, data: Omit<FacilityFloorElement, "id" | "floorId" | "version" | "createdAt" | "updatedAt">) =>
     requestWithMeta<FacilityFloorElement>(`/facility-floors/${floorId}/elements`, {

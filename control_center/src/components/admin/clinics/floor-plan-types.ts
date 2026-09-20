@@ -7,9 +7,12 @@ import {
   ChevronsUpDown,
   Compass,
   DoorOpen,
+  Flower2,
   LayoutGrid,
   Maximize,
   ShieldAlert,
+  Sofa,
+  Square,
   Sun,
   Wrench,
 } from "lucide-react"
@@ -23,6 +26,7 @@ export type FloorPlanTool = {
   elementType: FacilityElementType
   roomId?: string
   customLabel?: string
+  propType?: ElementPropType
 }
 
 export type CanvasDisplayMode = "cad" | "functional"
@@ -133,15 +137,33 @@ export function rotateCornersCCW(corners: CornerConfig): CornerConfig {
   }
 }
 
+export type ElementPropType = "plant" | "bench" | "wall" | "cashier"
+
 export function parseNotesAndCorners(rawNotes?: string | null): {
   notes: string
   corners: CornerConfig
   rotation: RotationAngle
+  propType?: ElementPropType
+  sourceRoomId?: string
 } {
   if (!rawNotes) return { notes: "", corners: {}, rotation: 0 }
   let cleanNotes = rawNotes
   let corners: CornerConfig = {}
   let rotation: RotationAngle = 0
+  let propType: ElementPropType | undefined
+  let sourceRoomId: string | undefined
+
+  const srcRoomMatch = cleanNotes.match(/<!--src_room:([a-zA-Z0-9_-]+)-->/)
+  if (srcRoomMatch) {
+    sourceRoomId = srcRoomMatch[1]
+    cleanNotes = cleanNotes.replace(srcRoomMatch[0], "")
+  }
+
+  const propMatch = cleanNotes.match(/<!--prop:(plant|bench|wall|cashier)-->/)
+  if (propMatch) {
+    propType = propMatch[1] as ElementPropType
+    cleanNotes = cleanNotes.replace(propMatch[0], "")
+  }
 
   const cornerMatch = cleanNotes.match(/<!--corners:(\{.*?\})-->/)
   if (cornerMatch) {
@@ -157,25 +179,30 @@ export function parseNotesAndCorners(rawNotes?: string | null): {
     cleanNotes = cleanNotes.replace(rotMatch[0], "")
   }
 
-  return { notes: cleanNotes.trim(), corners, rotation }
+  return { notes: cleanNotes.trim(), corners, rotation, propType, sourceRoomId }
 }
 
 export function formatNotesWithCorners(
   notes: string,
   corners: CornerConfig,
-  rotation: RotationAngle = 0
+  rotation: RotationAngle = 0,
+  propType?: ElementPropType
 ): string | null {
   const hasCorners = Boolean(corners.tl || corners.tr || corners.br || corners.bl)
   const cleanNotes = notes
+    .replace(/<!--src_room:.*?-->/g, "")
+    .replace(/<!--prop:.*?-->/g, "")
     .replace(/<!--corners:\{.*?\}-->/g, "")
     .replace(/<!--rotation:\d+-->/g, "")
     .trim()
 
   const tags: string[] = []
+  if (propType) tags.push(`<!--prop:${propType}-->`)
   if (hasCorners) tags.push(`<!--corners:${JSON.stringify(corners)}-->`)
   if (rotation !== 0) tags.push(`<!--rotation:${rotation}-->`)
 
   if (tags.length === 0) return cleanNotes || null
   return cleanNotes ? `${cleanNotes} ${tags.join(" ")}` : tags.join(" ")
 }
+
 

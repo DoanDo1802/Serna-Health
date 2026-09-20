@@ -6,13 +6,23 @@ import vn.medicore.dto.FacilityLayoutAuditContext;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorElementView;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorSymbolView;
 import vn.medicore.dto.FacilityLayoutModels.FacilityFloorView;
+import vn.medicore.dto.FacilityLayoutModels.FacilityLayoutSnapshot;
+import vn.medicore.dto.FacilityLayoutModels.LayoutChangesCommand;
 import vn.medicore.dto.FacilityLayoutModels.Page;
+import vn.medicore.dto.FacilityLayoutModels.RoomPlacementView;
+import java.util.List;
 
 public interface FacilityLayoutService {
 
     Page<FacilityFloorView> listFloors(String cursor, int limit);
 
     FacilityFloorView getFloor(UUID id);
+
+    FacilityLayoutSnapshot getLayoutSnapshot(UUID floorId);
+
+    List<RoomPlacementView> getRoomPlacements();
+
+    FacilityLayoutSnapshot applyLayoutChanges(UUID floorId, LayoutChangesCommand command, FacilityLayoutAuditContext audit);
 
     FacilityFloorView createFloor(FloorCommand command, FacilityLayoutAuditContext audit);
 

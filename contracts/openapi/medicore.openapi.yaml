@@ -25,6 +25,8 @@ tags:
     description: billing-payment module — R1-11,R1-12,R1-13
   - name: Notification
     description: notification module — R1-14
+  - name: FacilityLayout
+    description: facility-layout module — R1-03
 paths:
   /auth/registrations:
     post:
@@ -3745,89 +3747,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateRoomRequest'
-    delete:
-      tags:
-        - Catalog
-      summary: Delete Room
-      operationId: deleteRoom
-      parameters:
-        - $ref: '#/components/parameters/RequestId'
-        - $ref: '#/components/parameters/CorrelationId'
-        - name: roomId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - $ref: '#/components/parameters/TabContext'
-        - $ref: '#/components/parameters/CsrfToken'
-        - $ref: '#/components/parameters/IfMatch'
-      security:
-        - sessionCookie: []
-      responses:
-        '204':
-          description: Command completed.
-        '400':
-          description: Invalid request
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '401':
-          description: Authentication required
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '403':
-          description: Contextual permission denied
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '404':
-          description: Resource not found or intentionally concealed
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '409':
-          description: Domain state or idempotency conflict
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '412':
-          description: ETag precondition failed
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '428':
-          description: If-Match required
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '429':
-          description: Rate limit exceeded
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-          headers:
-            Retry-After:
-              schema:
-                type: integer
-                minimum: 1
-      x-medicore-module: catalog
-      x-medicore-permission: room.update
-      x-medicore-audit-action: room.delete
-      x-medicore-stories:
-        - R1-03
-      x-medicore-scenarios:
-        - R1-03-CATALOG-CONSTRAINTS
-      x-medicore-idempotent: false
   /rooms/{roomId}/actions/deactivate:
     post:
       tags:
@@ -15746,6 +15665,1526 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/Resource'
+  /facility-floors:
+    get:
+      tags:
+        - FacilityLayout
+      summary: List Facility Floors
+      operationId: listFacilityFloors
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/TabContext'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorPage'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.read
+      x-medicore-audit-action: floorplan.read
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+    post:
+      tags:
+        - FacilityLayout
+      summary: Create Facility Floor
+      operationId: createFacilityFloor
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloor'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.manage
+      x-medicore-audit-action: floorplan.manage
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFacilityFloorRequest'
+  /facility-floors/{floorId}:
+    get:
+      tags:
+        - FacilityLayout
+      summary: Get Facility Floor
+      operationId: getFacilityFloor
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: floorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloor'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.read
+      x-medicore-audit-action: floorplan.read
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+    patch:
+      tags:
+        - FacilityLayout
+      summary: Update Facility Floor
+      operationId: updateFacilityFloor
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: floorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IfMatch'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloor'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '412':
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '428':
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.manage
+      x-medicore-audit-action: floorplan.manage
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFacilityFloorRequest'
+    delete:
+      tags:
+        - FacilityLayout
+      summary: Delete Facility Floor
+      operationId: deleteFacilityFloor
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: floorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IfMatch'
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Command completed.
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '412':
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '428':
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.manage
+      x-medicore-audit-action: floorplan.manage
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+  /facility-floors/{floorId}/elements:
+    get:
+      tags:
+        - FacilityLayout
+      summary: List Facility Floor Elements
+      operationId: listFacilityFloorElements
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: floorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/TabContext'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorElementPage'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.read
+      x-medicore-audit-action: floorplan.read
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+    post:
+      tags:
+        - FacilityLayout
+      summary: Create Facility Floor Element
+      operationId: createFacilityFloorElement
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: floorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorElement'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.manage
+      x-medicore-audit-action: floorplan.manage
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFacilityFloorElementRequest'
+  /facility-floor-elements/{elementId}:
+    get:
+      tags:
+        - FacilityLayout
+      summary: Get Facility Floor Element
+      operationId: getFacilityFloorElement
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: elementId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorElement'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.read
+      x-medicore-audit-action: floorplan.read
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+    patch:
+      tags:
+        - FacilityLayout
+      summary: Update Facility Floor Element
+      operationId: updateFacilityFloorElement
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: elementId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IfMatch'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorElement'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '412':
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '428':
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.manage
+      x-medicore-audit-action: floorplan.manage
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFacilityFloorElementRequest'
+    delete:
+      tags:
+        - FacilityLayout
+      summary: Delete Facility Floor Element
+      operationId: deleteFacilityFloorElement
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: elementId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IfMatch'
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Command completed.
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '412':
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '428':
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.manage
+      x-medicore-audit-action: floorplan.manage
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+  /facility-floors/{floorId}/symbols:
+    get:
+      tags:
+        - FacilityLayout
+      summary: List Facility Floor Symbols
+      operationId: listFacilityFloorSymbols
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: floorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/TabContext'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorSymbolPage'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.read
+      x-medicore-audit-action: floorplan.read
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+    post:
+      tags:
+        - FacilityLayout
+      summary: Create Facility Floor Symbol
+      operationId: createFacilityFloorSymbol
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: floorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorSymbol'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.manage
+      x-medicore-audit-action: floorplan.manage
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFacilityFloorSymbolRequest'
+  /facility-floor-symbols/{symbolId}:
+    get:
+      tags:
+        - FacilityLayout
+      summary: Get Facility Floor Symbol
+      operationId: getFacilityFloorSymbol
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: symbolId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorSymbol'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.read
+      x-medicore-audit-action: floorplan.read
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+    patch:
+      tags:
+        - FacilityLayout
+      summary: Update Facility Floor Symbol
+      operationId: updateFacilityFloorSymbol
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: symbolId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IfMatch'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorSymbol'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '412':
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '428':
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.manage
+      x-medicore-audit-action: floorplan.manage
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFacilityFloorSymbolRequest'
+    delete:
+      tags:
+        - FacilityLayout
+      summary: Delete Facility Floor Symbol
+      operationId: deleteFacilityFloorSymbol
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: symbolId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IfMatch'
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Command completed.
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '412':
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '428':
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.manage
+      x-medicore-audit-action: floorplan.manage
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+  /facility-floors/{floorId}/layout:
+    get:
+      tags:
+        - FacilityLayout
+      summary: Get Facility Floor Layout
+      operationId: getFacilityFloorLayout
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: floorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorLayoutSnapshot'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.read
+      x-medicore-audit-action: floorplan.read
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+  /facility-floors/room-placements:
+    get:
+      tags:
+        - FacilityLayout
+      summary: List Room Placements
+      operationId: listRoomPlacements
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/TabContext'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityRoomPlacementList'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.read
+      x-medicore-audit-action: floorplan.read
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: false
+  /facility-floors/{floorId}/layout/changes:
+    post:
+      tags:
+        - FacilityLayout
+      summary: Apply Facility Floor Layout Changes
+      operationId: applyFacilityFloorLayoutChanges
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: floorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TabContext'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityFloorLayoutSnapshot'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: facility-layout
+      x-medicore-permission: floorplan.manage
+      x-medicore-audit-action: floorplan.manage
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios:
+        - R1-03-FACILITY-LAYOUT
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FacilityFloorLayoutChangesRequest'
 components:
   schemas:
     Uuid:
@@ -20061,6 +21500,588 @@ components:
         content:
           type: object
           additionalProperties: true
+    FacilityFloor:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - code
+        - name
+        - level
+        - gridColumns
+        - gridRows
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        code:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          maxLength: 200
+        level:
+          type: integer
+        description:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+        gridColumns:
+          type: integer
+          minimum: 1
+          maximum: 100
+        gridRows:
+          type: integer
+          minimum: 1
+          maximum: 100
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateFacilityFloorRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - name
+        - level
+        - gridColumns
+        - gridRows
+      properties:
+        code:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          maxLength: 200
+        level:
+          type: integer
+        description:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+        gridColumns:
+          type: integer
+          minimum: 1
+          maximum: 100
+        gridRows:
+          type: integer
+          minimum: 1
+          maximum: 100
+    UpdateFacilityFloorRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - name
+        - level
+        - gridColumns
+        - gridRows
+      properties:
+        code:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          maxLength: 200
+        level:
+          type: integer
+        description:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+        gridColumns:
+          type: integer
+          minimum: 1
+          maximum: 100
+        gridRows:
+          type: integer
+          minimum: 1
+          maximum: 100
+    FacilityFloorPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacilityFloor'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    FacilityElementType:
+      type: string
+      enum:
+        - ROOM
+        - WALKWAY
+        - ELEVATOR
+        - STAIRS
+        - WC
+        - RECEPTION
+        - EQUIPMENT
+        - WAITING_AREA
+        - EMERGENCY_EXIT
+        - OTHER
+    FacilityDoorSide:
+      type: string
+      enum:
+        - NORTH
+        - EAST
+        - SOUTH
+        - WEST
+    FacilityFloorElement:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - floorId
+        - version
+        - elementType
+        - label
+        - gridX
+        - gridY
+        - gridWidth
+        - gridHeight
+        - zIndex
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        floorId:
+          type: string
+          format: uuid
+        roomId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        elementType:
+          $ref: '#/components/schemas/FacilityElementType'
+        label:
+          type: string
+          maxLength: 200
+        gridX:
+          type: integer
+          minimum: 0
+        gridY:
+          type: integer
+          minimum: 0
+        gridWidth:
+          type: integer
+          minimum: 1
+          maximum: 100
+        gridHeight:
+          type: integer
+          minimum: 1
+          maximum: 100
+        zIndex:
+          type: integer
+        doorSide:
+          type:
+            - string
+            - 'null'
+          enum:
+            - NORTH
+            - EAST
+            - SOUTH
+            - WEST
+        notes:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateFacilityFloorElementRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - elementType
+        - label
+        - gridX
+        - gridY
+        - gridWidth
+        - gridHeight
+        - zIndex
+      properties:
+        roomId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        elementType:
+          $ref: '#/components/schemas/FacilityElementType'
+        label:
+          type: string
+          maxLength: 200
+        gridX:
+          type: integer
+          minimum: 0
+        gridY:
+          type: integer
+          minimum: 0
+        gridWidth:
+          type: integer
+          minimum: 1
+          maximum: 100
+        gridHeight:
+          type: integer
+          minimum: 1
+          maximum: 100
+        zIndex:
+          type: integer
+        doorSide:
+          type:
+            - string
+            - 'null'
+          enum:
+            - NORTH
+            - EAST
+            - SOUTH
+            - WEST
+        notes:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+    UpdateFacilityFloorElementRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - elementType
+        - label
+        - gridX
+        - gridY
+        - gridWidth
+        - gridHeight
+        - zIndex
+      properties:
+        roomId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        elementType:
+          $ref: '#/components/schemas/FacilityElementType'
+        label:
+          type: string
+          maxLength: 200
+        gridX:
+          type: integer
+          minimum: 0
+        gridY:
+          type: integer
+          minimum: 0
+        gridWidth:
+          type: integer
+          minimum: 1
+          maximum: 100
+        gridHeight:
+          type: integer
+          minimum: 1
+          maximum: 100
+        zIndex:
+          type: integer
+        doorSide:
+          type:
+            - string
+            - 'null'
+          enum:
+            - NORTH
+            - EAST
+            - SOUTH
+            - WEST
+        notes:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+    FacilityFloorElementPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacilityFloorElement'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    FacilityFloorSymbol:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - floorId
+        - version
+        - symbolType
+        - label
+        - geometry
+        - zIndex
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        floorId:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        symbolType:
+          type: string
+          maxLength: 64
+        label:
+          type: string
+          maxLength: 200
+        geometry:
+          type: object
+          additionalProperties: true
+        zIndex:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateFacilityFloorSymbolRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - symbolType
+        - label
+        - geometry
+        - zIndex
+      properties:
+        symbolType:
+          type: string
+          maxLength: 64
+        label:
+          type: string
+          maxLength: 200
+        geometry:
+          type: object
+          additionalProperties: true
+        zIndex:
+          type: integer
+    UpdateFacilityFloorSymbolRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - symbolType
+        - label
+        - geometry
+        - zIndex
+      properties:
+        symbolType:
+          type: string
+          maxLength: 64
+        label:
+          type: string
+          maxLength: 200
+        geometry:
+          type: object
+          additionalProperties: true
+        zIndex:
+          type: integer
+    FacilityFloorSymbolPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacilityFloorSymbol'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 1024
+        hasMore:
+          type: boolean
+    FacilityFloorLayoutSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - floor
+        - elements
+        - symbols
+      properties:
+        floor:
+          $ref: '#/components/schemas/FacilityFloor'
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacilityFloorElement'
+        symbols:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacilityFloorSymbol'
+    FacilityRoomPlacement:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - floorId
+        - elementId
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        floorId:
+          type: string
+          format: uuid
+        elementId:
+          type: string
+          format: uuid
+    FacilityRoomPlacementList:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacilityRoomPlacement'
+    FacilityFloorElementChangeItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - expectedVersion
+        - elementType
+        - label
+        - gridX
+        - gridY
+        - gridWidth
+        - gridHeight
+        - zIndex
+      properties:
+        id:
+          type: string
+          format: uuid
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        roomId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        elementType:
+          $ref: '#/components/schemas/FacilityElementType'
+        label:
+          type: string
+          maxLength: 200
+        gridX:
+          type: integer
+          minimum: 0
+        gridY:
+          type: integer
+          minimum: 0
+        gridWidth:
+          type: integer
+          minimum: 1
+          maximum: 100
+        gridHeight:
+          type: integer
+          minimum: 1
+          maximum: 100
+        zIndex:
+          type: integer
+        doorSide:
+          type:
+            - string
+            - 'null'
+          enum:
+            - NORTH
+            - EAST
+            - SOUTH
+            - WEST
+        notes:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+    FacilityFloorElementDeleteItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - expectedVersion
+      properties:
+        id:
+          type: string
+          format: uuid
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+    FacilityFloorLayoutChangesRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - creates
+        - updates
+        - deletes
+      properties:
+        creates:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateFacilityFloorElementRequest'
+        updates:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacilityFloorElementChangeItem'
+        deletes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacilityFloorElementDeleteItem'
   parameters:
     RequestId:
       name: X-Request-Id
