@@ -468,11 +468,13 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
               className="w-full px-3 py-2 rounded-xl border border-outline-variant/80 bg-surface-container hover:bg-surface-container-high focus:bg-surface focus:border-primary outline-none text-xs text-content-primary transition-all font-medium cursor-pointer truncate"
             >
               <option value="ALL">Tất cả dịch vụ</option>
-              {services.map((svc) => (
-                <option key={svc.id} value={svc.id}>
-                  {svc.name}
-                </option>
-              ))}
+              {services
+                .filter((svc) => filters.departmentId === 'ALL' || !svc.departmentId || svc.departmentId === filters.departmentId)
+                .map((svc) => (
+                  <option key={svc.id} value={svc.id}>
+                    {svc.name}
+                  </option>
+                ))}
             </select>
           </div>
 

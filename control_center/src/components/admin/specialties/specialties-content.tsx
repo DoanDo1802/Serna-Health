@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useMemo, useState, type MouseEvent } from "react"
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react"
 import { useData } from "@/components/base/providers/data-provider"
 import { useToast } from "@/hooks/use-toast"
 import type { Specialty, SpecialtyExamFieldType, SpecialtyExamTemplate, SpecialtyExamTemplateField } from "@/types/medical"
+import { servicesApi, type Service } from "@/lib/api"
 import { Card } from "@/components/base/ui/card"
 import { Button } from "@/components/base/ui/button"
 import { Input } from "@/components/base/ui/input"
@@ -30,8 +31,18 @@ import {
   AlertDialogTitle,
 } from "@/components/base/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/base/ui/select"
-import { Plus, Pencil, Trash2, FolderHeart, Users, Save, FilePlus2, Eye, LayoutTemplate, ArrowUp, ArrowDown } from "lucide-react"
+import { Plus, Pencil, Trash2, FolderHeart, Users, Save, FilePlus2, Eye, LayoutTemplate, ArrowUp, ArrowDown, Stethoscope } from "lucide-react"
 import { ExamTemplateRenderer } from "@/components/shared/exam-template-renderer"
+
+const serviceTypes = [
+  { value: "CONSULTATION", label: "Khám bệnh" },
+  { value: "PROCEDURE", label: "Thủ thuật" },
+  { value: "DIAGNOSTIC", label: "Chẩn đoán" },
+  { value: "LAB", label: "Xét nghiệm" },
+  { value: "IMAGING", label: "Chẩn đoán hình ảnh" },
+  { value: "THERAPY", label: "Trị liệu" },
+  { value: "OTHER", label: "Khác" },
+]
 
 const fieldTypes: Array<{ value: SpecialtyExamFieldType; label: string }> = [
   { value: "text", label: "Một dòng" },
@@ -224,6 +235,20 @@ export function SpecialtiesContent() {
   const [templateError, setTemplateError] = useState("")
   const [viewMode, setViewMode] = useState<"builder" | "preview">("builder")
 
+  // Services state
+  const [services, setServices] = useState<Service[]>([])
+  const [loadingServices, setLoadingServices] = useState(false)
+  const [serviceDialogOpen, setServiceDialogOpen] = useState(false)
+  const [editingService, setEditingService] = useState<Service | null>(null)
+  const [serviceForm, setServiceForm] = useState({
+    code: "",
+    name: "",
+    serviceType: "CONSULTATION",
+  })
+  const [serviceBusy, setServiceBusy] = useState(false)
+  const [deactivateServiceTarget, setDeactivateServiceTarget] = useState<Service | null>(null)
+  const [initialServices, setInitialServices] = useState<Array<{ name: string; code: string }>>([])
+
   useEffect(() => {
     ensureSpecialtiesLoaded()
     ensureDoctorsLoaded()
@@ -233,6 +258,27 @@ export function SpecialtiesContent() {
     () => specialties.find((s) => s.id === selectedSpecialtyId) ?? specialties[0],
     [specialties, selectedSpecialtyId],
   )
+
+  const loadServices = useCallback(async (deptId: string) => {
+    if (!deptId) return
+    setLoadingServices(true)
+    try {
+      const res = await servicesApi.list({ departmentId: deptId, limit: 100 })
+      setServices(res.items)
+    } catch (err) {
+      console.error("Failed to load services for department", err)
+    } finally {
+      setLoadingServices(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (selectedSpecialty?.id) {
+      void loadServices(selectedSpecialty.id)
+    } else {
+      setServices([])
+    }
+  }, [selectedSpecialty?.id, loadServices])
 
   const specialtyDoctors = useMemo(
     () => doctors.filter((doctor) => doctor.specialtyId === selectedSpecialty?.id),
@@ -255,6 +301,7 @@ export function SpecialtiesContent() {
   const openAdd = () => {
     setEditing(null)
     setForm(emptyForm)
+    setInitialServices([{ name: "Khám chuyên khoa", code: "DV-CK-01" }])
     setDialogOpen(true)
   }
 
@@ -274,16 +321,120 @@ export function SpecialtiesContent() {
           description: `Đã cập nhật thông tin chuyên khoa ${form.name}.`,
         })
       } else {
-        await addSpecialty({ ...form, examTemplate: emptyTemplate })
+        const newSpecialty = await addSpecialty({ ...form, examTemplate: emptyTemplate })
+        if (newSpecialty?.id) {
+          setSelectedSpecialtyId(newSpecialty.id)
+          // Create initial services if any
+          for (const srv of initialServices) {
+            if (srv.name.trim() && srv.code.trim()) {
+              try {
+                await servicesApi.create({
+                  name: srv.name.trim(),
+                  code: srv.code.trim().toUpperCase(),
+                  serviceType: "CONSULTATION",
+                  departmentId: newSpecialty.id,
+                })
+              } catch (e) {
+                console.error("Failed to create initial service", e)
+              }
+            }
+          }
+          await loadServices(newSpecialty.id)
+        }
         toast({
           title: "Thêm thành công",
-          description: `Đã thêm chuyên khoa ${form.name} mới.`,
+          description: `Đã thêm chuyên khoa ${form.name} và các dịch vụ tương ứng.`,
         })
       }
       setDialogOpen(false)
     } catch (error) {
       toast({
         title: "Không thể lưu chuyên khoa",
+        description: error instanceof Error ? error.message : "Vui lòng thử lại.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const openAddService = () => {
+    if (!selectedSpecialty) return
+    setEditingService(null)
+    const cleanCode = selectedSpecialty.code.replace(/[^A-Za-z0-9]/g, "").toUpperCase()
+    const nextNum = services.length + 1
+    setServiceForm({
+      name: `Khám ${selectedSpecialty.name}`,
+      code: `DV-${cleanCode}-${String(nextNum).padStart(2, "0")}`,
+      serviceType: "CONSULTATION",
+    })
+    setServiceDialogOpen(true)
+  }
+
+  const openEditService = (s: Service) => {
+    setEditingService(s)
+    setServiceForm({
+      name: s.name,
+      code: s.code,
+      serviceType: s.serviceType,
+    })
+    setServiceDialogOpen(true)
+  }
+
+  const handleServiceSubmit = async () => {
+    if (!serviceForm.name.trim() || !serviceForm.code.trim() || !selectedSpecialty) return
+    setServiceBusy(true)
+    try {
+      if (editingService) {
+        await servicesApi.update(
+          editingService.id,
+          {
+            name: serviceForm.name.trim(),
+            code: serviceForm.code.trim().toUpperCase(),
+            serviceType: serviceForm.serviceType,
+            departmentId: selectedSpecialty.id,
+          },
+          `"${editingService.version}"`
+        )
+        toast({
+          title: "Cập nhật thành công",
+          description: `Đã cập nhật dịch vụ ${serviceForm.name}.`,
+        })
+      } else {
+        await servicesApi.create({
+          name: serviceForm.name.trim(),
+          code: serviceForm.code.trim().toUpperCase(),
+          serviceType: serviceForm.serviceType,
+          departmentId: selectedSpecialty.id,
+        })
+        toast({
+          title: "Thêm thành công",
+          description: `Đã tạo dịch vụ ${serviceForm.name} cho chuyên khoa ${selectedSpecialty.name}.`,
+        })
+      }
+      setServiceDialogOpen(false)
+      await loadServices(selectedSpecialty.id)
+    } catch (error) {
+      toast({
+        title: "Không thể lưu dịch vụ",
+        description: error instanceof Error ? error.message : "Vui lòng thử lại.",
+        variant: "destructive",
+      })
+    } finally {
+      setServiceBusy(false)
+    }
+  }
+
+  const handleDeactivateService = async (service: Service) => {
+    try {
+      await servicesApi.deactivate(service.id, `"${service.version}"`)
+      toast({
+        title: "Tạm ngừng dịch vụ",
+        description: `Đã tạm ngừng dịch vụ ${service.name}.`,
+      })
+      setDeactivateServiceTarget(null)
+      if (selectedSpecialty) await loadServices(selectedSpecialty.id)
+    } catch (error) {
+      toast({
+        title: "Không thể tạm ngừng dịch vụ",
         description: error instanceof Error ? error.message : "Vui lòng thử lại.",
         variant: "destructive",
       })
@@ -545,28 +696,99 @@ export function SpecialtiesContent() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0 overflow-hidden pt-4">
-              <div className="rounded-lg border border-border p-4 flex flex-col h-full overflow-hidden">
-                <div className="flex items-center justify-between mb-3 shrink-0">
-                  <h3 className="text-sm font-semibold flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    Bác sĩ thuộc chuyên khoa
-                  </h3>
-                  <span className="text-xs text-muted-foreground">{specialtyDoctors.length}</span>
-                </div>
-                <div className="space-y-2 overflow-y-auto flex-1 pr-1">
-                  {specialtyDoctors.map((doctor) => (
-                    <div key={doctor.id} className="rounded-md bg-muted/50 px-3 py-2">
-                      <p className="text-sm font-medium text-foreground">{doctor.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {doctor.title} {doctor.phone ? `• ${doctor.phone}` : ""}
-                      </p>
+              <div className="flex flex-col gap-4 h-full overflow-hidden">
+                {/* Card 1: Dịch vụ của chuyên khoa */}
+                <div className="rounded-lg border border-border p-4 flex flex-col flex-1 min-h-0 overflow-hidden bg-card shadow-xs">
+                  <div className="flex items-center justify-between mb-3 shrink-0">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4 text-primary" />
+                      Dịch vụ của chuyên khoa
+                    </h3>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs bg-muted px-2 py-0.5 rounded-full font-medium text-muted-foreground">{services.length}</span>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" onClick={openAddService}>
+                        <Plus className="w-3.5 h-3.5" />
+                        Thêm dịch vụ
+                      </Button>
                     </div>
-                  ))}
-                  {specialtyDoctors.length === 0 && (
-                    <p className="text-sm text-muted-foreground py-6 text-center">
-                      Chưa có bác sĩ thuộc chuyên khoa này.
-                    </p>
-                  )}
+                  </div>
+                  <div className="space-y-2 overflow-y-auto flex-1 pr-1">
+                    {services.map((service) => (
+                      <div key={service.id} className="rounded-md bg-muted/50 px-3 py-2 flex items-center justify-between gap-2 hover:bg-muted/70 transition-colors">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-foreground truncate">{service.name}</p>
+                            {!service.active && (
+                              <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">Tạm ngừng</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {service.code} • {serviceTypes.find((t) => t.value === service.serviceType)?.label ?? service.serviceType}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            title="Chỉnh sửa dịch vụ"
+                            onClick={() => openEditService(service)}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          {service.active && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              title="Tạm ngừng dịch vụ"
+                              onClick={() => setDeactivateServiceTarget(service)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {services.length === 0 && !loadingServices && (
+                      <div className="py-6 text-center space-y-2">
+                        <p className="text-xs text-muted-foreground">Chưa có dịch vụ nào cho chuyên khoa này.</p>
+                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={openAddService}>
+                          <Plus className="w-3 h-3" />
+                          Thêm dịch vụ đầu tiên
+                        </Button>
+                      </div>
+                    )}
+                    {loadingServices && (
+                      <p className="text-xs text-muted-foreground py-4 text-center">Đang tải danh sách dịch vụ...</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card 2: Bác sĩ thuộc chuyên khoa */}
+                <div className="rounded-lg border border-border p-4 flex flex-col flex-1 min-h-0 overflow-hidden bg-card shadow-xs">
+                  <div className="flex items-center justify-between mb-3 shrink-0">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <Users className="w-4 h-4 text-primary" />
+                      Bác sĩ thuộc chuyên khoa
+                    </h3>
+                    <span className="text-xs bg-muted px-2 py-0.5 rounded-full font-medium text-muted-foreground">{specialtyDoctors.length}</span>
+                  </div>
+                  <div className="space-y-2 overflow-y-auto flex-1 pr-1">
+                    {specialtyDoctors.map((doctor) => (
+                      <div key={doctor.id} className="rounded-md bg-muted/50 px-3 py-2">
+                        <p className="text-sm font-medium text-foreground">{doctor.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {doctor.title} {doctor.phone ? `• ${doctor.phone}` : ""}
+                        </p>
+                      </div>
+                    ))}
+                    {specialtyDoctors.length === 0 && (
+                      <p className="text-sm text-muted-foreground py-6 text-center">
+                        Chưa có bác sĩ thuộc chuyên khoa này.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -676,6 +898,61 @@ export function SpecialtiesContent() {
               />
             </div>
 
+            {!editing && (
+              <div className="space-y-2 border-t pt-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">Dịch vụ khởi tạo của chuyên khoa</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-xs px-2 gap-1"
+                    onClick={() => {
+                      const idx = initialServices.length + 1
+                      const cleanCode = form.code ? form.code.replace(/[^A-Za-z0-9]/g, "").toUpperCase() : "CK"
+                      setInitialServices([
+                        ...initialServices,
+                        { name: "", code: `DV-${cleanCode}-${String(idx).padStart(2, "0")}` },
+                      ])
+                    }}
+                  >
+                    <Plus className="w-3 h-3" />
+                    Thêm dịch vụ
+                  </Button>
+                </div>
+                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                  {initialServices.map((srv, idx) => (
+                    <div key={idx} className="grid grid-cols-5 gap-2 items-center">
+                      <Input
+                        className="col-span-3 h-8 text-xs"
+                        placeholder="Tên dịch vụ (vd: Khám chuyên khoa)"
+                        value={srv.name}
+                        onChange={(e) => {
+                          const updated = [...initialServices]
+                          updated[idx] = { ...updated[idx], name: e.target.value }
+                          setInitialServices(updated)
+                        }}
+                      />
+                      <Input
+                        className="col-span-2 h-8 text-xs"
+                        placeholder="Mã (vd: DV-01)"
+                        value={srv.code}
+                        onChange={(e) => {
+                          const updated = [...initialServices]
+                          updated[idx] = { ...updated[idx], code: e.target.value.toUpperCase() }
+                          setInitialServices(updated)
+                        }}
+                      />
+                    </div>
+                  ))}
+                  {initialServices.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-2">
+                      Bạn có thể thêm dịch vụ khám ngay bây giờ hoặc sau khi tạo chuyên khoa.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
@@ -685,6 +962,97 @@ export function SpecialtiesContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog Thêm / Chỉnh sửa dịch vụ */}
+      <Dialog open={serviceDialogOpen} onOpenChange={setServiceDialogOpen}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>{editingService ? "Chỉnh sửa dịch vụ" : "Thêm dịch vụ cho chuyên khoa"}</DialogTitle>
+            <DialogDescription>
+              {selectedSpecialty ? `Chuyên khoa: ${selectedSpecialty.name} (${selectedSpecialty.code})` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold">Tên dịch vụ</Label>
+              <Input
+                className="h-8 text-xs"
+                placeholder="Ví dụ: Khám Tai Mũi Họng"
+                value={serviceForm.name}
+                onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold">Mã dịch vụ</Label>
+                <Input
+                  className="h-8 text-xs font-mono"
+                  placeholder="Ví dụ: DV-TMH-01"
+                  value={serviceForm.code}
+                  onChange={(e) => setServiceForm({ ...serviceForm, code: e.target.value.toUpperCase() })}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold">Loại dịch vụ</Label>
+                <Select
+                  value={serviceForm.serviceType}
+                  onValueChange={(val) => setServiceForm({ ...serviceForm, serviceType: val })}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {serviceTypes.map((t) => (
+                      <SelectItem key={t.value} value={t.value} className="text-xs">
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" className="h-8 text-xs" disabled={serviceBusy} onClick={() => setServiceDialogOpen(false)}>
+              Hủy
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 text-xs"
+              disabled={serviceBusy || !serviceForm.name.trim() || !serviceForm.code.trim()}
+              onClick={handleServiceSubmit}
+            >
+              {serviceBusy ? "Đang lưu..." : editingService ? "Lưu thay đổi" : "Tạo dịch vụ"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alert Dialog Tạm ngừng dịch vụ */}
+      <AlertDialog
+        open={!!deactivateServiceTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeactivateServiceTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tạm ngừng dịch vụ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc muốn tạm ngừng dịch vụ &quot;{deactivateServiceTarget?.name}&quot; ({deactivateServiceTarget?.code})? Dịch vụ này sẽ không còn xuất hiện để chọn cho các phòng khám mới.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-600 text-white hover:bg-amber-700"
+              onClick={() => deactivateServiceTarget && handleDeactivateService(deactivateServiceTarget)}
+            >
+              Tạm ngừng dịch vụ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={!!deleteTarget}

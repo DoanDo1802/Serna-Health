@@ -96,15 +96,19 @@ public class PersonnelProvisioningServiceImpl implements PersonnelProvisioningSe
         UUID practitionerId = null;
         UUID practitionerRoleId = null;
         if (DOCTOR.equals(command.type())) {
-            catalog.departmentByIdForUpdate(command.departmentId()).filter(value -> value.active())
-                    .orElseThrow(ResourceNotFoundException::new);
+            if (command.departmentId() != null) {
+                catalog.departmentByIdForUpdate(command.departmentId()).filter(value -> value.active())
+                        .orElseThrow(ResourceNotFoundException::new);
+            }
             practitionerId = ids.next();
             catalog.insertPractitioner(new PractitionerRow(practitionerId, accountId, command.staffCode().strip(),
                     command.fullName().strip(), true, 0, now, now));
             catalog.insertPractitionerProfile(profileRow(practitionerId, command.doctorProfile(), 0, now, now));
-            practitionerRoleId = ids.next();
-            catalog.insertPractitionerRole(new PractitionerRoleRow(practitionerRoleId, practitionerId,
-                    command.departmentId(), DOCTOR, now, null, "ACTIVE", 0, now, now));
+            if (command.departmentId() != null) {
+                practitionerRoleId = ids.next();
+                catalog.insertPractitionerRole(new PractitionerRoleRow(practitionerRoleId, practitionerId,
+                        command.departmentId(), DOCTOR, now, null, "ACTIVE", 0, now, now));
+            }
         } else {
             catalog.insertPersonnelMember(new PersonnelMemberRow(accountId, command.staffCode().strip(),
                     command.fullName().strip(), true, 0, now, now));
@@ -158,21 +162,36 @@ public class PersonnelProvisioningServiceImpl implements PersonnelProvisioningSe
                 throw new IllegalStateException("Personnel staff code already exists");
             }
             var practitioner = catalog.practitionerByAccountId(accountId).orElseThrow(ResourceNotFoundException::new);
-            catalog.departmentByIdForUpdate(command.departmentId()).filter(value -> value.active())
-                    .orElseThrow(ResourceNotFoundException::new);
             catalog.updatePractitioner(new PractitionerRow(practitioner.id(), accountId, command.staffCode().strip(),
                     command.fullName().strip(), practitioner.active(), practitioner.version() + 1,
                     practitioner.createdAt(), now), practitioner.version());
             var profile = catalog.practitionerProfileByPractitionerId(practitioner.id()).orElseThrow(ResourceNotFoundException::new);
             catalog.updatePractitionerProfile(profileRow(practitioner.id(), command.doctorProfile(), profile.version() + 1,
                     profile.createdAt(), now), profile.version());
-            var practitionerRole = currentDoctorRole(practitioner.id(), now)
-                    .orElseThrow(ResourceNotFoundException::new);
-            catalog.updatePractitionerRole(new PractitionerRoleRow(practitionerRole.id(), practitioner.id(), command.departmentId(),
-                    DOCTOR, practitionerRole.effectiveFrom(), practitionerRole.effectiveTo(), practitionerRole.status(),
-                    practitionerRole.version() + 1, practitionerRole.createdAt(), now), practitionerRole.version());
-            var doctorAssignment = assignment(accountId, DOCTOR);
-            identities.updateAssignmentDepartment(doctorAssignment.id(), command.departmentId(), doctorAssignment.version());
+            var practitionerRoleOpt = currentDoctorRole(practitioner.id(), now);
+            if (command.departmentId() != null) {
+                catalog.departmentByIdForUpdate(command.departmentId()).filter(value -> value.active())
+                        .orElseThrow(ResourceNotFoundException::new);
+                if (practitionerRoleOpt.isPresent()) {
+                    var practitionerRole = practitionerRoleOpt.get();
+                    catalog.updatePractitionerRole(new PractitionerRoleRow(practitionerRole.id(), practitioner.id(), command.departmentId(),
+                            DOCTOR, practitionerRole.effectiveFrom(), practitionerRole.effectiveTo(), practitionerRole.status(),
+                            practitionerRole.version() + 1, practitionerRole.createdAt(), now), practitionerRole.version());
+                } else {
+                    catalog.insertPractitionerRole(new PractitionerRoleRow(ids.next(), practitioner.id(), command.departmentId(),
+                            DOCTOR, now, null, "ACTIVE", 0, now, now));
+                }
+                var doctorAssignment = assignment(accountId, DOCTOR);
+                if (doctorAssignment != null) {
+                    identities.updateAssignmentDepartment(doctorAssignment.id(), command.departmentId(), doctorAssignment.version());
+                }
+            } else {
+                catalog.revokeActivePractitionerRoles(practitioner.id(), audit.actorAccountId(), now, "Unassigned from department");
+                var doctorAssignment = assignment(accountId, DOCTOR);
+                if (doctorAssignment != null) {
+                    identities.updateAssignmentDepartment(doctorAssignment.id(), null, doctorAssignment.version());
+                }
+            }
         } else {
             if (staffCodeInUseByAnotherAccount(command.staffCode().strip(), accountId)) {
                 throw new IllegalStateException("Personnel staff code already exists");
@@ -235,10 +254,12 @@ public class PersonnelProvisioningServiceImpl implements PersonnelProvisioningSe
                     ? currentDoctorRole(practitioner.get().id(), at).orElse(null)
                     : latestDoctorRole(practitioner.get().id());
             var assignment = assignment(account.id(), DOCTOR, accountActive, at);
-            if (role == null || assignment == null) return Optional.empty();
+            if (assignment == null) return Optional.empty();
             return Optional.of(new PersonnelView(account.id(), account.version(), DOCTOR, account.displayEmail(), account.status(),
                     practitioner.get().id(), practitioner.get().version(), practitioner.get().staffCode(), practitioner.get().fullName(),
-                    practitioner.get().active() && AccountStatus.ACTIVE.name().equals(account.status()), role.departmentId(), role.id(),
+                    practitioner.get().active() && AccountStatus.ACTIVE.name().equals(account.status()),
+                    role == null ? null : role.departmentId(),
+                    role == null ? null : role.id(),
                     assignment.id(), profileView(profile.get()), deactivatedAt(account), account.createdAt(), account.updatedAt()));
         }
         var assignment = assignment(account.id(), RECEPTIONIST, AccountStatus.ACTIVE.name().equals(account.status()), at);
@@ -254,10 +275,11 @@ public class PersonnelProvisioningServiceImpl implements PersonnelProvisioningSe
         AccountRow account = identities.findAccountById(accountId).orElseThrow();
         if (practitionerId != null) {
             var practitioner = catalog.practitionerById(practitionerId).orElseThrow();
-            var role = catalog.practitionerRoleById(practitionerRoleId).orElseThrow();
+            var role = practitionerRoleId == null ? null : catalog.practitionerRoleById(practitionerRoleId).orElse(null);
             var profile = catalog.practitionerProfileByPractitionerId(practitionerId).orElseThrow();
             return new PersonnelView(accountId, account.version(), DOCTOR, account.displayEmail(), account.status(), practitionerId,
-                    practitioner.version(), practitioner.staffCode(), practitioner.fullName(), practitioner.active(), role.departmentId(),
+                    practitioner.version(), practitioner.staffCode(), practitioner.fullName(), practitioner.active(),
+                    role == null ? null : role.departmentId(),
                     practitionerRoleId, assignmentId, profileView(profile), null, account.createdAt(), account.updatedAt());
         }
         var staff = catalog.personnelMemberByAccountId(accountId).orElseThrow();
@@ -324,8 +346,8 @@ public class PersonnelProvisioningServiceImpl implements PersonnelProvisioningSe
             throw new IllegalArgumentException("Initial password is required");
         }
         if (DOCTOR.equals(command.type())) {
-            if (command.departmentId() == null || command.doctorProfile() == null) {
-                throw new IllegalArgumentException("Doctor department and professional profile are required");
+            if (command.doctorProfile() == null) {
+                throw new IllegalArgumentException("Doctor professional profile is required");
             }
             DoctorProfile profile = command.doctorProfile();
             if (profile.phone() == null || !profile.phone().matches("^\\+[1-9]\\d{7,14}$")

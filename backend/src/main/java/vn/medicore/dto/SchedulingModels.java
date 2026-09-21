@@ -267,7 +267,7 @@ public interface SchedulingModels {
     record BookingRoom(UUID id, List<UUID> departmentIds, List<UUID> serviceIds, String name) {
     }
 
-    record BookingService(UUID id, String name, BigDecimal priceAmount, String priceCurrency) {
+    record BookingService(UUID id, UUID departmentId, String name, BigDecimal priceAmount, String priceCurrency) {
     }
 
     record BookingPractitioner(UUID id, String fullName) {

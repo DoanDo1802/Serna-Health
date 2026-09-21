@@ -78,9 +78,10 @@ export interface BookingRoom {
 
 export interface BookingService {
   id: string;
+  departmentId?: string | null;
   name: string;
-  priceAmount: number;
-  priceCurrency: string;
+  priceAmount?: number | null;
+  priceCurrency?: string | null;
 }
 
 export interface BookingPractitioner {

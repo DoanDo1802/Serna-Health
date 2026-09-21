@@ -202,10 +202,32 @@ export function ScheduleContent() {
   const clock = vietnamClock()
   const selectedDoctor = doctors.find((doctor) => doctor.accountId === form.doctorAccountId)
   const selectedDepartmentId = selectedDoctor?.departmentId ?? ""
-  const rooms = useMemo(
-    () => catalog?.rooms.filter((room) => room.departmentIds.includes(selectedDepartmentId) && room.serviceIds.includes(form.serviceId)) ?? [],
-    [catalog, selectedDepartmentId, form.serviceId],
-  )
+
+  // All rooms and services belonging to the doctor's department
+  const departmentRooms = useMemo(() => {
+    if (!selectedDepartmentId) return []
+    return (catalog?.rooms ?? []).filter((room) => room.departmentIds.includes(selectedDepartmentId))
+  }, [catalog?.rooms, selectedDepartmentId])
+
+  const departmentServices = useMemo(() => {
+    if (!selectedDepartmentId) return []
+    return (catalog?.services ?? []).filter((service) => service.departmentId === selectedDepartmentId)
+  }, [catalog?.services, selectedDepartmentId])
+
+  // Two-way dynamic filtering:
+  // If service is chosen, filter rooms that support this service. Otherwise show all department rooms.
+  const availableRooms = useMemo(() => {
+    if (!form.serviceId) return departmentRooms
+    return departmentRooms.filter((room) => room.serviceIds.includes(form.serviceId))
+  }, [departmentRooms, form.serviceId])
+
+  // If room is chosen, filter services that can be provided in this room. Otherwise show all department services.
+  const availableServices = useMemo(() => {
+    if (!form.roomId) return departmentServices
+    const currentRoom = departmentRooms.find((room) => room.id === form.roomId)
+    if (!currentRoom) return []
+    return departmentServices.filter((service) => currentRoom.serviceIds.includes(service.id))
+  }, [departmentServices, departmentRooms, form.roomId])
   const activeSchedules = useMemo(() => schedules.filter((schedule) => schedule.status === "ACTIVE"), [schedules])
   const allSchedulesByDate = useMemo(() => activeSchedules.reduce<Record<string, WorkSchedule[]>>((result, schedule) => {
     ;(result[schedule.localDate] ??= []).push(schedule)
@@ -282,8 +304,12 @@ export function ScheduleContent() {
       setError("Chọn phòng khám và dịch vụ.")
       return
     }
-    if (!rooms.some((room) => room.id === form.roomId)) {
+    if (!availableRooms.some((room) => room.id === form.roomId)) {
       setError("Phòng khám phải thuộc khoa của bác sĩ đã chọn.")
+      return
+    }
+    if (!availableServices.some((service) => service.id === form.serviceId)) {
+      setError("Dịch vụ phải thuộc khoa của bác sĩ và được phòng khám hỗ trợ.")
       return
     }
     const capacity = Number(form.capacity)
@@ -404,10 +430,28 @@ export function ScheduleContent() {
 
   const editDoctor = doctors.find((d) => d.accountId === editForm.doctorAccountId)
   const editDepartmentId = editDoctor?.departmentId ?? ""
-  const editRooms = useMemo(
-    () => (catalog?.rooms ?? []).filter((room) => room.departmentIds.includes(editDepartmentId) && room.serviceIds.includes(editForm.serviceId)),
-    [catalog, editDepartmentId, editForm.serviceId],
-  )
+
+  const editDepartmentRooms = useMemo(() => {
+    if (!editDepartmentId) return []
+    return (catalog?.rooms ?? []).filter((room) => room.departmentIds.includes(editDepartmentId))
+  }, [catalog?.rooms, editDepartmentId])
+
+  const editDepartmentServices = useMemo(() => {
+    if (!editDepartmentId) return []
+    return (catalog?.services ?? []).filter((service) => service.departmentId === editDepartmentId)
+  }, [catalog?.services, editDepartmentId])
+
+  const editAvailableRooms = useMemo(() => {
+    if (!editForm.serviceId) return editDepartmentRooms
+    return editDepartmentRooms.filter((room) => room.serviceIds.includes(editForm.serviceId))
+  }, [editDepartmentRooms, editForm.serviceId])
+
+  const editAvailableServices = useMemo(() => {
+    if (!editForm.roomId) return editDepartmentServices
+    const currentRoom = editDepartmentRooms.find((room) => room.id === editForm.roomId)
+    if (!currentRoom) return []
+    return editDepartmentServices.filter((service) => currentRoom.serviceIds.includes(service.id))
+  }, [editDepartmentServices, editDepartmentRooms, editForm.roomId])
 
   const saveScheduleEdit = async (event: FormEvent) => {
     event.preventDefault()
@@ -533,7 +577,12 @@ export function ScheduleContent() {
                 <select
                   value={form.doctorAccountId}
                   onChange={(event) => {
-                    setForm((current) => ({ ...current, doctorAccountId: event.target.value, roomId: "" }))
+                    setForm((current) => ({
+                      ...current,
+                      doctorAccountId: event.target.value,
+                      roomId: "",
+                      serviceId: "",
+                    }))
                     setError("")
                   }}
                   className={cn(
@@ -767,7 +816,12 @@ export function ScheduleContent() {
                   className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   value={form.doctorAccountId}
                   onChange={(event) => {
-                    setForm((current) => ({ ...current, doctorAccountId: event.target.value, roomId: "" }))
+                    setForm((current) => ({
+                      ...current,
+                      doctorAccountId: event.target.value,
+                      roomId: "",
+                      serviceId: "",
+                    }))
                     setError("")
                   }}
                 >
@@ -784,13 +838,30 @@ export function ScheduleContent() {
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-foreground">Phòng khám</label>
                   <select
-                    disabled={!selectedDepartmentId || rooms.length === 0}
+                    disabled={!selectedDepartmentId || availableRooms.length === 0}
                     className="w-full h-8.5 rounded-md border border-input bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-60 truncate focus:outline-none focus:ring-1 focus:ring-primary"
                     value={form.roomId}
-                    onChange={(event) => setForm((current) => ({ ...current, roomId: event.target.value }))}
+                    onChange={(event) => {
+                      const nextRoomId = event.target.value
+                      setForm((current) => {
+                        const newRoom = departmentRooms.find((r) => r.id === nextRoomId)
+                        const serviceStillValid = nextRoomId && newRoom ? newRoom.serviceIds.includes(current.serviceId) : true
+                        return {
+                          ...current,
+                          roomId: nextRoomId,
+                          serviceId: serviceStillValid ? current.serviceId : "",
+                        }
+                      })
+                    }}
                   >
-                    <option value="">{selectedDepartmentId ? "Chọn phòng" : "Chọn BS trước"}</option>
-                    {rooms.map((room) => (
+                    <option value="">
+                      {!selectedDepartmentId
+                        ? "Chọn BS trước"
+                        : availableRooms.length === 0
+                        ? "Không có phòng"
+                        : "Chọn phòng"}
+                    </option>
+                    {availableRooms.map((room) => (
                       <option key={room.id} value={room.id}>
                         {room.name}
                       </option>
@@ -801,12 +872,30 @@ export function ScheduleContent() {
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-foreground">Dịch vụ</label>
                   <select
-                    className="w-full h-8.5 rounded-md border border-input bg-background px-2 text-xs text-foreground truncate focus:outline-none focus:ring-1 focus:ring-primary"
+                    disabled={!selectedDepartmentId || availableServices.length === 0}
+                    className="w-full h-8.5 rounded-md border border-input bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-60 truncate focus:outline-none focus:ring-1 focus:ring-primary"
                     value={form.serviceId}
-                    onChange={(event) => setForm((current) => ({ ...current, serviceId: event.target.value }))}
+                    onChange={(event) => {
+                      const nextServiceId = event.target.value
+                      setForm((current) => {
+                        const currentRoom = departmentRooms.find((r) => r.id === current.roomId)
+                        const roomStillValid = nextServiceId && currentRoom ? currentRoom.serviceIds.includes(nextServiceId) : true
+                        return {
+                          ...current,
+                          serviceId: nextServiceId,
+                          roomId: roomStillValid ? current.roomId : "",
+                        }
+                      })
+                    }}
                   >
-                    <option value="">Chọn dịch vụ</option>
-                    {catalog?.services.map((service) => (
+                    <option value="">
+                      {!selectedDepartmentId
+                        ? "Chọn BS trước"
+                        : availableServices.length === 0
+                        ? "Không có dịch vụ"
+                        : "Chọn dịch vụ"}
+                    </option>
+                    {availableServices.map((service) => (
                       <option key={service.id} value={service.id}>
                         {service.name}
                       </option>
@@ -1026,13 +1115,11 @@ export function ScheduleContent() {
                   className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-1 focus:ring-primary"
                   value={editForm.doctorAccountId}
                   onChange={(e) => {
-                    const newDoctor = doctors.find((d) => d.accountId === e.target.value)
-                    const newDeptId = newDoctor?.departmentId ?? ""
-                    const deptRooms = catalog?.rooms.filter((r) => r.departmentIds.includes(newDeptId) && r.serviceIds.includes(editForm.serviceId)) ?? []
                     setEditForm((prev) => ({
                       ...prev,
                       doctorAccountId: e.target.value,
-                      roomId: deptRooms[0]?.id ?? "",
+                      roomId: "",
+                      serviceId: "",
                     }))
                     setEditError("")
                   }}
@@ -1051,13 +1138,30 @@ export function ScheduleContent() {
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-foreground">Phòng khám</label>
                   <select
-                    disabled={!editDepartmentId || editRooms.length === 0}
+                    disabled={!editDepartmentId || editAvailableRooms.length === 0}
                     className="w-full h-8.5 rounded-md border border-input bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-60 truncate focus:outline-none focus:ring-1 focus:ring-primary"
                     value={editForm.roomId}
-                    onChange={(e) => setEditForm((prev) => ({ ...prev, roomId: e.target.value }))}
+                    onChange={(e) => {
+                      const nextRoomId = e.target.value
+                      setEditForm((prev) => {
+                        const newRoom = editDepartmentRooms.find((r) => r.id === nextRoomId)
+                        const serviceStillValid = nextRoomId && newRoom ? newRoom.serviceIds.includes(prev.serviceId) : true
+                        return {
+                          ...prev,
+                          roomId: nextRoomId,
+                          serviceId: serviceStillValid ? prev.serviceId : "",
+                        }
+                      })
+                    }}
                   >
-                    <option value="">{editDepartmentId ? "Chọn phòng" : "Chọn BS trước"}</option>
-                    {editRooms.map((room) => (
+                    <option value="">
+                      {!editDepartmentId
+                        ? "Chọn BS trước"
+                        : editAvailableRooms.length === 0
+                        ? "Không có phòng"
+                        : "Chọn phòng"}
+                    </option>
+                    {editAvailableRooms.map((room) => (
                       <option key={room.id} value={room.id}>
                         {room.name}
                       </option>
@@ -1068,13 +1172,30 @@ export function ScheduleContent() {
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-foreground">Dịch vụ</label>
                   <select
-                    disabled={editingSchedule.reservedCapacity > 0}
+                    disabled={editingSchedule.reservedCapacity > 0 || !editDepartmentId || editAvailableServices.length === 0}
                     className="w-full h-8.5 rounded-md border border-input bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-60 truncate focus:outline-none focus:ring-1 focus:ring-primary"
                     value={editForm.serviceId}
-                    onChange={(e) => setEditForm((prev) => ({ ...prev, serviceId: e.target.value }))}
+                    onChange={(e) => {
+                      const nextServiceId = e.target.value
+                      setEditForm((prev) => {
+                        const currentRoom = editDepartmentRooms.find((r) => r.id === prev.roomId)
+                        const roomStillValid = nextServiceId && currentRoom ? currentRoom.serviceIds.includes(nextServiceId) : true
+                        return {
+                          ...prev,
+                          serviceId: nextServiceId,
+                          roomId: roomStillValid ? prev.roomId : "",
+                        }
+                      })
+                    }}
                   >
-                    <option value="">Chọn dịch vụ</option>
-                    {catalog?.services.map((service) => (
+                    <option value="">
+                      {!editDepartmentId
+                        ? "Chọn BS trước"
+                        : editAvailableServices.length === 0
+                        ? "Không có dịch vụ"
+                        : "Chọn dịch vụ"}
+                    </option>
+                    {editAvailableServices.map((service) => (
                       <option key={service.id} value={service.id}>
                         {service.name}
                       </option>

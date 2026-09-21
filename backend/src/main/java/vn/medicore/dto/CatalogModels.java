@@ -45,6 +45,7 @@ public final class CatalogModels {
             String code,
             String name,
             String serviceType,
+            UUID departmentId,
             boolean active,
             boolean allowsCritical,
             Instant createdAt,

@@ -5,6 +5,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -98,14 +99,16 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     @Override
     public int countPersonnelByDepartmentId(UUID departmentId) {
         Integer count = jdbc.queryForObject("""
-                select (select count(*) from account_role_assignment where department_id = ?)
-                     + (select count(*) from practitioner_role where department_id = ?)
+                select (select count(*) from account_role_assignment where department_id = ? and status = 'ACTIVE')
+                     + (select count(*) from practitioner_role where department_id = ? and status = 'ACTIVE')
                 """, Integer.class, departmentId, departmentId);
         return count != null ? count : 0;
     }
 
     @Override
     public int deleteDepartment(UUID departmentId, long expectedVersion) {
+        update("delete from practitioner_role where department_id = ? and status != 'ACTIVE'", departmentId);
+        update("delete from account_role_assignment where department_id = ? and status != 'ACTIVE'", departmentId);
         int deleted = update("delete from department where id = ? and version = ?", departmentId, expectedVersion);
         if (deleted != 1) throw new StaleVersionException();
         return deleted;
@@ -245,10 +248,10 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     @Override
     public void insertService(ServiceRow row) {
         update("""
-                insert into service(id, code, name, service_type, active, allows_critical, version, created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                insert into service(id, code, name, service_type, department_id, active, allows_critical, version, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                row.id(), row.code(), row.name(), row.serviceType(),
+                row.id(), row.code(), row.name(), row.serviceType(), row.departmentId(),
                 row.active(), row.allowsCritical(), row.version(),
                 ts(row.createdAt()), ts(row.updatedAt()));
     }
@@ -256,7 +259,7 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     @Override
     public Optional<ServiceView> serviceById(UUID id) {
         return queryOne("""
-                select id, code, name, service_type, active, allows_critical, version, created_at, updated_at
+                select id, code, name, service_type, department_id, active, allows_critical, version, created_at, updated_at
                 from service where id = ?
                 """, this::serviceView, id);
     }
@@ -264,45 +267,44 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     @Override
     public Optional<ServiceView> serviceByIdForUpdate(UUID id) {
         return queryOne("""
-                select id, code, name, service_type, active, allows_critical, version, created_at, updated_at
+                select id, code, name, service_type, department_id, active, allows_critical, version, created_at, updated_at
                 from service where id = ? for update
                 """, this::serviceView, id);
     }
 
     @Override
-    public List<ServiceView> listServices(String serviceType, Boolean active, int limit, int offset) {
-        if (serviceType != null && active != null) {
-            return jdbc.query("""
-                    select id, code, name, service_type, active, allows_critical, version, created_at, updated_at
-                    from service where service_type = ? and active = ? order by name, id limit ? offset ?
-                    """, this::serviceView, serviceType, active, limit, offset);
-        }
+    public List<ServiceView> listServices(String serviceType, Boolean active, UUID departmentId, int limit, int offset) {
+        StringBuilder sql = new StringBuilder("""
+                select id, code, name, service_type, department_id, active, allows_critical, version, created_at, updated_at
+                from service where 1=1
+                """);
+        List<Object> params = new ArrayList<>();
         if (serviceType != null) {
-            return jdbc.query("""
-                    select id, code, name, service_type, active, allows_critical, version, created_at, updated_at
-                    from service where service_type = ? order by name, id limit ? offset ?
-                    """, this::serviceView, serviceType, limit, offset);
+            sql.append(" and service_type = ?");
+            params.add(serviceType);
         }
         if (active != null) {
-            return jdbc.query("""
-                    select id, code, name, service_type, active, allows_critical, version, created_at, updated_at
-                    from service where active = ? order by name, id limit ? offset ?
-                    """, this::serviceView, active, limit, offset);
+            sql.append(" and active = ?");
+            params.add(active);
         }
-        return jdbc.query("""
-                select id, code, name, service_type, active, allows_critical, version, created_at, updated_at
-                from service order by name, id limit ? offset ?
-                """, this::serviceView, limit, offset);
+        if (departmentId != null) {
+            sql.append(" and department_id = ?");
+            params.add(departmentId);
+        }
+        sql.append(" order by name, id limit ? offset ?");
+        params.add(limit);
+        params.add(offset);
+        return jdbc.query(sql.toString(), this::serviceView, params.toArray());
     }
 
     @Override
     public int updateService(ServiceRow row, long expectedVersion) {
         int updated = update("""
                 update service
-                set code = ?, name = ?, service_type = ?, active = ?, version = version + 1, updated_at = ?
+                set code = ?, name = ?, service_type = ?, department_id = ?, active = ?, version = version + 1, updated_at = ?
                 where id = ? and version = ?
                 """,
-                row.code(), row.name(), row.serviceType(), row.active(),
+                row.code(), row.name(), row.serviceType(), row.departmentId(), row.active(),
                 ts(row.updatedAt()), row.id(), expectedVersion);
         if (updated != 1) throw new StaleVersionException();
         return updated;
@@ -601,10 +603,10 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     public int updatePractitionerRole(PractitionerRoleRow row, long expectedVersion) {
         int updated = update("""
                 update practitioner_role
-                set department_id = ?, effective_from = ?, effective_to = ?,
+                set department_id = ?, status = ?, effective_from = ?, effective_to = ?,
                     version = version + 1, updated_at = ?
-                where id = ? and version = ? and status = 'ACTIVE'
-                """, row.departmentId(), ts(row.effectiveFrom()), ts(row.effectiveTo()), ts(row.updatedAt()),
+                where id = ? and version = ?
+                """, row.departmentId(), row.status(), ts(row.effectiveFrom()), ts(row.effectiveTo()), ts(row.updatedAt()),
                 row.id(), expectedVersion);
         if (updated != 1) throw new StaleVersionException();
         return updated;
@@ -683,6 +685,7 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
                 rs.getString("code"),
                 rs.getString("name"),
                 rs.getString("service_type"),
+                uuidNullable(rs, "department_id"),
                 rs.getBoolean("active"),
                 rs.getBoolean("allows_critical"),
                 instant(rs, "created_at"),

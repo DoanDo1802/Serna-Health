@@ -131,14 +131,14 @@ schemas:
     oneOf:
       - type: object
         additionalProperties: false
-        required: [type, email, initialPassword, staffCode, fullName, departmentId, doctorProfile]
+        required: [type, email, initialPassword, staffCode, fullName, doctorProfile]
         properties:
           type: { const: DOCTOR }
           email: { type: string, format: email, maxLength: 320 }
           initialPassword: { type: string, format: password, minLength: 6, maxLength: 128, writeOnly: true }
           staffCode: { type: string, minLength: 1, maxLength: 64 }
           fullName: { type: string, minLength: 1, maxLength: 200 }
-          departmentId: { type: string, format: uuid }
+          departmentId: { type: [string, 'null'], format: uuid }
           doctorProfile: { $ref: '#/schemas/DoctorProfessionalProfileInput' }
       - type: object
         additionalProperties: false
@@ -153,12 +153,12 @@ schemas:
     oneOf:
       - type: object
         additionalProperties: false
-        required: [type, staffCode, fullName, departmentId, doctorProfile]
+        required: [type, staffCode, fullName, doctorProfile]
         properties:
           type: { const: DOCTOR }
           staffCode: { type: string, minLength: 1, maxLength: 64 }
           fullName: { type: string, minLength: 1, maxLength: 200 }
-          departmentId: { type: string, format: uuid }
+          departmentId: { type: [string, 'null'], format: uuid }
           doctorProfile: { $ref: '#/schemas/DoctorProfessionalProfileInput' }
       - type: object
         additionalProperties: false
@@ -552,12 +552,13 @@ schemas:
   BookingService:
     type: object
     additionalProperties: false
-    required: [id, name, priceAmount, priceCurrency]
+    required: [id, name]
     properties:
       id: { type: string, format: uuid }
+      departmentId: { type: [string, 'null'], format: uuid }
       name: { type: string, maxLength: 200 }
-      priceAmount: { type: number, minimum: 0, multipleOf: 0.01 }
-      priceCurrency: { type: string, const: VND }
+      priceAmount: { type: [number, 'null'], minimum: 0, multipleOf: 0.01 }
+      priceCurrency: { type: [string, 'null'] }
   BookingPractitioner:
     type: object
     additionalProperties: false
@@ -1051,6 +1052,7 @@ schemas:
       code: { type: string, minLength: 1, maxLength: 64 }
       name: { type: string, minLength: 1, maxLength: 200 }
       serviceType: { $ref: '#/schemas/CatalogServiceType' }
+      departmentId: { type: [string, 'null'], format: uuid }
   UpdateServiceRequest:
     type: object
     additionalProperties: false
@@ -1059,6 +1061,7 @@ schemas:
       code: { type: string, minLength: 1, maxLength: 64 }
       name: { type: string, minLength: 1, maxLength: 200 }
       serviceType: { $ref: '#/schemas/CatalogServiceType' }
+      departmentId: { type: [string, 'null'], format: uuid }
   Service:
     type: object
     additionalProperties: false
@@ -1069,6 +1072,7 @@ schemas:
       code: { type: string, maxLength: 64 }
       name: { type: string, maxLength: 200 }
       serviceType: { $ref: '#/schemas/CatalogServiceType' }
+      departmentId: { type: [string, 'null'], format: uuid }
       active: { type: boolean }
       allowsCritical: { type: boolean }
       createdAt: { type: string, format: date-time }

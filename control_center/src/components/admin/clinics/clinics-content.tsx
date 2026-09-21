@@ -173,17 +173,31 @@ export function ClinicsContent() {
   // List of rooms placed on other floors with floor name for clarity
   const roomsPlacedOnOtherFloors = useMemo(() => {
     const floorNameMap = new Map(floors.map((f) => [f.id, f.name]))
-    const list: { room: RoomWithEtag; floorName: string }[] = []
+    const list: { room: RoomWithEtag; floorId: string; floorName: string }[] = []
     for (const p of roomPlacements) {
       if (p.floorId !== selectedFloorId) {
         const r = roomById.get(p.roomId)
         if (r) {
-          list.push({ room: r, floorName: floorNameMap.get(p.floorId) ?? "Tầng khác" })
+          list.push({ room: r, floorId: p.floorId, floorName: floorNameMap.get(p.floorId) ?? "Tầng khác" })
         }
       }
     }
     return list
   }, [roomPlacements, selectedFloorId, floors, roomById])
+
+  // List of rooms placed on CURRENT floor
+  const roomsPlacedOnCurrentFloor = useMemo(() => {
+    const list: { room: RoomWithEtag; element: FacilityFloorElement }[] = []
+    for (const el of elements) {
+      if (el.roomId) {
+        const r = roomById.get(el.roomId)
+        if (r) {
+          list.push({ room: r, element: el })
+        }
+      }
+    }
+    return list
+  }, [elements, roomById])
 
   // Helper to determine if an element has modified geometry, label, door, notes, or zIndex
   const isElementModified = useCallback((curr: FacilityFloorElement, orig?: FacilityFloorElement) => {
@@ -1713,11 +1727,77 @@ export function ClinicsContent() {
                         </div>
                       ))}
                       {unplacedRooms.length === 0 && (
-                        <div className="py-8 text-center text-xs text-muted-foreground">
+                        <div className="py-6 text-center text-xs text-muted-foreground">
                           Tất cả các phòng trong danh mục đã được đặt vào mặt bằng.
                         </div>
                       )}
                     </div>
+
+                    {/* Section showing rooms placed on THIS floor */}
+                    {roomsPlacedOnCurrentFloor.length > 0 && (
+                      <details open className="mt-2 rounded-md border border-emerald-500/25 bg-emerald-500/5 p-2 text-xs group">
+                        <summary className="flex cursor-pointer select-none items-center justify-between text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300">
+                          <span className="flex items-center gap-1.5">
+                            <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <span>Đã đặt tại {currentFloor?.name || "tầng này"} ({roomsPlacedOnCurrentFloor.length})</span>
+                          </span>
+                          <span className="text-[10px] transition-transform group-open:rotate-180">▼</span>
+                        </summary>
+                        <div className="mt-2 max-h-48 space-y-1 overflow-y-auto pr-1">
+                          {roomsPlacedOnCurrentFloor.map(({ room, element }) => {
+                            const isSelected = selectedElement?.id === element.id
+                            return (
+                              <div
+                                key={room.id}
+                                onClick={() => {
+                                  setSelectedElement(element)
+                                  setLeftTab("properties")
+                                }}
+                                className={`flex cursor-pointer items-center justify-between gap-1 rounded border px-2 py-1 text-[11px] transition-colors ${
+                                  isSelected
+                                    ? "border-primary bg-primary/10 text-primary font-medium shadow-2xs"
+                                    : "border-border/40 bg-background/80 hover:bg-muted hover:border-border"
+                                }`}
+                                title="Bấm để chọn và xem thuộc tính phòng này"
+                              >
+                                <div className="min-w-0 flex-1 truncate pr-1">
+                                  <span className="font-semibold text-foreground">{room.code}</span>
+                                  <span className="mx-1 text-muted-foreground">—</span>
+                                  <span className="text-muted-foreground truncate">{room.name}</span>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-0.5">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
+                                    title="Chỉnh sửa thông tin phòng"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setEditingRoom(room)
+                                      setRoomDialogOpen(true)
+                                    }}
+                                  >
+                                    <Pencil className="h-2.5 w-2.5" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-5 w-5 p-0 text-rose-500 hover:bg-rose-500/10 hover:text-rose-600"
+                                    title="Gỡ khỏi mặt bằng"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      void removeElement(element)
+                                    }}
+                                  >
+                                    <Trash2 className="h-2.5 w-2.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </details>
+                    )}
 
                     {/* Collapsible section showing rooms already placed on other floors */}
                     {roomsPlacedOnOtherFloors.length > 0 && (
@@ -1727,10 +1807,12 @@ export function ClinicsContent() {
                           <span className="text-[10px] transition-transform group-open:rotate-180">▼</span>
                         </summary>
                         <div className="mt-2 max-h-36 space-y-1 overflow-y-auto pr-1">
-                          {roomsPlacedOnOtherFloors.map(({ room, floorName }) => (
+                          {roomsPlacedOnOtherFloors.map(({ room, floorId, floorName }) => (
                             <div
                               key={room.id}
-                              className="flex items-center justify-between rounded border border-border/40 bg-background/60 px-2 py-1 text-[11px]"
+                              onClick={() => handleSelectFloor(floorId)}
+                              className="flex cursor-pointer items-center justify-between rounded border border-border/40 bg-background/60 px-2 py-1 text-[11px] hover:bg-muted hover:border-border transition-colors"
+                              title={`Bấm để chuyển đến ${floorName}`}
                             >
                               <div className="min-w-0 flex-1 truncate pr-1">
                                 <span className="font-medium text-foreground">{room.code}</span>
@@ -1752,10 +1834,11 @@ export function ClinicsContent() {
 
             {/* TAB 3: PROPERTIES INSPECTOR */}
             {leftTab === "properties" && selectedElement && (
-              <div className="space-y-3 pt-1 animate-in fade-in duration-150">
-                <div className="flex items-center justify-between border-b pb-2">
+              <div className="space-y-2 pt-1 animate-in fade-in duration-150">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b pb-1.5">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <Badge variant="default" className="text-[10px] shrink-0">
+                    <Badge variant="default" className="text-[10px] shrink-0 h-5 px-1.5">
                       {ELEMENT_LABELS[selectedElement.elementType]}
                     </Badge>
                     <span className="truncate text-xs font-bold text-foreground">
@@ -1765,63 +1848,70 @@ export function ClinicsContent() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 shrink-0"
+                    className="h-5 w-5 shrink-0"
                     title="Đóng thuộc tính"
                     onClick={() => {
                       setSelectedElement(null)
                       setLeftTab("tools")
                     }}
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-3 w-3" />
                   </Button>
                 </div>
 
-                {/* Editable Name / Label */}
-                <div>
-                  <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
-                    Tên hiển thị / Mã phòng:
-                  </label>
-                  <Input
-                    className="h-7 text-xs bg-background"
-                    value={inspectorLabel}
-                    onChange={(e) => setInspectorLabel(e.target.value)}
-                    onBlur={() => void saveInspectorChanges()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void saveInspectorChanges()
-                    }}
-                    placeholder="vd: P. 214, Kho vật tư..."
-                  />
+                {/* Editable Name & Notes in 2 columns */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <label className="mb-0.5 block text-[10px] font-medium text-muted-foreground">
+                      Tên / Mã phòng:
+                    </label>
+                    <Input
+                      className="h-7 text-xs bg-background px-2"
+                      value={inspectorLabel}
+                      onChange={(e) => setInspectorLabel(e.target.value)}
+                      onBlur={() => void saveInspectorChanges()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void saveInspectorChanges()
+                      }}
+                      placeholder="vd: P. 214..."
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[10px] font-medium text-muted-foreground">
+                      Ghi chú / Diễn giải:
+                    </label>
+                    <Input
+                      className="h-7 text-xs bg-background px-2"
+                      value={inspectorNotes}
+                      onChange={(e) => setInspectorNotes(e.target.value)}
+                      onBlur={() => void saveInspectorChanges()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void saveInspectorChanges()
+                      }}
+                      placeholder="vd: Khám tổng quát..."
+                    />
+                  </div>
                 </div>
 
-                {/* Editable Notes */}
+                {/* Door Side Setting */}
                 <div>
-                  <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
-                    Ghi chú / Diễn giải phụ (hiển thị dưới tên):
-                  </label>
-                  <Input
-                    className="h-7 text-xs bg-background"
-                    value={inspectorNotes}
-                    onChange={(e) => setInspectorNotes(e.target.value)}
-                    onBlur={() => void saveInspectorChanges()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void saveInspectorChanges()
-                    }}
-                    placeholder="vd: Phòng Khám Tổng Quát, (X-QUANG, SIÊU ÂM)..."
-                  />
-                </div>
-
-                {/* Door Side Setting for 90° CAD Swing Door */}
-                <div>
-                  <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
-                    Hướng mở cửa 90° (Bản vẽ CAD):
-                  </label>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="text-[10px] font-medium text-muted-foreground">
+                      Hướng mở cửa (CAD):
+                    </label>
+                    {selectedElement.doorSide && (
+                      <span className="text-[10px] font-medium text-primary">
+                        {selectedElement.doorSide === "NORTH" ? "Bắc (↑)" : selectedElement.doorSide === "SOUTH" ? "Nam (↓)" : selectedElement.doorSide === "EAST" ? "Đông (→)" : "Tây (←)"}
+                      </span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-5 gap-1">
                     {(["NORTH", "SOUTH", "EAST", "WEST"] as DoorSide[]).map((side) => (
                       <Button
                         key={side}
                         size="sm"
                         variant={selectedElement.doorSide === side ? "default" : "outline"}
-                        className="h-7 px-1 text-[10px] font-bold"
+                        className="h-6 px-1 text-[10px] font-medium"
                         onClick={() => void setQuickDoorSide(selectedElement, side)}
                       >
                         {side === "NORTH" ? "Bắc ↑" : side === "SOUTH" ? "Nam ↓" : side === "EAST" ? "Đông →" : "Tây ←"}
@@ -1830,7 +1920,7 @@ export function ClinicsContent() {
                     <Button
                       size="sm"
                       variant={!selectedElement.doorSide ? "secondary" : "outline"}
-                      className="h-7 px-1 text-[10px]"
+                      className="h-6 px-1 text-[10px]"
                       onClick={() => void setQuickDoorSide(selectedElement, null)}
                       title="Không có cửa"
                     >
@@ -1839,103 +1929,95 @@ export function ClinicsContent() {
                   </div>
                 </div>
 
-                {/* Corner Styles Setting (Bo tròn / Vát 45°) */}
-                <div className="border-t pt-2">
+                {/* Corner Styles */}
+                <div className="border-t pt-1.5">
                   <CornerStyleControls
                     corners={inspectorCorners}
                     onChange={(newCorners) => void setQuickCorners(selectedElement, newCorners)}
+                    compact
                   />
                 </div>
 
-                {/* Rotation Controls */}
-                <div className="border-t pt-2">
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <label className="text-[11px] font-semibold text-muted-foreground">
-                      Xoay hướng phần tử:
+                {/* Quick Actions & Rotation in 1 unified toolbar */}
+                <div className="border-t pt-1.5">
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="text-[10px] font-medium text-muted-foreground">
+                      Thao tác & Xoay:
                     </label>
-                    <span className="text-[10px] font-bold text-primary">
-                      {parseNotesAndCorners(selectedElement.notes).rotation}°
+                    <span className="text-[10px] text-muted-foreground">
+                      Góc xoay: <strong className="text-primary">{parseNotesAndCorners(selectedElement.notes).rotation}°</strong>
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="grid grid-cols-4 gap-1">
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs font-medium"
+                      className="h-6.5 px-1 text-[10px]"
                       onClick={() => rotateElement(selectedElement, "CW")}
-                      title="Xoay 90° theo chiều kim đồng hồ (Phím tắt: R)"
+                      title="Xoay thuận 90° (Phím tắt: R)"
                     >
-                      <RotateCw className="mr-1 h-3 w-3 text-primary" />
-                      Quay 90° thuận
+                      <RotateCw className="mr-0.5 h-3 w-3 text-primary" />
+                      +90°
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs font-medium"
+                      className="h-6.5 px-1 text-[10px]"
                       onClick={() => rotateElement(selectedElement, "CCW")}
-                      title="Xoay 90° ngược chiều kim đồng hồ (Phím tắt: Shift+R)"
+                      title="Xoay ngược 90° (Phím tắt: Shift+R)"
                     >
-                      <RotateCcw className="mr-1 h-3 w-3 text-muted-foreground" />
-                      Quay 90° ngược
+                      <RotateCcw className="mr-0.5 h-3 w-3 text-muted-foreground" />
+                      -90°
                     </Button>
-                  </div>
-                </div>
-
-                {/* Duplicate & Copy Buttons */}
-                <div className="space-y-1.5 border-t pt-2">
-                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                    Sao chép & Nhân bản
-                  </span>
-                  <div className="grid grid-cols-2 gap-1.5">
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs font-medium"
+                      className="h-6.5 px-1 text-[10px]"
                       onClick={() => duplicateElement(selectedElement)}
-                      title="Nhân bản ngay cùng kích thước (Phím tắt: Ctrl+D)"
+                      title="Nhân bản (Ctrl+D)"
                     >
-                      <CopyPlus className="mr-1 h-3 w-3 text-emerald-600" />
-                      Nhân bản (Ctrl+D)
+                      <CopyPlus className="mr-0.5 h-3 w-3 text-emerald-600" />
+                      Nhân bản
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs font-medium"
+                      className="h-6.5 px-1 text-[10px]"
                       onClick={() => copyElement(selectedElement)}
-                      title="Sao chép vào bộ nhớ tạm (Phím tắt: Ctrl+C)"
+                      title="Sao chép (Ctrl+C)"
                     >
-                      <Copy className="mr-1 h-3 w-3 text-muted-foreground" />
-                      Sao chép (Ctrl+C)
+                      <Copy className="mr-0.5 h-3 w-3 text-muted-foreground" />
+                      Sao chép
                     </Button>
                   </div>
                 </div>
 
-                {/* Coordinates and Dimensions */}
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t pt-2">
-                  <span>Vị trí: X={selectedElement.gridX}, Y={selectedElement.gridY}</span>
-                  <span>Kích thước: {selectedElement.gridWidth} × {selectedElement.gridHeight}</span>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex items-center justify-between pt-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    onClick={() => setDetailOpen(true)}
-                  >
-                    <Settings2 className="mr-1 h-3 w-3" />
-                    Chi tiết & Khoa
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/30"
-                    onClick={() => void removeElement(selectedElement)}
-                  >
-                    <Trash2 className="mr-1 h-3 w-3" />
-                    Gỡ khỏi sơ đồ
-                  </Button>
+                {/* Footer: Coordinates & Action Buttons */}
+                <div className="flex items-center justify-between border-t pt-1.5 text-[10px] text-muted-foreground">
+                  <div>
+                    <span>X={selectedElement.gridX}, Y={selectedElement.gridY}</span>
+                    <span className="ml-1.5 font-mono">({selectedElement.gridWidth}×{selectedElement.gridHeight})</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => setDetailOpen(true)}
+                    >
+                      <Settings2 className="mr-1 h-3 w-3" />
+                      Chi tiết & Khoa
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/30"
+                      onClick={() => void removeElement(selectedElement)}
+                      title="Gỡ khỏi sơ đồ"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}

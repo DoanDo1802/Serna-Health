@@ -81,7 +81,11 @@ public class GlobalExceptionHandler {
                 .body(response.getBody());
     }
 
-    @ExceptionHandler({IllegalArgumentException.class, MethodArgumentNotValidException.class})
+    @ExceptionHandler({
+            IllegalArgumentException.class,
+            MethodArgumentNotValidException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class
+    })
     ResponseEntity<ProblemDetail> invalid(Exception exception, HttpServletRequest request) {
         String detail = exception instanceof IllegalArgumentException && exception.getMessage() != null 
                 ? exception.getMessage() 

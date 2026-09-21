@@ -64,16 +64,18 @@ export const schedulingService = {
     cursor?: string;
     limit?: number;
   }): Promise<BookingSessionAvailabilityPageResponse> {
+    const queryParams: Record<string, unknown> = {
+      patientId: params.patientId,
+      limit: params.limit || 100,
+    };
+    if (params.departmentId && params.departmentId !== 'ALL') queryParams.departmentId = params.departmentId;
+    if (params.serviceId && params.serviceId !== 'ALL') queryParams.serviceId = params.serviceId;
+    if (params.date && params.date.trim() !== '') queryParams.date = params.date.trim();
+    if (params.session && (params.session as string) !== 'ALL') queryParams.session = params.session;
+    if (params.cursor) queryParams.cursor = params.cursor;
+
     const response = await axiosClient.get<BookingSessionAvailabilityPageResponse>('/booking/availability', {
-      params: {
-        patientId: params.patientId,
-        departmentId: params.departmentId,
-        serviceId: params.serviceId,
-        date: params.date,
-        session: params.session,
-        cursor: params.cursor,
-        limit: params.limit || 100,
-      },
+      params: queryParams,
     });
     return response.data;
   },

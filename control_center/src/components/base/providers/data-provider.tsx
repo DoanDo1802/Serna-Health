@@ -53,7 +53,7 @@ interface DataContextValue {
   prescriptions: Prescription[]
   examinationRecords: ExaminationRecord[]
   // Specialty CRUD
-  addSpecialty: (s: Omit<Specialty, "id" | "doctorCount">) => Promise<void>
+  addSpecialty: (s: Omit<Specialty, "id" | "doctorCount">) => Promise<Specialty>
   updateSpecialty: (id: string, s: Omit<Specialty, "id" | "doctorCount">) => Promise<void>
   updateSpecialtyStatus: (id: string, active: boolean) => Promise<void>
   deleteSpecialty: (id: string) => Promise<void>
@@ -704,6 +704,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         saveStoredSpecialtyMeta(createdDept.id, s.description, normalizeExamTemplate(s.examTemplate))
         const newSpecialty = mapDepartmentToSpecialty(createdDept, s)
         setSpecialties((p) => withDoctorCounts([...p, newSpecialty], doctors))
+        return newSpecialty
       } catch (error) {
         console.error("Không thể tạo chuyên khoa", error)
         throw error

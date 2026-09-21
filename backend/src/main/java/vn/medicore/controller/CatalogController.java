@@ -174,8 +174,9 @@ public class CatalogController {
     @GetMapping("/services")
     @PreAuthorize("hasAuthority('service.read')")
     Page<ServiceView> listServices(@RequestParam(required = false) String serviceType, @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) String cursor, @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit) {
-        return catalog.listServices(serviceType, active, cursor, limit);
+        return catalog.listServices(serviceType, active, departmentId, cursor, limit);
     }
 
     @GetMapping("/services/{id}")
@@ -189,7 +190,7 @@ public class CatalogController {
     @PreAuthorize("hasAuthority('service.create')")
     ResponseEntity<ServiceView> createService(HttpServletRequest request, @AuthenticationPrincipal AuthenticatedAccount principal,
             @Valid @RequestBody ServiceCreateRequest body) {
-        ServiceView view = catalog.createService(body.code(), body.name(), body.serviceType(), auditContext(request, principal));
+        ServiceView view = catalog.createService(body.code(), body.name(), body.serviceType(), body.departmentId(), auditContext(request, principal));
         return versioned(view, view.version());
     }
 
@@ -198,7 +199,7 @@ public class CatalogController {
     ResponseEntity<ServiceView> updateService(HttpServletRequest request, @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal, @RequestHeader("If-Match") String ifMatch,
             @Valid @RequestBody ServiceUpdateRequest body) {
-        ServiceView view = catalog.updateService(id, body.code(), body.name(), body.serviceType(), version(ifMatch), auditContext(request, principal));
+        ServiceView view = catalog.updateService(id, body.code(), body.name(), body.serviceType(), body.departmentId(), version(ifMatch), auditContext(request, principal));
         return versioned(view, view.version());
     }
 
@@ -338,9 +339,11 @@ public class CatalogController {
     record RoomAssignmentsRequest(@NotNull @Size(max = 100) List<@NotNull UUID> departmentIds,
                                   @NotNull @Size(max = 100) List<@NotNull UUID> serviceIds) {}
     record ServiceCreateRequest(@NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 200) String name,
-                                @NotBlank @Pattern(regexp = "CONSULTATION|PROCEDURE|DIAGNOSTIC|LAB|IMAGING|THERAPY|OTHER") String serviceType) {}
+                                @NotBlank @Pattern(regexp = "CONSULTATION|PROCEDURE|DIAGNOSTIC|LAB|IMAGING|THERAPY|OTHER") String serviceType,
+                                UUID departmentId) {}
     record ServiceUpdateRequest(@NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 200) String name,
-                                @NotBlank @Pattern(regexp = "CONSULTATION|PROCEDURE|DIAGNOSTIC|LAB|IMAGING|THERAPY|OTHER") String serviceType) {}
+                                @NotBlank @Pattern(regexp = "CONSULTATION|PROCEDURE|DIAGNOSTIC|LAB|IMAGING|THERAPY|OTHER") String serviceType,
+                                UUID departmentId) {}
     record ServicePriceCreateRequest(@NotNull @DecimalMin("0.00") BigDecimal amount, @NotNull Instant effectiveFrom) {}
     record ServicePriceEndRequest(@NotNull Instant effectiveTo) {}
     record PractitionerCreateRequest(UUID userAccountId, @NotBlank @Size(max = 64) String staffCode,

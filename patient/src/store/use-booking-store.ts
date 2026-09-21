@@ -366,6 +366,9 @@ export const useBookingStore = create<BookingState>((set, get) => ({
   },
 
   loadSlots: async () => {
+    if (get().departments.length === 0 && !get().isLoadingCatalogs) {
+      void get().loadCatalogs();
+    }
     set({ isLoadingSlots: true, error: null, errorInfo: null });
     try {
       const patientId = usePatientStore.getState().activePatientId;
@@ -410,11 +413,28 @@ export const useBookingStore = create<BookingState>((set, get) => ({
   },
 
   setDepartmentFilter: (departmentId) => {
-    set((state) => ({ filters: { ...state.filters, departmentId } }));
+    const services = get().services;
+    const currentServiceId = get().filters.serviceId;
+    let nextServiceId = currentServiceId;
+    if (departmentId !== 'ALL' && currentServiceId !== 'ALL') {
+      const currentService = services.find((s) => s.id === currentServiceId);
+      if (currentService && currentService.departmentId && currentService.departmentId !== departmentId) {
+        nextServiceId = 'ALL';
+      }
+    }
+    set((state) => ({ filters: { ...state.filters, departmentId, serviceId: nextServiceId } }));
     void get().loadSlots();
   },
   setServiceFilter: (serviceId) => {
-    set((state) => ({ filters: { ...state.filters, serviceId } }));
+    const services = get().services;
+    let nextDepartmentId = get().filters.departmentId;
+    if (serviceId !== 'ALL') {
+      const selectedService = services.find((s) => s.id === serviceId);
+      if (selectedService?.departmentId) {
+        nextDepartmentId = selectedService.departmentId;
+      }
+    }
+    set((state) => ({ filters: { ...state.filters, serviceId, departmentId: nextDepartmentId } }));
     void get().loadSlots();
   },
   setDateFilter: (date) => {

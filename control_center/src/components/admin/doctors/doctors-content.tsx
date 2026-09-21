@@ -257,10 +257,6 @@ export function DoctorsContent() {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (form.type === "DOCTOR" && !form.departmentId) {
-      toast({ variant: "destructive", title: "Thiếu khoa/phòng ban", description: "Bác sĩ phải được gán vào một khoa/phòng ban đang hoạt động." })
-      return
-    }
     const phone = form.type === "DOCTOR" ? canonicalPhone(form.phone) : null
     if (form.type === "DOCTOR" && !phone) {
       toast({ variant: "destructive", title: "Số điện thoại không hợp lệ", description: "Nhập số di động Việt Nam 10 chữ số, bắt đầu bằng 0; ví dụ 0349568452." })
@@ -274,7 +270,7 @@ export function DoctorsContent() {
           type: form.type,
           staffCode: form.staffCode.trim(),
           fullName: form.fullName.trim(),
-          ...(form.type === "DOCTOR" ? { departmentId: form.departmentId, doctorProfile: doctorProfile(form, phone!) } : {}),
+          ...(form.type === "DOCTOR" ? { departmentId: form.departmentId ? form.departmentId : null, doctorProfile: doctorProfile(form, phone!) } : {}),
         }
         await personnelApi.update(editing.accountId, payload, editingEtag ?? `"${editing.accountVersion}"`)
         toast({ title: "Đã cập nhật nhân sự", description: "Thông tin nhân sự đã được lưu." })
@@ -285,7 +281,7 @@ export function DoctorsContent() {
           initialPassword: form.initialPassword,
           staffCode: form.staffCode.trim(),
           fullName: form.fullName.trim(),
-          ...(form.type === "DOCTOR" ? { departmentId: form.departmentId, doctorProfile: doctorProfile(form, phone!) } : {}),
+          ...(form.type === "DOCTOR" ? { departmentId: form.departmentId ? form.departmentId : null, doctorProfile: doctorProfile(form, phone!) } : {}),
         }
         await personnelApi.provision(payload)
         toast({ title: "Đã tạo tài khoản", description: "Mật khẩu chỉ được dùng khi tạo và không được hiển thị lại." })
@@ -451,9 +447,18 @@ export function DoctorsContent() {
               <div className="grid gap-5 border-t border-border pt-5">
                 <div className="flex items-center gap-2 text-sm font-semibold"><UserRoundCog className="h-4 w-4" /> Hồ sơ hành nghề</div>
                 <Field label="Khoa/phòng ban" htmlFor="department-id">
-                  <select id="department-id" required className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.departmentId} onChange={(event) => setForm({ ...form, departmentId: event.target.value })}>
-                    <option value="" disabled>Chọn khoa/phòng ban</option>
-                    {departments.map((department) => <option key={department.id} value={department.id}>{department.name} ({department.code})</option>)}
+                  <select
+                    id="department-id"
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    value={form.departmentId}
+                    onChange={(event) => setForm({ ...form, departmentId: event.target.value })}
+                  >
+                    <option value="">Chưa vào chuyên khoa nào</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name} ({department.code})
+                      </option>
+                    ))}
                   </select>
                 </Field>
                 {departments.length === 0 && <p className="text-sm text-destructive">Không có khoa/phòng ban đang hoạt động hoặc tài khoản chưa có quyền đọc danh mục.</p>}
@@ -478,7 +483,7 @@ export function DoctorsContent() {
 
             <DialogFooter>
               <Button type="button" variant="outline" disabled={saving} onClick={() => setDialogOpen(false)}>Hủy</Button>
-              <Button type="submit" disabled={saving || (form.type === "DOCTOR" && departments.length === 0)}>
+              <Button type="submit" disabled={saving}>
                 {saving && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
                 {editing ? "Lưu thay đổi" : "Tạo tài khoản"}
               </Button>

@@ -65,7 +65,7 @@ public interface CatalogRepository {
 
     Optional<ServiceView> serviceByIdForUpdate(UUID id);
 
-    List<ServiceView> listServices(String serviceType, Boolean active, int limit, int offset);
+    List<ServiceView> listServices(String serviceType, Boolean active, UUID departmentId, int limit, int offset);
 
     int updateService(ServiceRow row, long expectedVersion);
 
@@ -160,6 +160,7 @@ public interface CatalogRepository {
             String code,
             String name,
             String serviceType,
+            UUID departmentId,
             boolean active,
             boolean allowsCritical,
             long version,

@@ -50,13 +50,13 @@ public interface CatalogService {
             UUID id, List<UUID> departmentIds, List<UUID> serviceIds, long version, CatalogAuditContext audit);
 
     // ---- Service ----
-    Page<ServiceView> listServices(String serviceType, Boolean active, String cursor, int limit);
+    Page<ServiceView> listServices(String serviceType, Boolean active, UUID departmentId, String cursor, int limit);
 
     ServiceView getService(UUID id);
 
-    ServiceView createService(String code, String name, String serviceType, CatalogAuditContext audit);
+    ServiceView createService(String code, String name, String serviceType, UUID departmentId, CatalogAuditContext audit);
 
-    ServiceView updateService(UUID id, String code, String name, String serviceType, long version, CatalogAuditContext audit);
+    ServiceView updateService(UUID id, String code, String name, String serviceType, UUID departmentId, long version, CatalogAuditContext audit);
 
     ServiceView deactivateService(UUID id, long version, CatalogAuditContext audit);
 

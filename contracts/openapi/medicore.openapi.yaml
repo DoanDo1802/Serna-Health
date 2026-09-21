@@ -17669,7 +17669,6 @@ components:
             - initialPassword
             - staffCode
             - fullName
-            - departmentId
             - doctorProfile
           properties:
             type:
@@ -17693,7 +17692,9 @@ components:
               minLength: 1
               maxLength: 200
             departmentId:
-              type: string
+              type:
+                - string
+                - 'null'
               format: uuid
             doctorProfile:
               $ref: '#/components/schemas/DoctorProfessionalProfileInput'
@@ -17734,7 +17735,6 @@ components:
             - type
             - staffCode
             - fullName
-            - departmentId
             - doctorProfile
           properties:
             type:
@@ -17748,7 +17748,9 @@ components:
               minLength: 1
               maxLength: 200
             departmentId:
-              type: string
+              type:
+                - string
+                - 'null'
               format: uuid
             doctorProfile:
               $ref: '#/components/schemas/DoctorProfessionalProfileInput'
@@ -18828,22 +18830,28 @@ components:
       required:
         - id
         - name
-        - priceAmount
-        - priceCurrency
       properties:
         id:
           type: string
+          format: uuid
+        departmentId:
+          type:
+            - string
+            - 'null'
           format: uuid
         name:
           type: string
           maxLength: 200
         priceAmount:
-          type: number
+          type:
+            - number
+            - 'null'
           minimum: 0
           multipleOf: 0.01
         priceCurrency:
-          type: string
-          const: VND
+          type:
+            - string
+            - 'null'
     BookingPractitioner:
       type: object
       additionalProperties: false
@@ -20110,6 +20118,11 @@ components:
           maxLength: 200
         serviceType:
           $ref: '#/components/schemas/CatalogServiceType'
+        departmentId:
+          type:
+            - string
+            - 'null'
+          format: uuid
     UpdateServiceRequest:
       type: object
       additionalProperties: false
@@ -20128,6 +20141,11 @@ components:
           maxLength: 200
         serviceType:
           $ref: '#/components/schemas/CatalogServiceType'
+        departmentId:
+          type:
+            - string
+            - 'null'
+          format: uuid
     Service:
       type: object
       additionalProperties: false
@@ -20157,6 +20175,11 @@ components:
           maxLength: 200
         serviceType:
           $ref: '#/components/schemas/CatalogServiceType'
+        departmentId:
+          type:
+            - string
+            - 'null'
+          format: uuid
         active:
           type: boolean
         allowsCritical:

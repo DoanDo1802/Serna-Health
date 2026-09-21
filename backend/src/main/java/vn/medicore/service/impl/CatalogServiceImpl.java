@@ -213,9 +213,9 @@ public class CatalogServiceImpl implements CatalogService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ServiceView> listServices(String serviceType, Boolean active, String cursor, int limit) {
+    public Page<ServiceView> listServices(String serviceType, Boolean active, UUID departmentId, String cursor, int limit) {
         int offset = offset(cursor);
-        return page(store.listServices(serviceType, active, limit + 1, offset), limit, offset);
+        return page(store.listServices(serviceType, active, departmentId, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -225,10 +225,12 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
-    public ServiceView createService(String code, String name, String serviceType, CatalogAuditContext context) {
+    public ServiceView createService(String code, String name, String serviceType, UUID departmentId, CatalogAuditContext context) {
         Instant now = clock.instant();
         UUID id = ids.next();
-        store.insertService(new ServiceRow(id, code.strip(), name.strip(), serviceType, true, false, 0, now, now));
+        store.insertService(new ServiceRow(id, code.strip(), name.strip(), serviceType, departmentId, true, false, 0, now, now));
+        UUID priceId = ids.next();
+        store.insertServicePrice(new ServicePriceRow(priceId, id, java.math.BigDecimal.valueOf(150000), "VND", now, null, now));
         ServiceView view = store.serviceById(id).orElseThrow();
         record(context, "service.create", "Service", view.id(), view.version(), "created");
         return view;
@@ -236,10 +238,10 @@ public class CatalogServiceImpl implements CatalogService {
 
     @Override
     public ServiceView updateService(
-            UUID id, String code, String name, String serviceType, long version, CatalogAuditContext context) {
+            UUID id, String code, String name, String serviceType, UUID departmentId, long version, CatalogAuditContext context) {
         ServiceView existing = store.serviceByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
-        store.updateService(new ServiceRow(id, code.strip(), name.strip(), serviceType,
+        store.updateService(new ServiceRow(id, code.strip(), name.strip(), serviceType, departmentId,
                 existing.active(), existing.allowsCritical(), version + 1, existing.createdAt(), now), version);
         ServiceView view = store.serviceById(id).orElseThrow();
         record(context, "service.update", "Service", view.id(), view.version(), "updated");
@@ -250,7 +252,7 @@ public class CatalogServiceImpl implements CatalogService {
     public ServiceView deactivateService(UUID id, long version, CatalogAuditContext context) {
         ServiceView existing = store.serviceByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
-        store.updateService(new ServiceRow(id, existing.code(), existing.name(), existing.serviceType(),
+        store.updateService(new ServiceRow(id, existing.code(), existing.name(), existing.serviceType(), existing.departmentId(),
                 false, existing.allowsCritical(), version + 1, existing.createdAt(), now), version);
         ServiceView view = store.serviceById(id).orElseThrow();
         record(context, "service.update", "Service", view.id(), view.version(), "deactivated");

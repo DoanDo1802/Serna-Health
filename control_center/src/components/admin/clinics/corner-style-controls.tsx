@@ -36,11 +36,6 @@ export function CornerStyleControls({ corners, onChange, disabled, compact }: Co
     onChange({ ...corners, [cornerKey]: next === "square" ? undefined : next })
   }
 
-  const setCorner = (cornerKey: "tl" | "tr" | "br" | "bl", type: CornerType) => {
-    if (disabled) return
-    onChange({ ...corners, [cornerKey]: type === "square" ? undefined : type })
-  }
-
   const setAll = (type: CornerType) => {
     if (disabled) return
     if (type === "square") onChange({})
@@ -53,6 +48,113 @@ export function CornerStyleControls({ corners, onChange, disabled, compact }: Co
     if (type === "round")
       return "border-blue-500/80 bg-blue-50 text-blue-900 font-bold dark:bg-blue-950/40 dark:text-blue-200"
     return "border-border bg-background text-muted-foreground hover:text-foreground"
+  }
+
+  const cornerSymbol = (type: CornerType, cornerKey: "tl" | "tr" | "bl" | "br") => {
+    if (type === "square") return "90°"
+    if (type === "round") {
+      if (cornerKey === "tl") return "Bo ╭"
+      if (cornerKey === "tr") return "Bo ╮"
+      if (cornerKey === "bl") return "Bo ╰"
+      return "Bo ╯"
+    }
+    if (cornerKey === "tl") return "Vát ◤"
+    if (cornerKey === "tr") return "Vát ◥"
+    if (cornerKey === "bl") return "Vát ◣"
+    return "Vát ◢"
+  }
+
+  if (compact) {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] font-medium text-muted-foreground">
+            Kiểu góc:
+          </label>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={disabled}
+              className="h-4.5 px-1.5 text-[9px]"
+              onClick={() => setAll("square")}
+              title="Đưa cả 4 góc về vuông 90°"
+            >
+              Vuông
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={disabled}
+              className="h-4.5 px-1.5 text-[9px] text-blue-600 hover:text-blue-700 dark:text-blue-400"
+              onClick={() => setAll("round")}
+              title="Bo tròn cả 4 góc"
+            >
+              Bo 4
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={disabled}
+              className="h-4.5 px-1.5 text-[9px] text-amber-600 hover:text-amber-700 dark:text-amber-400"
+              onClick={() => setAll("chamfer")}
+              title="Vát chéo cả 4 góc"
+            >
+              Vát 4
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => cycle("tl")}
+            className={`flex items-center justify-between rounded border px-2 py-0.5 text-left transition-all ${cornerButtonClass(currentTL)}`}
+            title="Góc Tây Bắc (TL): Click để đổi (Vuông -> Bo -> Vát)"
+          >
+            <span className="text-[9px] text-muted-foreground">↖ TB</span>
+            <span className="text-[10px] font-semibold">{cornerSymbol(currentTL, "tl")}</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => cycle("tr")}
+            className={`flex items-center justify-between rounded border px-2 py-0.5 text-left transition-all ${cornerButtonClass(currentTR)}`}
+            title="Góc Đông Bắc (TR): Click để đổi (Vuông -> Bo -> Vát)"
+          >
+            <span className="text-[9px] text-muted-foreground">↗ ĐB</span>
+            <span className="text-[10px] font-semibold">{cornerSymbol(currentTR, "tr")}</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => cycle("bl")}
+            className={`flex items-center justify-between rounded border px-2 py-0.5 text-left transition-all ${cornerButtonClass(currentBL)}`}
+            title="Góc Tây Nam (BL): Click để đổi (Vuông -> Bo -> Vát)"
+          >
+            <span className="text-[9px] text-muted-foreground">↙ TN</span>
+            <span className="text-[10px] font-semibold">{cornerSymbol(currentBL, "bl")}</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => cycle("br")}
+            className={`flex items-center justify-between rounded border px-2 py-0.5 text-left transition-all ${cornerButtonClass(currentBR)}`}
+            title="Góc Đông Nam (BR): Click để đổi (Vuông -> Bo -> Vát)"
+          >
+            <span className="text-[9px] text-muted-foreground">↘ ĐN</span>
+            <span className="text-[10px] font-semibold">{cornerSymbol(currentBR, "br")}</span>
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (

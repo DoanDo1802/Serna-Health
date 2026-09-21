@@ -186,10 +186,10 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 order by d.name, d.id
                 """, params, (rs, row) -> new BookingDepartment(rs.getObject("id", UUID.class), rs.getString("name")));
         List<BookingService> services = jdbc.query("""
-                select distinct s.id, s.name, price.amount, price.currency
+                select distinct s.id, s.department_id, s.name, price.amount, price.currency
                 from appointment_slot slot
                 join service s on s.id = slot.service_id
-                join lateral (
+                left join lateral (
                     select amount, currency from service_price
                     where service_id = s.id and effective_from <= :now
                       and (effective_to is null or effective_to > :now)
@@ -197,7 +197,7 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 ) price on true
                 where slot.status = 'ACTIVE' and slot.start_at > :now and s.active
                 order by s.name, s.id
-                """, params, (rs, row) -> new BookingService(rs.getObject("id", UUID.class), rs.getString("name"),
+                """, params, (rs, row) -> new BookingService(rs.getObject("id", UUID.class), rs.getObject("department_id", UUID.class), rs.getString("name"),
                 rs.getBigDecimal("amount"), rs.getString("currency")));
         return new BookingCatalog(departments, services);
     }
@@ -225,10 +225,10 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 order by r.name, r.id
                 """, params, this::bookingRoom);
         List<BookingService> services = jdbc.query("""
-                select distinct s.id, s.name, price.amount, price.currency
+                select distinct s.id, s.department_id, s.name, price.amount, price.currency
                 from appointment_slot slot
                 join service s on s.id = slot.service_id
-                join lateral (
+                left join lateral (
                     select amount, currency from service_price
                     where service_id = s.id and effective_from <= :now
                       and (effective_to is null or effective_to > :now)
@@ -236,7 +236,7 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 ) price on true
                 where slot.status = 'ACTIVE' and slot.start_at > :now and s.active
                 order by s.name, s.id
-                """, params, (rs, row) -> new BookingService(rs.getObject("id", UUID.class), rs.getString("name"),
+                """, params, (rs, row) -> new BookingService(rs.getObject("id", UUID.class), rs.getObject("department_id", UUID.class), rs.getString("name"),
                 rs.getBigDecimal("amount"), rs.getString("currency")));
         List<BookingPractitioner> practitioners = jdbc.query("""
                 select distinct p.id, p.full_name
@@ -283,9 +283,9 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 order by r.name, r.id
                 """, params, this::bookingRoom);
         List<BookingService> services = jdbc.query("""
-                select s.id, s.name, price.amount, price.currency
+                select s.id, s.department_id, s.name, price.amount, price.currency
                 from service s
-                join lateral (
+                left join lateral (
                     select amount, currency from service_price
                     where service_id = s.id and effective_from <= :now
                       and (effective_to is null or effective_to > :now)
@@ -293,7 +293,7 @@ public class SchedulingJdbcRepositoryImpl implements SchedulingRepository {
                 ) price on true
                 where s.active
                 order by s.name, s.id
-                """, params, (rs, row) -> new BookingService(rs.getObject("id", UUID.class), rs.getString("name"),
+                """, params, (rs, row) -> new BookingService(rs.getObject("id", UUID.class), rs.getObject("department_id", UUID.class), rs.getString("name"),
                 rs.getBigDecimal("amount"), rs.getString("currency")));
         return new WorkScheduleCatalog(departments, rooms, services);
     }

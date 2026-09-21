@@ -184,7 +184,7 @@ export interface PersonnelProvisionRequest {
   initialPassword: string
   staffCode: string
   fullName: string
-  departmentId?: string
+  departmentId?: string | null
   doctorProfile?: DoctorProfessionalProfileInput
 }
 
@@ -192,7 +192,7 @@ export interface PersonnelUpdateRequest {
   type: PersonnelType
   staffCode: string
   fullName: string
-  departmentId?: string
+  departmentId?: string | null
   doctorProfile?: DoctorProfessionalProfileInput
 }
 
@@ -266,6 +266,7 @@ export interface Service {
   code: string
   name: string
   serviceType: string
+  departmentId?: string | null
   active: boolean
   allowsCritical: boolean
   version: number
@@ -280,13 +281,42 @@ export interface ServicePage {
 }
 
 export const servicesApi = {
-  list: (params: { serviceType?: string; active?: boolean; cursor?: string; limit?: number } = {}) => {
+  list: (params: { serviceType?: string; active?: boolean; departmentId?: string; cursor?: string; limit?: number } = {}) => {
     const query = new URLSearchParams({ limit: String(params.limit ?? 100) })
     if (params.serviceType) query.set("serviceType", params.serviceType)
     if (params.active !== undefined) query.set("active", String(params.active))
+    if (params.departmentId) query.set("departmentId", params.departmentId)
     if (params.cursor) query.set("cursor", params.cursor)
     return request<ServicePage>(`/services?${query.toString()}`)
   },
+  get: (id: string) => requestWithMeta<Service>(`/services/${id}`),
+  create: (data: { code: string; name: string; serviceType?: string; departmentId?: string | null }) =>
+    requestWithMeta<Service>("/services", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey() },
+      body: JSON.stringify({
+        code: data.code.trim(),
+        name: data.name.trim(),
+        serviceType: data.serviceType ?? "CONSULTATION",
+        departmentId: data.departmentId ?? null,
+      }),
+    }),
+  update: (id: string, data: { code: string; name: string; serviceType?: string; departmentId?: string | null }, etag: string) =>
+    requestWithMeta<Service>(`/services/${id}`, {
+      method: "PATCH",
+      headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+      body: JSON.stringify({
+        code: data.code.trim(),
+        name: data.name.trim(),
+        serviceType: data.serviceType ?? "CONSULTATION",
+        departmentId: data.departmentId ?? null,
+      }),
+    }),
+  deactivate: (id: string, etag: string) =>
+    requestWithMeta<Service>(`/services/${id}/actions/deactivate`, {
+      method: "POST",
+      headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+    }),
 }
 
 export const roomsApi = {
@@ -552,7 +582,11 @@ export const practitionersApi = {
 }
 
 export type AppointmentSlotSession = "MORNING" | "AFTERNOON"
-export interface WorkScheduleCatalog { departments: Pick<Department, "id" | "name">[]; rooms: Array<{ id: string; departmentIds: string[]; serviceIds: string[]; name: string }>; services: Array<{ id: string; name: string; priceAmount: number; priceCurrency: string }> }
+export interface WorkScheduleCatalog {
+  departments: Pick<Department, "id" | "name">[]
+  rooms: Array<{ id: string; departmentIds: string[]; serviceIds: string[]; name: string }>
+  services: Array<{ id: string; departmentId?: string | null; name: string; priceAmount?: number | null; priceCurrency?: string | null }>
+}
 export interface WorkSchedule { id: string; bookingSessionId: string; practitionerRoleId: string; departmentId: string; roomId: string; serviceId: string; localDate: string; session: AppointmentSlotSession; capacity: number; status: "ACTIVE" | "CANCELLED"; version: number; createdAt: string; updatedAt: string; slotId: string; reservedCapacity: number; remainingCapacity: number }
 export interface WorkSchedulePage { items: WorkSchedule[]; nextCursor?: string | null; hasMore: boolean }
 export interface CreateWorkScheduleRequest { practitionerRoleId: string; departmentId: string; roomId: string; serviceId: string; localDate: string; session: AppointmentSlotSession; capacity: number }
