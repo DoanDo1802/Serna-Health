@@ -21,7 +21,7 @@ status: ACCEPTED
 
 | Story | Outcome | Priority | Dependency | Decisions/ADR | Schema | DoR |
 |---|---|---:|---|---|---|---|
-| `R1-01` | Bootstrap modular monolith, DB/migration/test boundary | P0 | Phase 0 GO | ARCH/DATA, ADR-0001/2 | Conventions | READY |
+| `R1-01` | Bootstrap layered monolith, DB/migration/test boundary | P0 | Phase 0 GO | ARCH/DATA, ADR-0001/2/9 | Conventions | READY |
 | `R1-02` | Email/password + email OTP, session, role/permission và append-only audit | P0 | R1-01 | AUTH/IAM/SEC, ADR-0004/0010 | [[schema/identity-access-audit-r1|Identity/access/audit]] | READY |
 | `R1-03` | Department/Room/Service/Price/PractitionerRole catalog | P0 | R1-01 | CAT-01 | Catalog | READY |
 | `R1-04` | Patient chính chủ + PatientIdentifier thu thập CCCD/hộ chiếu + duplicate-candidate review workflow | P0 | R1-02 | DEP-05, IDN-01 | Patient + identifier + duplicate candidate | READY |
@@ -221,7 +221,7 @@ Story chỉ `READY` khi:
 ## Definition of Done
 
 1. Code, Flyway, JPA và OpenAPI đồng bộ.
-2. Unit, integration, Spring Modulith boundary và migration smoke test đạt.
+2. Unit, integration, ArchUnit layered boundary và migration smoke test đạt.
 3. Concurrency/idempotency test đạt khi liên quan.
 4. Authorization/audit/privacy negative tests đạt.
 5. Không mất clinical/financial history.

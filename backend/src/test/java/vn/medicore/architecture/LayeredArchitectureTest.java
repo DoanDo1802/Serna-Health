@@ -1,5 +1,6 @@
 package vn.medicore.architecture;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -24,4 +25,21 @@ class LayeredArchitectureTest {
             .whereLayer("Controller").mayOnlyBeAccessedByLayers("Config")
             .whereLayer("Service").mayOnlyBeAccessedByLayers("Controller", "Config")
             .whereLayer("Repository").mayOnlyBeAccessedByLayers("Service", "Repository", "Config");
+
+    @ArchTest
+    static final ArchRule controllersMustNotDependOnDataAccessOrEntities = noClasses()
+            .that().resideInAPackage("vn.medicore.controller..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "vn.medicore.repository..", "vn.medicore.entity..");
+
+    @ArchTest
+    static final ArchRule servicesMustNotDependOnControllers = noClasses()
+            .that().resideInAPackage("vn.medicore.service..")
+            .should().dependOnClassesThat().resideInAPackage("vn.medicore.controller..");
+
+    @ArchTest
+    static final ArchRule repositoriesMustNotDependOnUpperLayers = noClasses()
+            .that().resideInAPackage("vn.medicore.repository..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "vn.medicore.controller..", "vn.medicore.service..");
 }

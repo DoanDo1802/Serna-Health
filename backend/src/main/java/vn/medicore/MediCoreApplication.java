@@ -10,6 +10,6 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 public class MediCoreApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(MediCoreApplication.class, args);
+        SpringApplication.run(MediCoreApplication.class , args);
     }
 }

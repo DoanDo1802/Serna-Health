@@ -10,6 +10,7 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -20,12 +21,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/DepartmentPage"
         "400":
           description: Invalid request
           content:
@@ -83,6 +82,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -95,12 +95,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Department"
         "400":
           description: Invalid request
           content:
@@ -148,7 +146,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CreateDepartmentRequest"
   /departments/{departmentId}:
     get:
       tags:
@@ -164,6 +162,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -174,12 +173,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Department"
         "400":
           description: Invalid request
           content:
@@ -242,6 +239,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -254,12 +252,190 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Department"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "412":
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "428":
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: catalog
+      x-medicore-permission: department.update
+      x-medicore-audit-action: department.update
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDepartmentRequest"
+    delete:
+      tags:
+        - Catalog
+      summary: Delete Department
+      operationId: deleteDepartment
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: departmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TabContext"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Command completed.
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "412":
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "428":
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: catalog
+      x-medicore-permission: department.update
+      x-medicore-audit-action: department.update
+      x-medicore-stories:
+        - R1-03
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: false
+  /departments/{departmentId}/actions/deactivate:
+    post:
+      tags:
+        - Catalog
+      summary: Deactivate Department
+      operationId: deactivateDepartment
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: departmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TabContext"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Department"
         "400":
           description: Invalid request
           content:
@@ -326,12 +502,12 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/Resource"
-  /departments/{departmentId}/actions/deactivate:
+  /departments/{departmentId}/actions/activate:
     post:
       tags:
         - Catalog
-      summary: Deactivate Department
-      operationId: deactivateDepartment
+      summary: Activate Department
+      operationId: activateDepartment
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
@@ -341,6 +517,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -353,12 +530,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Department"
         "400":
           description: Invalid request
           content:
@@ -436,6 +611,7 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -446,12 +622,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/RoomPage"
         "400":
           description: Invalid request
           content:
@@ -508,6 +682,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -520,12 +695,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Room"
         "400":
           description: Invalid request
           content:
@@ -573,7 +746,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CreateRoomRequest"
   /rooms/{roomId}:
     get:
       tags:
@@ -589,6 +762,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -599,12 +773,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Room"
         "400":
           description: Invalid request
           content:
@@ -667,6 +839,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -679,12 +852,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Room"
         "400":
           description: Invalid request
           content:
@@ -750,7 +921,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/UpdateRoomRequest"
   /rooms/{roomId}/actions/deactivate:
     post:
       tags:
@@ -766,6 +937,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -778,12 +950,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Room"
         "400":
           description: Invalid request
           content:
@@ -861,6 +1031,7 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -871,12 +1042,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/ServicePage"
         "400":
           description: Invalid request
           content:
@@ -933,6 +1102,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -945,12 +1115,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Service"
         "400":
           description: Invalid request
           content:
@@ -998,7 +1166,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CreateServiceRequest"
   /services/{serviceId}:
     get:
       tags:
@@ -1014,6 +1182,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1024,12 +1193,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Service"
         "400":
           description: Invalid request
           content:
@@ -1092,6 +1259,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1104,12 +1272,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Service"
         "400":
           description: Invalid request
           content:
@@ -1175,7 +1341,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/UpdateServiceRequest"
   /services/{serviceId}/actions/deactivate:
     post:
       tags:
@@ -1191,6 +1357,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1203,12 +1370,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Service"
         "400":
           description: Invalid request
           content:
@@ -1292,6 +1457,7 @@ paths:
             format: uuid
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1302,12 +1468,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/ServicePricePage"
         "400":
           description: Invalid request
           content:
@@ -1370,6 +1534,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -1382,12 +1547,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/ServicePrice"
         "400":
           description: Invalid request
           content:
@@ -1441,7 +1604,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CreateServicePriceRequest"
   /service-prices/{priceId}:
     get:
       tags:
@@ -1457,6 +1620,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1467,12 +1631,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/ServicePrice"
         "400":
           description: Invalid request
           content:
@@ -1536,6 +1698,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1548,12 +1711,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/ServicePrice"
         "400":
           description: Invalid request
           content:
@@ -1619,7 +1780,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/EndServicePriceRequest"
   /practitioners:
     get:
       tags:
@@ -1631,6 +1792,7 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1641,12 +1803,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/PractitionerPage"
         "400":
           description: Invalid request
           content:
@@ -1703,6 +1863,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -1715,12 +1876,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Practitioner"
         "400":
           description: Invalid request
           content:
@@ -1768,7 +1927,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CreatePractitionerRequest"
   /practitioners/{practitionerId}:
     get:
       tags:
@@ -1784,6 +1943,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1794,12 +1954,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Practitioner"
         "400":
           description: Invalid request
           content:
@@ -1862,6 +2020,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1874,12 +2033,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Practitioner"
         "400":
           description: Invalid request
           content:
@@ -1945,7 +2102,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/UpdatePractitionerRequest"
   /practitioners/{practitionerId}/actions/deactivate:
     post:
       tags:
@@ -1961,6 +2118,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1973,12 +2131,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Practitioner"
         "400":
           description: Invalid request
           content:
@@ -2062,6 +2218,7 @@ paths:
             format: uuid
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -2072,12 +2229,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/PractitionerRolePage"
         "400":
           description: Invalid request
           content:
@@ -2140,6 +2295,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -2152,12 +2308,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PractitionerRole"
         "400":
           description: Invalid request
           content:
@@ -2211,7 +2365,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/AssignPractitionerRoleRequest"
   /practitioner-roles/{roleId}:
     get:
       tags:
@@ -2227,6 +2381,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -2237,12 +2392,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PractitionerRole"
         "400":
           description: Invalid request
           content:
@@ -2306,6 +2459,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -2318,12 +2472,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/PractitionerRole"
         "400":
           description: Invalid request
           content:
@@ -2389,4 +2541,4 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/RevokePractitionerRoleRequest"

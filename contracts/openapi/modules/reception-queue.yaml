@@ -14,6 +14,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -26,12 +27,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/CheckIn"
         "400":
           description: Invalid request
           content:
@@ -90,7 +89,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/CheckInAppointmentRequest"
   /check-ins/{checkInId}:
     get:
       tags:
@@ -106,6 +105,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -116,12 +116,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/CheckIn"
         "400":
           description: Invalid request
           content:
@@ -183,6 +181,18 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: patientId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/VisitStatus"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -193,12 +203,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/VisitPage"
         "400":
           description: Invalid request
           content:
@@ -264,6 +272,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -279,7 +288,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Visit"
         "400":
           description: Invalid request
           content:
@@ -345,6 +354,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
@@ -363,7 +373,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Visit"
         "400":
           description: Invalid request
           content:
@@ -426,12 +436,6 @@ paths:
         - R1-13
       x-medicore-scenarios: *a1
       x-medicore-idempotent: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Resource"
   /visits/{visitId}/actions/cancel:
     post:
       tags:
@@ -447,6 +451,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -464,7 +469,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Visit"
         "400":
           description: Invalid request
           content:
@@ -532,7 +537,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /visits/{visitId}/actions/enter-in-error:
     post:
       tags:
@@ -548,6 +553,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -565,7 +571,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Visit"
         "400":
           description: Invalid request
           content:
@@ -633,7 +639,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /visits/{visitId}/encounters:
     get:
       tags:
@@ -651,6 +657,7 @@ paths:
             format: uuid
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -661,12 +668,10 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CursorPage"
+                $ref: "#/components/schemas/EncounterPage"
         "400":
           description: Invalid request
           content:
@@ -732,6 +737,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -747,7 +753,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Encounter"
         "400":
           description: Invalid request
           content:
@@ -813,6 +819,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -830,7 +837,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Encounter"
         "400":
           description: Invalid request
           content:
@@ -893,12 +900,6 @@ paths:
         - R1-13
       x-medicore-scenarios: *a1
       x-medicore-idempotent: false
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Resource"
   /encounters/{encounterId}/actions/complete:
     post:
       tags:
@@ -914,6 +915,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -931,7 +933,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Encounter"
         "400":
           description: Invalid request
           content:
@@ -994,12 +996,6 @@ paths:
         - R1-13
       x-medicore-scenarios: *a1
       x-medicore-idempotent: false
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Resource"
   /encounters/{encounterId}/actions/cancel:
     post:
       tags:
@@ -1015,6 +1011,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1032,7 +1029,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Encounter"
         "400":
           description: Invalid request
           content:
@@ -1100,13 +1097,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /encounters/{encounterId}/actions/enter-in-error:
     post:
       tags:
         - ReceptionQueue
-      summary: Enter In Error Encounter
-      operationId: enterInErrorEncounter
+      summary: Enter Encounter In Error
+      operationId: enterEncounterInError
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
@@ -1116,6 +1113,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1133,7 +1131,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Resource"
+                $ref: "#/components/schemas/Encounter"
         "400":
           description: Invalid request
           content:
@@ -1201,7 +1199,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Resource"
+              $ref: "#/components/schemas/ReasonCommand"
   /queue-entries:
     get:
       tags:
@@ -1213,6 +1211,7 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1223,8 +1222,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1294,6 +1291,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1304,8 +1302,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1375,6 +1371,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1387,8 +1384,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1476,6 +1471,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1488,8 +1484,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1577,6 +1571,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1589,8 +1584,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1678,6 +1671,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1690,8 +1684,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1779,6 +1771,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1791,8 +1784,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1880,6 +1871,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1892,8 +1884,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1981,6 +1971,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1993,8 +1984,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2082,6 +2071,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
@@ -2095,8 +2085,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2184,6 +2172,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -2194,8 +2183,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2264,6 +2251,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -2276,8 +2264,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -2349,6 +2335,7 @@ paths:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -2359,8 +2346,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:

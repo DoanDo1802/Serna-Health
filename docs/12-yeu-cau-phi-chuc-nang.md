@@ -94,10 +94,11 @@ SLO đã khóa:
 ### 18.8. Triển khai và module boundary
 
 - React frontend + Spring Boot modular monolith + PostgreSQL theo [[20-so-quyet-dinh-kien-truc|Architecture baseline]].
-- Spring Modulith test boundary; module không dùng JPA entity module khác.
+- ArchUnit `LayeredArchitectureTest` kiểm tra boundary ngang: controller không gọi repository/entity trực tiếp, service không phụ thuộc controller, repository không phụ thuộc tầng trên.
+- Spring Modulith chỉ được thêm sau ADR/refactor đưa package topology sang vertical module; R1-01 không tuyên bố module boundary này.
 - MVP không phụ thuộc HIS/LIS/PACS/FHIR ngoài.
 - Compliance chỉ tuyên bố sau [[23-ma-tran-yeu-cau-tt13-2025|requirement matrix]], Chương X TT32 mapping, triển khai, conformance/restore/retrieval evidence và owner approval. Tiêu chuẩn kỹ thuật CNTT cơ quan nhà nước tại TT13 Điều 2.3 phải có catalog áp dụng do Legal/Architecture Owner xác định; chưa ghi là đã đáp ứng.
-- CI gate tương lai: compile, unit/integration, Modulith, migration smoke, OpenAPI diff, security/static scan.
+- CI gate: compile, unit/integration, ArchUnit layered boundary, migration smoke, OpenAPI diff, security/static scan. Spring Modulith gate chỉ áp dụng sau refactor package topology được phê duyệt.
 
 ---
 

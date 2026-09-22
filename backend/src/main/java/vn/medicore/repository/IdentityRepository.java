@@ -63,13 +63,15 @@ public interface IdentityRepository {
 
     void insertSession(SessionRow session);
 
-    Optional<SessionRow> activeSession(String sessionTokenHash);
+    Optional<SessionRow> activeSession(String sessionTokenHash, String tabContextHash);
 
     boolean touchSession(UUID id, Instant now);
 
+    boolean updateSessionCsrf(UUID id, String csrfTokenHash, Instant now);
+
     void expireSession(UUID id);
 
-    void revokeSessionByHash(String sessionTokenHash, Instant now, String reason);
+    void revokeSessionByHash(String sessionTokenHash, String tabContextHash, Instant now, String reason);
 
     void revokeAllSessions(UUID accountId, Instant now, String reason);
 
@@ -83,7 +85,13 @@ public interface IdentityRepository {
 
     Optional<RoleView> role(UUID id);
 
+    Optional<RoleView> activeRoleByCode(String code);
+
     void replaceRolePermissions(UUID roleId, Set<UUID> permissionIds, UUID actorId, Instant now, long version);
+
+    void revokeActiveAssignments(UUID accountId, UUID actorId, Instant now, String reason);
+
+    int updateAssignmentDepartment(UUID assignmentId, UUID departmentId, long expectedVersion);
 
     List<AssignmentView> listAssignments(UUID accountId, String status, Instant effectiveAt, int limit, int offset);
 
@@ -95,7 +103,14 @@ public interface IdentityRepository {
 
     Set<String> effectivePermissions(UUID accountId, Instant at);
 
+    List<EffectiveGrant> effectiveGrants(UUID accountId, Instant at);
+
     List<UUID> activeRoleIds(UUID accountId, Instant at);
+
+    Set<String> effectiveRoleCodes(UUID accountId, Instant at);
+
+    record EffectiveGrant(String action, UUID assignmentId, UUID departmentId, Instant effectiveFrom, Instant effectiveTo) {
+    }
 
     record AccountRow(
             UUID id,
@@ -138,13 +153,19 @@ public interface IdentityRepository {
             UUID accountId,
             String sessionTokenHash,
             String csrfTokenHash,
+            String tabContextHash,
             Instant authenticatedAt,
             Instant lastSeenAt,
             Instant absoluteExpiresAt,
             String sourceIpHash,
             String userAgentHash) {
-        public SessionView toView(Set<String> permissions, Instant idleExpiresAt) {
-            return new SessionView(accountId, "ACTIVE", authenticatedAt, lastSeenAt, idleExpiresAt, absoluteExpiresAt, permissions);
+        public SessionView toView(
+                String displayEmail,
+                Set<String> roleCodes,
+                Set<String> permissions,
+                Instant idleExpiresAt) {
+            return new SessionView(accountId, displayEmail, "ACTIVE", authenticatedAt, lastSeenAt, idleExpiresAt,
+                    absoluteExpiresAt, roleCodes, permissions);
         }
     }
 

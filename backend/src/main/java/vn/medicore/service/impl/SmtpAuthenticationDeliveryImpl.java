@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import vn.medicore.service.AuthenticationDeliveryService;
 
 @Component
-@Profile("!local & !test")
+@Profile("!test")
 public class SmtpAuthenticationDeliveryImpl implements AuthenticationDeliveryService {
 
     private final JavaMailSender mailSender;
@@ -19,6 +19,11 @@ public class SmtpAuthenticationDeliveryImpl implements AuthenticationDeliverySer
     @Override
     public void sendEmailVerificationCode(String displayEmail, String code) {
         send(displayEmail, "Verify your MediCore email", "Your verification code is: " + code);
+    }
+
+    @Override
+    public void sendEmailVerificationToken(String displayEmail, String token) {
+        send(displayEmail, "Verify your MediCore email", "Your one-time verification token is: " + token);
     }
 
     @Override

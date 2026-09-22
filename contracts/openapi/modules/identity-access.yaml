@@ -142,8 +142,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -193,6 +191,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
       security: []
       responses:
         "200":
@@ -202,10 +201,8 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
             Set-Cookie:
-              description: MEDICORE_SESSION opaque cookie with Secure, HttpOnly and SameSite=Lax attributes.
+              description: Context-selected opaque HttpOnly session cookie with Path=/ and SameSite=Lax attributes; production cookies are Secure and use the __Host- prefix.
               schema:
                 type: string
             X-CSRF-Token:
@@ -321,6 +318,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
       security: []
       responses:
         "200":
@@ -330,10 +328,8 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
             Set-Cookie:
-              description: MEDICORE_SESSION opaque cookie with Secure, HttpOnly and SameSite=Lax attributes.
+              description: Context-selected opaque HttpOnly session cookie with Path=/ and SameSite=Lax attributes; production cookies are Secure and use the __Host- prefix.
               schema:
                 type: string
             X-CSRF-Token:
@@ -391,6 +387,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -401,8 +398,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -463,6 +458,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
       security:
         - sessionCookie: []
@@ -526,6 +522,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -658,8 +655,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -709,6 +704,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -721,8 +717,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -809,6 +803,7 @@ paths:
           required: false
           schema:
             $ref: "#/components/schemas/AccountStatus"
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -819,8 +814,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -888,6 +881,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -898,8 +892,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -967,6 +959,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
@@ -980,8 +973,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1068,6 +1059,7 @@ paths:
           required: false
           schema:
             type: boolean
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1078,8 +1070,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1140,6 +1130,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -1152,8 +1143,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1222,6 +1211,7 @@ paths:
           required: false
           schema:
             type: boolean
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1232,8 +1222,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1301,6 +1289,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1313,8 +1302,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1413,6 +1400,7 @@ paths:
           schema:
             type: string
             format: date-time
+        - $ref: "#/components/parameters/TabContext"
       security:
         - sessionCookie: []
       responses:
@@ -1423,8 +1411,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1491,6 +1477,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       security:
@@ -1503,8 +1490,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1578,6 +1563,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/TabContext"
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IfMatch"
       security:
@@ -1590,8 +1576,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            ETag:
-              $ref: "#/components/headers/ETag"
           content:
             application/json:
               schema:
@@ -1656,6 +1640,437 @@ paths:
         - R1-02
       x-medicore-scenarios: *a1
       x-medicore-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReasonCommand"
+  /admin/personnel:
+    get:
+      tags:
+        - IdentityAccess
+      summary: List Personnel
+      operationId: listPersonnel
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/PersonnelType"
+        - name: active
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/TabContext"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonnelPage"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: identity-access
+      x-medicore-permission: account.provision
+      x-medicore-audit-action: account.provision
+      x-medicore-stories:
+        - R1-02
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: false
+    post:
+      tags:
+        - IdentityAccess
+      summary: Provision Personnel
+      operationId: provisionPersonnel
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/TabContext"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Personnel"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: identity-access
+      x-medicore-permission: account.provision
+      x-medicore-audit-action: account.provision
+      x-medicore-stories:
+        - R1-02
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonnelProvisionRequest"
+  /admin/personnel/{accountId}:
+    get:
+      tags:
+        - IdentityAccess
+      summary: Get Personnel
+      operationId: getPersonnel
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TabContext"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Personnel"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: identity-access
+      x-medicore-permission: account.provision
+      x-medicore-audit-action: account.provision
+      x-medicore-stories:
+        - R1-02
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: false
+    patch:
+      tags:
+        - IdentityAccess
+      summary: Update Personnel
+      operationId: updatePersonnel
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TabContext"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Personnel"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "412":
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "428":
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: identity-access
+      x-medicore-permission: account.provision
+      x-medicore-audit-action: account.provision
+      x-medicore-stories:
+        - R1-02
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonnelUpdateRequest"
+  /admin/personnel/{accountId}/actions/deactivate:
+    post:
+      tags:
+        - IdentityAccess
+      summary: Deactivate Personnel
+      operationId: deactivatePersonnel
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TabContext"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Successful response.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            X-Correlation-Id:
+              $ref: "#/components/headers/CorrelationId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Personnel"
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Contextual permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Resource not found or intentionally concealed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Domain state or idempotency conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "412":
+          description: ETag precondition failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "428":
+          description: If-Match required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+      x-medicore-module: identity-access
+      x-medicore-permission: account.provision
+      x-medicore-audit-action: account.provision
+      x-medicore-stories:
+        - R1-02
+      x-medicore-scenarios: *a1
+      x-medicore-idempotent: true
       requestBody:
         required: true
         content:

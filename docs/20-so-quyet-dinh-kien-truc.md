@@ -217,7 +217,7 @@ do_an_v2/
    - Chạy test kiểm tra ranh giới sau mỗi thay đổi:
 
      ```bash
-     JAVA_HOME=/usr/local/Cellar/openjdk@21/21.0.12/libexec/openjdk.jdk/Contents/Home ./mvnw test -Dtest=LayeredArchitectureTest
+     JAVA_HOME=/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ./mvnw test -Dtest=LayeredArchitectureTest
      ```
 
 2. **Quy tắc Xử lý Exception & Báo lỗi**:

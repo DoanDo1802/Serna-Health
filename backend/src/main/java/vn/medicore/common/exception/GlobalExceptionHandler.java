@@ -2,7 +2,8 @@ package vn.medicore.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
-import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -11,11 +12,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import vn.medicore.common.web.RequestContext;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(InvalidAuthenticationException.class)
     ResponseEntity<ProblemDetail> authentication(InvalidAuthenticationException exception, HttpServletRequest request) {
@@ -27,14 +32,34 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Access denied", request);
     }
 
-    @ExceptionHandler(ResourceNotFoundException.class)
-    ResponseEntity<ProblemDetail> notFound(ResourceNotFoundException exception, HttpServletRequest request) {
+    @ExceptionHandler({ResourceNotFoundException.class, NoResourceFoundException.class})
+    ResponseEntity<ProblemDetail> notFound(Exception exception, HttpServletRequest request) {
         return problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "Resource not found", request);
     }
 
     @ExceptionHandler(StaleVersionException.class)
     ResponseEntity<ProblemDetail> stale(StaleVersionException exception, HttpServletRequest request) {
         return problem(HttpStatus.PRECONDITION_FAILED, "CONCURRENCY_STALE_VERSION", "ETag is stale", request);
+    }
+
+    @ExceptionHandler(RescheduleFundingException.class)
+    ResponseEntity<ProblemDetail> rescheduleFunding(RescheduleFundingException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, exception.code(), "Reschedule funding conflict", request);
+    }
+
+    @ExceptionHandler(RescheduleEligibilityException.class)
+    ResponseEntity<ProblemDetail> rescheduleEligibility(RescheduleEligibilityException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, exception.code(), exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(AppointmentCancellationException.class)
+    ResponseEntity<ProblemDetail> appointmentCancellation(AppointmentCancellationException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, exception.code(), exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(PatientScheduleConflictException.class)
+    ResponseEntity<ProblemDetail> patientScheduleConflict(PatientScheduleConflictException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, exception.code(), exception.getMessage(), request);
     }
 
     @ExceptionHandler(MissingRequestHeaderException.class)
@@ -51,31 +76,60 @@ public class GlobalExceptionHandler {
         response.getBody().setProperty("retryAfterSeconds", exception.retryAfterSeconds());
         return ResponseEntity.status(response.getStatusCode())
                 .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()))
+                .header(RequestContext.REQUEST_ID_HEADER, RequestContext.requestId(request))
+                .header(RequestContext.CORRELATION_ID_HEADER, RequestContext.correlationId(request))
                 .body(response.getBody());
     }
 
-    @ExceptionHandler({IllegalArgumentException.class, MethodArgumentNotValidException.class})
+    @ExceptionHandler({
+            IllegalArgumentException.class,
+            MethodArgumentNotValidException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class
+    })
     ResponseEntity<ProblemDetail> invalid(Exception exception, HttpServletRequest request) {
-        return problem(HttpStatus.BAD_REQUEST, "VALIDATION_INVALID_REQUEST", "Invalid request", request);
+        String detail = exception instanceof IllegalArgumentException && exception.getMessage() != null 
+                ? exception.getMessage() 
+                : "Invalid request";
+        return problem(HttpStatus.BAD_REQUEST, "VALIDATION_INVALID_REQUEST", detail, request);
     }
 
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    ResponseEntity<ProblemDetail> conflict(DataIntegrityViolationException exception, HttpServletRequest request) {
-        return problem(HttpStatus.CONFLICT, "STATE_CONFLICT", "Domain state conflict", request);
+    @ExceptionHandler({DataIntegrityViolationException.class, IllegalStateException.class})
+    ResponseEntity<ProblemDetail> conflict(RuntimeException exception, HttpServletRequest request) {
+        log.warn("Conflict error on {} {}: {}", request.getMethod(), request.getRequestURI(), exception.getMessage(), exception);
+        String detail = exception.getMessage() != null && !exception.getMessage().isBlank()
+                ? exception.getMessage()
+                : "Domain state conflict";
+        return problem(HttpStatus.CONFLICT, "STATE_CONFLICT", "Domain state conflict", detail, request);
+    }
+
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    ResponseEntity<ProblemDetail> messageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException exception, HttpServletRequest request) {
+        log.warn("Malformed JSON body on {} {}: {}", request.getMethod(), request.getRequestURI(), exception.getMessage());
+        return problem(HttpStatus.BAD_REQUEST, "VALIDATION_INVALID_REQUEST", "Malformed JSON request body", request);
+    }
+
+    @ExceptionHandler(Exception.class)
+    ResponseEntity<ProblemDetail> internal(Exception exception, HttpServletRequest request) {
+        log.error("Unhandled error on {} {}: {}", request.getMethod(), request.getRequestURI(), exception.getMessage(), exception);
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error", request);
     }
 
     private ResponseEntity<ProblemDetail> problem(HttpStatus status, String code, String title, HttpServletRequest request) {
-        ProblemDetail detail = ProblemDetail.forStatusAndDetail(status, title);
+        return problem(status, code, title, title, request);
+    }
+
+    private ResponseEntity<ProblemDetail> problem(HttpStatus status, String code, String title, String detailMessage, HttpServletRequest request) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(status, detailMessage);
         detail.setType(URI.create("https://medicore.vn/problems/" + code.toLowerCase().replace('_', '-')));
         detail.setTitle(title);
         detail.setProperty("code", code);
-        detail.setProperty("requestId", requestId(request));
-        detail.setProperty("correlationId", request.getHeader("X-Correlation-Id"));
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    private String requestId(HttpServletRequest request) {
-        String value = request.getHeader("X-Request-Id");
-        return value == null || value.isBlank() ? UUID.randomUUID().toString() : value;
+        String requestId = RequestContext.requestId(request);
+        String correlationId = RequestContext.correlationId(request);
+        detail.setProperty("requestId", requestId);
+        detail.setProperty("correlationId", correlationId);
+        return ResponseEntity.status(status)
+                .header(RequestContext.REQUEST_ID_HEADER, requestId)
+                .header(RequestContext.CORRELATION_ID_HEADER, correlationId)
+                .body(detail);
     }
 }

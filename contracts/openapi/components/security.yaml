@@ -2,8 +2,8 @@ securitySchemes:
   sessionCookie:
     type: apiKey
     in: cookie
-    name: MEDICORE_SESSION
-    description: Opaque server-side session cookie. Unsafe browser requests also require X-CSRF-Token.
+    name: MEDICORE_SESSION_<tab-context>
+    description: Context-selected opaque HttpOnly server-side session cookie. Every session request also requires X-MediCore-Tab-Context; unsafe browser requests require the session-bound X-CSRF-Token.
   paymentWebhookSignature:
     type: apiKey
     in: header

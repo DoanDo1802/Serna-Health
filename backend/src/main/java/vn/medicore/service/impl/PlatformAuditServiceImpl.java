@@ -8,6 +8,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.exception.ResourceNotFoundException;
@@ -20,7 +21,7 @@ import vn.medicore.repository.PlatformAuditRepository;
 import vn.medicore.service.PlatformAuditService;
 
 @Service
-@Transactional
+@Transactional(noRollbackFor = AccessDeniedException.class)
 public class PlatformAuditServiceImpl implements PlatformAuditService {
 
     private final PlatformAuditRepository store;
@@ -109,29 +110,63 @@ public class PlatformAuditServiceImpl implements PlatformAuditService {
             String cursor,
             int limit) {
         UUID effectiveRequester = auditReader ? requesterAccountId : actorId;
-        return page(store.listBreakGlass(status, patientId, effectiveRequester, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listBreakGlass(status, patientId, effectiveRequester, limit + 1, offset), limit, offset);
     }
 
     @Override
-    public BreakGlassView revokeBreakGlass(UUID grantId, UUID actorId, String reason, long version) {
+    public BreakGlassView revokeBreakGlass(
+            UUID grantId,
+            UUID actorId,
+            String reason,
+            long version,
+            UUID sessionId,
+            Map<String, Object> effectiveRoleSnapshot,
+            String requestId,
+            String correlationId) {
         Instant now = clock.instant();
         BreakGlassView grant = store.breakGlassForUpdate(grantId)
                 .orElseThrow(ResourceNotFoundException::new);
+        if (!actorId.equals(grant.requesterAccountId())) {
+            audit(actorId, grant.patientId(), "break_glass.revoke", "DENIED", "Grant is owned by another account",
+                    grantId, grant.version(), sessionId == null ? null : sessionId.toString(), requestId, correlationId,
+                    "clinical.break_glass", "revoke_access", "patient", effectiveRoleSnapshot);
+            throw new AccessDeniedException("Grant is owned by another account");
+        }
         store.revokeBreakGlass(grantId, actorId, reason, now, version);
-        audit(actorId, grant.patientId(), "break_glass.revoke", "SUCCEEDED", reason, grantId, version, null, null, null,
-                "clinical.break_glass", "revoke_access", "patient", Map.of());
-        return store.breakGlassForUpdate(grantId).orElseThrow();
+        BreakGlassView revoked = store.breakGlassForUpdate(grantId).orElseThrow();
+        audit(actorId, grant.patientId(), "break_glass.revoke", "SUCCEEDED", reason, grantId, revoked.version(),
+                sessionId == null ? null : sessionId.toString(), requestId, correlationId,
+                "clinical.break_glass", "revoke_access", "patient", effectiveRoleSnapshot);
+        return revoked;
     }
 
     @Override
-    public BreakGlassView reviewBreakGlass(UUID grantId, UUID reviewerId, String outcome, String reason, long version) {
+    public BreakGlassView reviewBreakGlass(
+            UUID grantId,
+            UUID reviewerId,
+            String outcome,
+            String reason,
+            long version,
+            UUID sessionId,
+            Map<String, Object> effectiveRoleSnapshot,
+            String requestId,
+            String correlationId) {
         Instant now = clock.instant();
         BreakGlassView grant = store.breakGlassForUpdate(grantId)
                 .orElseThrow(ResourceNotFoundException::new);
+        if (reviewerId.equals(grant.requesterAccountId())) {
+            audit(reviewerId, grant.patientId(), "break_glass.review", "DENIED", "Requester cannot review own grant",
+                    grantId, grant.version(), sessionId == null ? null : sessionId.toString(), requestId, correlationId,
+                    "audit.break_glass.review", "audit_review", "patient", effectiveRoleSnapshot);
+            throw new AccessDeniedException("Requester cannot review own grant");
+        }
         store.reviewBreakGlass(grantId, reviewerId, outcome, reason, now, version);
-        audit(reviewerId, grant.patientId(), "break_glass.review", "SUCCEEDED", reason, grantId, version, null, null, null,
-                "audit.break_glass.review", "audit_review", "patient", Map.of());
-        return store.breakGlassForUpdate(grantId).orElseThrow();
+        BreakGlassView reviewed = store.breakGlassForUpdate(grantId).orElseThrow();
+        audit(reviewerId, grant.patientId(), "break_glass.review", "SUCCEEDED", reason, grantId, reviewed.version(),
+                sessionId == null ? null : sessionId.toString(), requestId, correlationId,
+                "audit.break_glass.review", "audit_review", "patient", effectiveRoleSnapshot);
+        return reviewed;
     }
 
     @Override
@@ -146,8 +181,9 @@ public class PlatformAuditServiceImpl implements PlatformAuditService {
             String correlationId,
             String cursor,
             int limit) {
+        int offset = offset(cursor);
         return page(store.listAudit(occurredFrom, occurredTo, patientId, actorAccountId, action, outcome,
-                correlationId, limit + 1, offset(cursor)), limit);
+                correlationId, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -173,7 +209,7 @@ public class PlatformAuditServiceImpl implements PlatformAuditService {
             Map<String, Object> roleSnapshot) {
         store.insertAudit(new AuditEventView(
                 ids.next(),
-                actorAccountId == null ? "SYSTEM" : "USER",
+                actorAccountId == null ? "SYSTEM" : "ACCOUNT",
                 actorAccountId,
                 roleSnapshot,
                 patientId,
@@ -211,11 +247,11 @@ public class PlatformAuditServiceImpl implements PlatformAuditService {
         }
     }
 
-    private static <T> Page<T> page(List<T> values, int limit) {
+    private static <T> Page<T> page(List<T> values, int limit, int offset) {
         boolean hasMore = values.size() > limit;
         List<T> items = hasMore ? values.subList(0, limit) : values;
         String next = hasMore ? Base64.getUrlEncoder().withoutPadding().encodeToString(
-                Integer.toString(limit).getBytes(StandardCharsets.UTF_8)) : null;
+                Integer.toString(offset + items.size()).getBytes(StandardCharsets.UTF_8)) : null;
         return new Page<>(List.copyOf(items), next, hasMore);
     }
 }

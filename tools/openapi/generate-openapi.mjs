@@ -58,6 +58,7 @@ function buildOperation(module, operation) {
     ...pathParameters(operation.path),
     ...(operation.list ? [componentParameter('Cursor'), componentParameter('Limit')] : []),
     ...(operation.queryParameters ?? []).map(parameter => query(parameter.name, Boolean(parameter.required), parameter.schema, parameter.description)),
+    ...(operation.tabContext || (!operation.public && !operation.webhook) ? [componentParameter('TabContext')] : []),
     ...(operation.idempotent ? [componentParameter('IdempotencyKey')] : []),
     ...(operation.csrf ? [componentParameter('CsrfToken')] : []),
     ...(operation.ifMatch ? [componentParameter('IfMatch')] : []),
@@ -88,7 +89,7 @@ function buildOperation(module, operation) {
     'x-medicore-idempotent': Boolean(operation.idempotent),
   }
   if (operation.environments) result['x-medicore-environments'] = operation.environments
-  if (!safe && responseCode !== '204') {
+  if (!safe && responseCode !== '204' && !operation.noBody) {
     result.requestBody = {
       required: true,
       content: {
@@ -108,10 +109,10 @@ function successResponse(operation, code) {
   const headers = {
     'X-Request-Id': { $ref: '#/components/headers/RequestId' },
     'X-Correlation-Id': { $ref: '#/components/headers/CorrelationId' },
-    ...(code !== '202' ? { ETag: { $ref: '#/components/headers/ETag' } } : {}),
+    ...(operation.etag ? { ETag: { $ref: '#/components/headers/ETag' } } : {}),
     ...(operation.sessionResponse ? {
       'Set-Cookie': {
-        description: 'MEDICORE_SESSION opaque cookie with Secure, HttpOnly and SameSite=Lax attributes.',
+        description: 'Context-selected opaque HttpOnly session cookie with Path=/ and SameSite=Lax attributes; production cookies are Secure and use the __Host- prefix.',
         schema: { type: 'string' },
       },
       'X-CSRF-Token': {

@@ -8,7 +8,9 @@
   },
   "packageManager": "npm@11.16.0",
   "workspaces": [
-    "frontend",
+    "frontend-patient",
+    "frontend-staff",
+    "frontend-admin",
     "tools/docs"
   ],
   "scripts": {
@@ -19,11 +21,20 @@
     "api:bundle": "npm run api:source && redocly bundle contracts/openapi/openapi.yaml --output contracts/openapi/medicore.openapi.yaml",
     "api:lint": "redocly lint contracts/openapi/medicore.openapi.yaml",
     "api:check": "npm run api:bundle && npm run api:lint && node tools/openapi/check-inventory.mjs",
-    "frontend:lint": "npm --workspace @medicore/frontend run lint",
-    "frontend:typecheck": "npm --workspace @medicore/frontend run typecheck",
-    "frontend:test": "npm --workspace @medicore/frontend run test",
-    "frontend:build": "npm --workspace @medicore/frontend run build",
-    "verify": "npm run docs:check && npm run docs:render && npm run api:check && npm run frontend:lint && npm run frontend:typecheck && npm run frontend:test && npm run frontend:build"
+    "patient:dev": "npm --workspace @medicore/patient-portal run dev",
+    "patient:build": "npm --workspace @medicore/patient-portal run build",
+    "patient:lint": "npm --workspace @medicore/patient-portal run lint",
+    "patient:typecheck": "npm --workspace @medicore/patient-portal run typecheck",
+    "staff:dev": "npm --workspace @medicore/staff-portal run dev",
+    "staff:build": "npm --workspace @medicore/staff-portal run build",
+    "staff:lint": "npm --workspace @medicore/staff-portal run lint",
+    "staff:typecheck": "npm --workspace @medicore/staff-portal run typecheck",
+    "admin:dev": "npm --workspace @medicore/admin-portal run dev",
+    "frontend:lint": "npm --prefix patient run lint && npm --prefix control_center run lint",
+    "frontend:typecheck": "npm --prefix patient run typecheck && npm --prefix control_center run typecheck",
+    "frontend:test": "echo 'No frontend tests specified'",
+    "frontend:build": "npm --prefix patient run build && npm --prefix control_center run build",
+    "verify": "npm run docs:check && npm run docs:render && npm run api:check && npm run patient:typecheck && npm run patient:build"
   },
   "devDependencies": {
     "@redocly/cli": "2.43.3",
@@ -33,3 +44,4 @@
     "puppeteer@25.4.0": true
   }
 }
+

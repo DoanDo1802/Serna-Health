@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   MediCore Health - Core Design System Tokens & Base Styles
+   ========================================================================== */
+
+:root {
+  /* Dynamic Palette - Linked with Antigravity Theme Tokens */
+  --color-canvas: var(--theme-surface-surface, #ffffff);
+  --color-canvas-subtle: var(--theme-surface-surface-container, #f8f9fc);
+  --color-surface: var(--theme-surface-surface, #ffffff);
+  --color-surface-container: var(--theme-surface-surface-container, #f8f9fc);
+  --color-surface-container-high: var(--theme-surface-surface-container-high, #eff2f7);
+  --color-surface-container-highest: var(--theme-surface-surface-container-highest, #e1e6ec);
+  --color-surface-dark: #121317;
+  --color-surface-dark-card: #18191d;
+  --glass-bg: rgba(255, 255, 255, 0.8);
+
+  /* Outlines & Borders */
+  --color-outline: var(--theme-outline, rgba(33, 34, 38, 0.12));
+  --color-outline-variant: var(--theme-outline-variant, rgba(33, 34, 38, 0.06));
+
+  /* Primary Brand (Google Blue / Medical Tech) */
+  --color-primary: #3279f9;
+  --color-primary-hover: #1b66ec;
+  --color-primary-container: rgba(50, 121, 249, 0.12);
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #d3e3fd;
+
+  /* Accent / Health Teal */
+  --color-teal: #0d9488;
+  --color-teal-container: rgba(13, 148, 136, 0.12);
+  --color-on-teal-container: #115e59;
+
+  /* Typography / Text Content */
+  --color-on-surface: var(--theme-surface-on-surface, #121317);
+  --color-on-surface-variant: var(--theme-surface-on-surface-variant, #45474d);
+  --color-on-surface-muted: #6a6a71;
+
+  /* Border Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-pill: 9999px;
+
+  /* Shadows */
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --shadow-glow: 0 0 24px rgba(50, 121, 249, 0.2);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Global table overrides to prevent antigravity.css forcing white thead */
+table thead,
+.table-container table thead {
+  background: transparent !important;
+}
+
+table thead th,
+.table-container table thead th {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+/* Ensure disabled form controls have consistent background & opacity across all browsers */
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 1 !important;
+  -webkit-text-fill-color: inherit;
+}

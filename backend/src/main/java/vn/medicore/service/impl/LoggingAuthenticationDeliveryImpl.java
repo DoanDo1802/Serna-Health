@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import vn.medicore.service.AuthenticationDeliveryService;
 
 @Component
-@Profile("local | test")
+@Profile("test")
 public class LoggingAuthenticationDeliveryImpl implements AuthenticationDeliveryService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggingAuthenticationDeliveryImpl.class);
@@ -15,6 +15,11 @@ public class LoggingAuthenticationDeliveryImpl implements AuthenticationDelivery
     @Override
     public void sendEmailVerificationCode(String displayEmail, String code) {
         LOGGER.info("Email verification challenge queued for local recipient hash={}", Integer.toHexString(displayEmail.hashCode()));
+    }
+
+    @Override
+    public void sendEmailVerificationToken(String displayEmail, String token) {
+        LOGGER.info("Email verification token queued for local recipient hash={}", Integer.toHexString(displayEmail.hashCode()));
     }
 
     @Override

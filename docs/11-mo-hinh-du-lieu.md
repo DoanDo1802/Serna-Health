@@ -555,6 +555,9 @@ erDiagram
 
 ### 16.5. Billing và thanh toán
 
+> [!IMPORTANT]
+> Đây là ERD target R1, không phải runtime inventory. Hiện Flyway mới migrate `appointment` staging schema; `payment_intent`, `payment`, billing, allocation và refund chưa có migration. Physical contract tại [[schema/scheduling-payment-r1|Scheduling/payment R1]] và [[schema/billing-reliability-notification-r1|Billing/reliability R1]] là canonical.
+
 ```mermaid
 erDiagram
     VISIT {
@@ -580,7 +583,6 @@ erDiagram
         amount quantity
         instant performed_at
         code status
-        string idempotency_key
     }
     BILLING_ACCOUNT {
         identifier id PK
@@ -611,7 +613,6 @@ erDiagram
     PAYMENT {
         identifier id PK
         identifier payment_intent_id FK
-        identifier appointment_id FK
         string provider
         string provider_transaction_id
         amount amount
@@ -665,7 +666,6 @@ erDiagram
     BILLING_ACCOUNT ||--o{ CHARGE_ITEM : "tổng hợp"
     SLOT_HOLD ||--o| PAYMENT_INTENT : "checkout"
     PAYMENT_INTENT ||--o| PAYMENT : "capture"
-    APPOINTMENT o|--o{ PAYMENT : "có thể liên kết"
     PAYMENT ||--o{ PAYMENT_ALLOCATION : "phân bổ"
     BILLING_ACCOUNT ||--o{ PAYMENT_ALLOCATION : "nhận"
     PAYMENT ||--o{ REFUND_REQUEST : "đề xuất hoàn"
@@ -678,6 +678,9 @@ erDiagram
 Capture và Refund là movement bất biến; ledger không dựa current Payment status. ServiceDelivery là charge source duy nhất. BillingAccount close/reopen theo `BILL-08/BILL-09`.
 
 ### 16.6. Hồ sơ phụ thuộc và xác minh
+
+> [!IMPORTANT]
+> Diagram trộn runtime identity/patient tables với target R1 và MVP-LATER. `patient`, `patient_account_link`, `patient_identifier`, `patient_duplicate_candidate`, `account_role_assignment`, `break_glass_grant` và `audit_event` đã migrate. `dependent_verification`/`verification_evidence` là MVP-LATER; `electronic_identity_link` là REGULATORY-PRODUCTION. Xem [[21-schema-vat-ly-mvp|Schema vật lý MVP]] trước khi sinh DDL.
 
 ```mermaid
 erDiagram

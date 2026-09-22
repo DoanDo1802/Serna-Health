@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.AssertTrue;
 
 @Validated
 @ConfigurationProperties("medicore.auth")
@@ -34,9 +35,14 @@ public record AuthProperties(
     public record Session(
             @NotNull Duration idleTimeout,
             @NotNull Duration absoluteTimeout,
-            @NotBlank String cookieName,
+            @NotBlank String cookieNamePrefix,
             boolean secureCookie,
             @NotBlank String sameSite) {
+
+        @AssertTrue(message = "secure-cookie is required for __Host- cookie-name-prefix")
+        public boolean isSecurePrefixValid() {
+            return !cookieNamePrefix.startsWith("__Host-") || secureCookie;
+        }
     }
 
     public record Token(@NotNull Duration verificationTtl, @NotNull Duration passwordResetTtl) {

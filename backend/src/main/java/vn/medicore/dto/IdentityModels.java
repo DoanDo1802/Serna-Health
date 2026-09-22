@@ -28,11 +28,13 @@ public final class IdentityModels {
 
     public record SessionView(
             UUID accountId,
+            String displayEmail,
             String status,
             Instant authenticatedAt,
             Instant lastSeenAt,
             Instant idleExpiresAt,
             Instant absoluteExpiresAt,
+            Set<String> roleCodes,
             Set<String> permissions) {
     }
 

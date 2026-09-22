@@ -138,13 +138,13 @@ Columns: `id uuid not null`, `action varchar(128) not null`, `description varcha
 
 ### `role_permission`
 
-Columns: `role_id uuid not null`, `permission_id uuid not null`, `granted_at timestamptz not null`, `granted_by_account_id uuid not null`. Composite PK; FK role/permission/grantor RESTRICT; index permission.
+Columns: `role_id uuid not null`, `permission_id uuid not null`, `granted_at timestamptz not null`, `granted_by_account_id uuid null`. Composite PK; FK role/permission/grantor RESTRICT; index permission. `granted_by_account_id` chỉ null cho immutable bootstrap/system seed grant trong Flyway; mọi command do account thực hiện phải lưu actor ID khác null.
 
 ### `account_role_assignment`
 
 Columns: `id uuid not null`, `account_id uuid not null`, `role_id uuid not null`, `department_id uuid null`, `effective_from timestamptz not null`, `effective_to timestamptz null`, `status varchar(64) not null`, `assigned_by_account_id uuid not null`, `reason varchar(500) not null`, `version bigint not null default 0`. PK/FKs RESTRICT; `effective_to > effective_from`; status `ACTIVE/REVOKED/EXPIRED`; no duplicate equivalent active interval enforced by exclusion/transaction. Index account/time/status, role/time, department/time.
 
-Trong migration R1-02, `department_id` là logical UUID reference vì bảng `department` thuộc R1-03 và được migrate sau identity. Forward migration R1-03 phải thêm FK `ON DELETE RESTRICT`; application vẫn kiểm context và default-deny khi department chưa resolve được.
+`department_id` là physical FK `ON DELETE RESTRICT` từ `V3__catalog.sql`, sau khi owner table `department` tồn tại. Application vẫn kiểm context và default-deny khi department không resolve được.
 
 ## `break_glass_grant`
 
@@ -154,7 +154,7 @@ Columns are typed: `id uuid`, requester/grantor/reviewer account UUIDs, requeste
 
 Constraints: expiry ≤ effective + 4h; review deadline stored `review_due_at` and equals granted + policy business-day calculation; state timestamp requirements; status `REQUESTED/ACTIVE/EXPIRED/REVOKED/REVIEWED`; no financial/admin scope column exists. Index patient/status/time, requester/time, review due/status.
 
-Trong migration R1-02, `patient_id` là logical UUID reference vì bảng `patient` thuộc R1-04 và được migrate sau identity. Forward migration R1-04 phải thêm FK `ON DELETE RESTRICT` sau khi bảng owner tồn tại; không tạo shell patient table trong module identity.
+`patient_id` là physical FK `ON DELETE RESTRICT` từ `V6__security_reliability_remediation.sql`, sau khi owner table `patient` tồn tại. Không tạo shell patient table trong module identity.
 
 ## `audit_event`
 

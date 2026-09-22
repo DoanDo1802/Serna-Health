@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.dto.AuditModels.AuditEventView;
@@ -37,12 +38,31 @@ public class SecurityAuditServiceImpl implements SecurityAuditRecorder {
             String sessionId,
             String requestId,
             String correlationId) {
+        record(actorAccountId, roleSnapshot, null, action, outcome, reason, resourceType, resourceId,
+                resourceVersion, sessionId, requestId, correlationId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void record(
+            UUID actorAccountId,
+            Map<String, Object> roleSnapshot,
+            UUID patientId,
+            String action,
+            String outcome,
+            String reason,
+            String resourceType,
+            UUID resourceId,
+            Long resourceVersion,
+            String sessionId,
+            String requestId,
+            String correlationId) {
         store.insertAudit(new AuditEventView(
                 ids.next(),
-                actorAccountId == null ? "SYSTEM" : "USER",
+                actorAccountId == null ? "SYSTEM" : "ACCOUNT",
                 actorAccountId,
                 roleSnapshot,
-                null,
+                patientId,
                 "system_security_audit",
                 "role_based_access_control",
                 resourceType,

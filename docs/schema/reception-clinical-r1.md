@@ -15,7 +15,9 @@ module_owners:
 
 **Owner / tranche / purpose:** `reception-queue` / R1 / staff-assisted idempotent check-in.
 
-Columns: `id uuid`, appointment/visit/actor account UUIDs, `channel varchar(64)`, `occurred_at timestamptz`, `exception boolean default false`, `exception_reason varchar(500) null`, idempotency scope/key/request hash varchar(128), correlation ID, created_at. All identity/idempotency fields not null. PK/FKs RESTRICT; unique appointment; unique visit; unique `(scope,key)`; exception reason iff exception; channel R1 `STAFF_ASSISTED`. Index actor/time, occurred time.
+Columns: `id uuid`, appointment/visit/actor account UUIDs, `channel varchar(64)`, `occurred_at timestamptz`, `exception boolean default false`, `exception_reason varchar(500) null`, correlation ID, created_at. All identity fields not null. PK/FKs RESTRICT; unique appointment; unique visit; exception reason iff exception; channel R1 `STAFF_ASSISTED`. Index actor/time, occurred time.
+
+HTTP/API replay remains owned by `platform-audit.idempotency_record`; do not duplicate idempotency scope/key/request-hash columns in this business table.
 
 ### `visit`
 
@@ -84,7 +86,9 @@ Columns: id, diagnosis/previous version UUIDs, version_number integer, author/fi
 
 **Owner / tranche / purpose:** `clinical-care` / R1 / evidence dịch vụ thực hiện; billing consumes event/API.
 
-Columns: `id uuid`, encounter/service/performed_by_role UUIDs, `quantity numeric(12,3)`, `performed_at timestamptz null`, `status varchar(64)`, idempotency scope/key/request hash, `version bigint`, timestamps. PK/FKs RESTRICT; quantity >0; unique `(scope,key)`; PERFORMED requires performed_at/performer; cancelled/error require audited reason supplied command/audit. Index encounter/status, service/performed time.
+Columns: `id uuid`, encounter/service/performed_by_role UUIDs, `quantity numeric(12,3)`, `performed_at timestamptz null`, `status varchar(64)`, `version bigint`, timestamps. PK/FKs RESTRICT; quantity >0; PERFORMED requires performed_at/performer; cancelled/error require audited reason supplied command/audit. Index encounter/status, service/performed time.
+
+HTTP/API replay remains owned by `platform-audit.idempotency_record`; do not duplicate idempotency scope/key/request-hash columns in this business table.
 
 `prescription` và `prescription_item` là MVP-LATER, không thuộc active R1 migration. `ElectronicAttestation` không FK vào clinical R1 technical versions.
 

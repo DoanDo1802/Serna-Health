@@ -104,6 +104,7 @@ Collection path là plural resource; price/role create nằm dưới owner resou
 | `POST /mock-payment-intents/{paymentIntentId}/actions/simulate` | `simulateMockPaymentOutcome` | local/test only |
 | `GET /appointments` | `listAppointments` | own patient/staff filters |
 | `GET /appointments/{appointmentId}` | `getAppointment` | owner/staff |
+| `POST /appointments/{appointmentId}/actions/reschedule-slot-holds` | `createRescheduleSlotHold` | patient/staff source access; idempotent; source-only conflict exclusion |
 | `POST /appointments/{appointmentId}/actions/reschedule` | `rescheduleAppointment` | idempotent + If-Match; funding/lineage atomic |
 | `POST /appointments/{appointmentId}/actions/cancel` | `cancelAppointment` | idempotent + If-Match; policy outcome |
 | `POST /appointments/{appointmentId}/actions/mark-no-show` | `markAppointmentNoShow` | staff/job; If-Match/state guard |

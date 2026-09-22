@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -21,6 +22,8 @@ import vn.medicore.common.utils.UuidV7Generator;
 import vn.medicore.config.AuthProperties;
 import vn.medicore.config.SecretHasher;
 import vn.medicore.dto.AuthenticatedAccount;
+import vn.medicore.dto.IdentityAuditContext;
+import vn.medicore.dto.SecurityAuditRecorder;
 import vn.medicore.dto.IdentityModels.AccountView;
 import vn.medicore.dto.IdentityModels.AssignmentView;
 import vn.medicore.dto.IdentityModels.CommandAccepted;
@@ -47,6 +50,7 @@ import vn.medicore.service.IdentityAccessService;
 public class IdentityAccessServiceImpl implements IdentityAccessService {
 
     private static final String GENERIC_AUTHENTICATION_FAILURE = "Authentication failed";
+    private static final String DUMMY_PASSWORD_HASH = "$argon2id$v=19$m=16384,t=2,p=1$c2VjdXJlLWR1bW15LXNhbHQ$JdBZXAClzz/57N0ueJYKPcvN6qeePFH5GSRF4S3hr3Y";
     private final IdentityRepository store;
     private final PasswordPolicy passwordPolicy;
     private final PasswordEncoder passwordEncoder;
@@ -55,6 +59,7 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     private final AuthProperties properties;
     private final Clock clock;
     private final UuidV7Generator ids;
+    private final SecurityAuditRecorder securityAudit;
 
     public IdentityAccessServiceImpl(
             IdentityRepository store,
@@ -64,7 +69,8 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
             AuthenticationDeliveryService delivery,
             AuthProperties properties,
             Clock clock,
-            UuidV7Generator ids) {
+            UuidV7Generator ids,
+            SecurityAuditRecorder securityAudit) {
         this.store = store;
         this.passwordPolicy = passwordPolicy;
         this.passwordEncoder = passwordEncoder;
@@ -73,6 +79,7 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         this.properties = properties;
         this.clock = clock;
         this.ids = ids;
+        this.securityAudit = securityAudit;
     }
 
     @Override
@@ -133,25 +140,20 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     }
 
     @Override
-    public SessionIssue loginWithPassword(String emailValue, String password, String requestId, String sourceIp, String userAgent) {
+    public SessionIssue loginWithPassword(
+            String emailValue, String password, String tabContext, String requestId, String sourceIp, String userAgent) {
         EmailAddress email = EmailAddress.of(emailValue);
         Instant now = clock.instant();
         Optional<AccountRow> found = store.findAccountByEmailForUpdate(email.normalized());
-        if (found.isEmpty()) {
-            passwordEncoder.matches(password, passwordEncoder.encode("constant-time-placeholder-password"));
-            throw new InvalidAuthenticationException(GENERIC_AUTHENTICATION_FAILURE);
-        }
-        AccountRow account = unlockIfElapsed(found.get(), now);
-        if (!AccountStatus.ACTIVE.name().equals(account.status())) {
-            throw new InvalidAuthenticationException(GENERIC_AUTHENTICATION_FAILURE);
-        }
-        String encoded = store.activeCredentialHash(account.id()).orElse("");
-        if (!passwordEncoder.matches(password, encoded)) {
-            recordFailure(account, now);
+        AccountRow account = found.map(value -> unlockIfElapsed(value, now)).orElse(null);
+        String encoded = account == null ? DUMMY_PASSWORD_HASH : store.activeCredentialHash(account.id()).orElse(DUMMY_PASSWORD_HASH);
+        boolean passwordMatches = passwordEncoder.matches(password, encoded);
+        if (account == null || !AccountStatus.ACTIVE.name().equals(account.status()) || !passwordMatches) {
+            if (account != null && AccountStatus.ACTIVE.name().equals(account.status())) recordFailure(account, now);
             throw new InvalidAuthenticationException(GENERIC_AUTHENTICATION_FAILURE);
         }
         recordSuccess(account, now);
-        return issueSession(account.id(), sourceIp, userAgent, now);
+        return issueSession(account, tabContext, sourceIp, userAgent, now);
     }
 
     @Override
@@ -166,7 +168,8 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     }
 
     @Override
-    public SessionIssue loginWithOtp(String emailValue, String code, String requestId, String sourceIp, String userAgent) {
+    public SessionIssue loginWithOtp(
+            String emailValue, String code, String tabContext, String requestId, String sourceIp, String userAgent) {
         EmailAddress email = EmailAddress.of(emailValue);
         Instant now = clock.instant();
         ChallengeStateRow challenge = consumeChallenge(email.normalized(), "LOGIN", code, now);
@@ -176,29 +179,45 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
             throw new InvalidAuthenticationException(GENERIC_AUTHENTICATION_FAILURE);
         }
         recordSuccess(account, now);
-        return issueSession(account.id(), sourceIp, userAgent, now);
+        return issueSession(account, tabContext, sourceIp, userAgent, now);
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Optional<SessionView> currentSession(String rawSessionToken) {
-        if (rawSessionToken == null || rawSessionToken.isBlank()) return Optional.empty();
+    @Transactional
+    public Optional<SessionIssue> currentSession(String rawSessionToken, String tabContext) {
+        if (rawSessionToken == null || rawSessionToken.isBlank() || tabContext == null || tabContext.isBlank()) {
+            return Optional.empty();
+        }
         Instant now = clock.instant();
-        Optional<SessionRow> stored = store.activeSession(secretHasher.hash("SESSION", rawSessionToken));
+        Optional<SessionRow> stored = store.activeSession(
+                secretHasher.hash("SESSION", rawSessionToken), secretHasher.hash("SESSION_CONTEXT", tabContext));
         if (stored.isEmpty()) return Optional.empty();
         SessionRow session = stored.get();
         if (!now.isBefore(session.absoluteExpiresAt()) || !now.isBefore(session.lastSeenAt().plus(properties.session().idleTimeout()))) {
             return Optional.empty();
         }
-        return Optional.of(session.toView(store.effectivePermissions(session.accountId(), now),
-                session.lastSeenAt().plus(properties.session().idleTimeout())));
+        AccountRow account = store.findAccountById(session.accountId()).orElse(null);
+        if (account == null || !AccountStatus.ACTIVE.name().equals(account.status())) return Optional.empty();
+
+        String csrfToken = secretHasher.randomToken(32);
+        store.updateSessionCsrf(session.id(), secretHasher.hash("CSRF", csrfToken), now);
+
+        return Optional.of(new SessionIssue(
+                session.toView(account.displayEmail(), store.effectiveRoleCodes(session.accountId(), now),
+                        store.effectivePermissions(session.accountId(), now),
+                        now.plus(properties.session().idleTimeout())),
+                rawSessionToken, csrfToken));
     }
 
     @Override
-    public Optional<AuthenticatedAccount> authenticateSession(String rawSessionToken, String csrfToken, boolean csrfRequired) {
-        if (rawSessionToken == null || rawSessionToken.isBlank()) return Optional.empty();
+    public Optional<AuthenticatedAccount> authenticateSession(
+            String rawSessionToken, String tabContext, String csrfToken, boolean csrfRequired) {
+        if (rawSessionToken == null || rawSessionToken.isBlank() || tabContext == null || tabContext.isBlank()) {
+            return Optional.empty();
+        }
         Instant now = clock.instant();
-        Optional<SessionRow> stored = store.activeSession(secretHasher.hash("SESSION", rawSessionToken));
+        Optional<SessionRow> stored = store.activeSession(
+                secretHasher.hash("SESSION", rawSessionToken), secretHasher.hash("SESSION_CONTEXT", tabContext));
         if (stored.isEmpty()) return Optional.empty();
         SessionRow session = stored.get();
         if (!now.isBefore(session.absoluteExpiresAt()) || !now.isBefore(session.lastSeenAt().plus(properties.session().idleTimeout()))) {
@@ -209,19 +228,41 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
             throw new InvalidCsrfException();
         }
         if (!store.touchSession(session.id(), now)) return Optional.empty();
-        return Optional.of(new AuthenticatedAccount(session.id(), session.accountId(), store.effectivePermissions(session.accountId(), now)));
+        List<AuthenticatedAccount.EffectiveGrant> grants = store.effectiveGrants(session.accountId(), now).stream()
+                .map(grant -> new AuthenticatedAccount.EffectiveGrant(grant.action(), grant.assignmentId(), grant.departmentId(),
+                        grant.effectiveFrom(), grant.effectiveTo()))
+                .toList();
+        return Optional.of(new AuthenticatedAccount(session.id(), session.accountId(),
+                store.effectivePermissions(session.accountId(), now), grants));
     }
 
     @Override
-    public void logoutCurrent(String rawSessionToken, String reason) {
-        if (rawSessionToken != null) {
-            store.revokeSessionByHash(secretHasher.hash("SESSION", rawSessionToken), clock.instant(), reason);
-        }
+    public void logoutCurrent(
+            String rawSessionToken, String tabContext, String reason, String requestId, String correlationId) {
+        if (rawSessionToken == null || rawSessionToken.isBlank() || tabContext == null || tabContext.isBlank()) return;
+        Instant now = clock.instant();
+        String sessionHash = secretHasher.hash("SESSION", rawSessionToken);
+        String contextHash = secretHasher.hash("SESSION_CONTEXT", tabContext);
+        Optional<SessionRow> session = store.activeSession(sessionHash, contextHash);
+        store.revokeSessionByHash(sessionHash, contextHash, now, reason);
+        session.ifPresent(value -> securityAudit.record(
+                value.accountId(),
+                Map.of(),
+                "identity.session.logout",
+                "SUCCEEDED",
+                reason,
+                "session",
+                value.id(),
+                null,
+                value.id().toString(),
+                requestId,
+                correlationId));
     }
 
     @Override
-    public void logoutAll(UUID accountId, String reason) {
+    public void logoutAll(UUID accountId, String reason, IdentityAuditContext audit) {
         store.revokeAllSessions(accountId, clock.instant(), reason);
+        recordAudit(audit, "identity.session.logout_all", reason, "account", accountId, null);
     }
 
     @Override
@@ -264,7 +305,8 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         passwordPolicy.validate(newPassword);
         Instant now = clock.instant();
         AccountRow account = store.findAccountByIdForUpdate(accountId).orElseThrow(ResourceNotFoundException::new);
-        if (account.version() != version || !passwordEncoder.matches(currentPassword, store.activeCredentialHash(accountId).orElse(""))) {
+        if (account.version() != version) throw new StaleVersionException();
+        if (!passwordEncoder.matches(currentPassword, store.activeCredentialHash(accountId).orElse(""))) {
             throw new InvalidAuthenticationException(GENERIC_AUTHENTICATION_FAILURE);
         }
         store.supersedeCredential(account.id(), now, "PASSWORD_CHANGE");
@@ -277,7 +319,8 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     @Override
     @Transactional(readOnly = true)
     public Page<AccountView> listAccounts(String status, String cursor, int limit) {
-        return page(store.listAccounts(status, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listAccounts(status, limit + 1, offset), limit, offset);
     }
 
     @Override
@@ -287,13 +330,21 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     }
 
     @Override
-    public AccountView changeAccountStatus(UUID accountId, String status, String reason, long version, UUID actorId) {
+    public AccountView changeAccountStatus(
+            UUID accountId,
+            String status,
+            String reason,
+            long version,
+            IdentityAuditContext audit) {
         AccountStatus target = AccountStatus.valueOf(status);
         if (target == AccountStatus.PENDING_VERIFICATION || target == AccountStatus.TEMPORARILY_LOCKED) {
             throw new IllegalArgumentException("Unsupported administrative account status");
         }
         Instant now = clock.instant();
         AccountRow account = store.findAccountByIdForUpdate(accountId).orElseThrow(ResourceNotFoundException::new);
+        if (AccountStatus.PERMANENTLY_LOCKED.name().equals(account.status())) {
+            throw new IllegalStateException("Permanently locked accounts are terminal");
+        }
         if (account.version() != version) throw new StaleVersionException();
         AccountRow changed = new AccountRow(account.id(), account.normalizedEmail(), account.displayEmail(),
                 account.emailVerifiedAt(), target.name(), account.failedLoginCount(), null, account.lastAuthenticatedAt(),
@@ -304,58 +355,83 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
             store.revokeAllPendingTokens(accountId, now);
             store.revokeAllSessions(accountId, now, reason);
         }
+        recordAudit(audit, "identity.account.status.change", reason, "account", changed.id(), changed.version());
         return changed.toView();
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<RoleView> listRoles(Boolean active, String cursor, int limit) {
-        return page(store.listRoles(active, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listRoles(active, limit + 1, offset), limit, offset);
     }
 
     @Override
-    public RoleView createRole(String code, String name, UUID actorId) {
+    public RoleView createRole(String code, String name, IdentityAuditContext audit) {
         UUID id = ids.next();
         store.insertRole(id, code, name, clock.instant());
-        return store.role(id).orElseThrow();
+        RoleView role = store.role(id).orElseThrow();
+        recordAudit(audit, "identity.role.create", null, "role", role.id(), role.version());
+        return role;
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<PermissionView> listPermissions(Boolean active, String cursor, int limit) {
-        return page(store.listPermissions(active, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listPermissions(active, limit + 1, offset), limit, offset);
     }
 
     @Override
-    public RoleView replaceRolePermissions(UUID roleId, Set<UUID> permissionIds, long version, UUID actorId) {
-        store.replaceRolePermissions(roleId, permissionIds, actorId, clock.instant(), version);
-        return store.role(roleId).orElseThrow(ResourceNotFoundException::new);
+    public RoleView replaceRolePermissions(
+            UUID roleId,
+            Set<UUID> permissionIds,
+            long version,
+            IdentityAuditContext audit) {
+        store.replaceRolePermissions(roleId, permissionIds, audit.actorAccountId(), clock.instant(), version);
+        RoleView role = store.role(roleId).orElseThrow(ResourceNotFoundException::new);
+        recordAudit(audit, "identity.role.permissions.replace", null, "role", role.id(), role.version());
+        return role;
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<AssignmentView> listAssignments(UUID accountId, String status, Instant effectiveAt, String cursor, int limit) {
-        return page(store.listAssignments(accountId, status, effectiveAt, limit + 1, offset(cursor)), limit);
+        int offset = offset(cursor);
+        return page(store.listAssignments(accountId, status, effectiveAt, limit + 1, offset), limit, offset);
     }
 
     @Override
-    public AssignmentView assignRole(UUID accountId, UUID roleId, UUID departmentId, Instant effectiveFrom,
-                                      Instant effectiveTo, String reason, UUID actorId) {
+    public AssignmentView assignRole(
+            UUID accountId,
+            UUID roleId,
+            UUID departmentId,
+            Instant effectiveFrom,
+            Instant effectiveTo,
+            String reason,
+            IdentityAuditContext audit) {
         if (effectiveTo != null && !effectiveTo.isAfter(effectiveFrom)) {
             throw new IllegalArgumentException("Role assignment interval is invalid");
         }
         store.findAccountById(accountId).orElseThrow(ResourceNotFoundException::new);
         store.role(roleId).orElseThrow(ResourceNotFoundException::new);
         AssignmentView assignment = new AssignmentView(ids.next(), accountId, roleId, departmentId,
-                effectiveFrom, effectiveTo, "ACTIVE", actorId, reason, 0);
+                effectiveFrom, effectiveTo, "ACTIVE", audit.actorAccountId(), reason, 0);
         store.insertAssignment(assignment);
+        recordAudit(audit, "identity.assignment.create", reason, "role_assignment", assignment.id(), assignment.version());
         return assignment;
     }
 
     @Override
-    public AssignmentView revokeAssignment(UUID assignmentId, String reason, long version, UUID actorId) {
-        store.revokeAssignment(assignmentId, reason, actorId, clock.instant(), version);
-        return store.assignment(assignmentId).orElseThrow(ResourceNotFoundException::new);
+    public AssignmentView revokeAssignment(
+            UUID assignmentId,
+            String reason,
+            long version,
+            IdentityAuditContext audit) {
+        store.revokeAssignment(assignmentId, reason, audit.actorAccountId(), clock.instant(), version);
+        AssignmentView assignment = store.assignment(assignmentId).orElseThrow(ResourceNotFoundException::new);
+        recordAudit(audit, "identity.assignment.revoke", reason, "role_assignment", assignment.id(), assignment.version());
+        return assignment;
     }
 
     @Override
@@ -391,6 +467,14 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         });
     }
 
+    private void issueVerificationToken(EmailAddress email, UUID accountId, String requestId, Instant now) {
+        String token = secretHasher.randomToken(32);
+        store.revokePendingTokens(accountId, "VERIFY_EMAIL", now);
+        store.insertToken(ids.next(), accountId, "VERIFY_EMAIL", secretHasher.hash("VERIFY_EMAIL", token), now,
+                now.plus(properties.token().verificationTtl()), requestId);
+        afterCommit(() -> delivery.sendEmailVerificationToken(email.display(), token));
+    }
+
     private ChallengeStateRow consumeChallenge(String normalizedEmail, String purpose, String code, Instant now) {
         ChallengeStateRow challenge = store.pendingChallengeForUpdate(normalizedEmail, purpose)
                 .orElseThrow(() -> new InvalidAuthenticationException(GENERIC_AUTHENTICATION_FAILURE));
@@ -409,15 +493,25 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         return challenge;
     }
 
-    private SessionIssue issueSession(UUID accountId, String sourceIp, String userAgent, Instant now) {
+    private SessionIssue issueSession(
+            AccountRow account, String tabContext, String sourceIp, String userAgent, Instant now) {
+        UUID accountId = account.id();
+        UUID patientRoleId = UUID.fromString("01980000-0000-7000-8000-000000000005");
+        if (store.activeRoleIds(accountId, now).isEmpty()) {
+            store.insertAssignment(new AssignmentView(
+                    ids.next(), accountId, patientRoleId, null, now, null, "ACTIVE", accountId, "Default patient role", 0
+            ));
+        }
         String sessionToken = secretHasher.randomToken(32);
         String csrfToken = secretHasher.randomToken(32);
         SessionRow row = new SessionRow(ids.next(), accountId, secretHasher.hash("SESSION", sessionToken),
-                secretHasher.hash("CSRF", csrfToken), now, now, now.plus(properties.session().absoluteTimeout()),
+                secretHasher.hash("CSRF", csrfToken), secretHasher.hash("SESSION_CONTEXT", tabContext), now, now,
+                now.plus(properties.session().absoluteTimeout()),
                 secretHasher.hash("SOURCE_IP", sourceIp == null ? "unknown" : sourceIp),
                 secretHasher.hash("USER_AGENT", userAgent == null ? "unknown" : userAgent));
         store.insertSession(row);
-        return new SessionIssue(row.toView(store.effectivePermissions(accountId, now), now.plus(properties.session().idleTimeout())),
+        return new SessionIssue(row.toView(account.displayEmail(), store.effectiveRoleCodes(accountId, now),
+                store.effectivePermissions(accountId, now), now.plus(properties.session().idleTimeout())),
                 sessionToken, csrfToken);
     }
 
@@ -453,6 +547,27 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         requireUpdated(store.updateAccount(successful, account.version()));
     }
 
+    private void recordAudit(
+            IdentityAuditContext audit,
+            String action,
+            String reason,
+            String resourceType,
+            UUID resourceId,
+            Long resourceVersion) {
+        securityAudit.record(
+                audit.actorAccountId(),
+                audit.effectiveRoleSnapshot(),
+                action,
+                "SUCCEEDED",
+                reason,
+                resourceType,
+                resourceId,
+                resourceVersion,
+                audit.sessionId(),
+                audit.requestId(),
+                audit.correlationId());
+    }
+
     private static void requireUpdated(int updated) {
         if (updated != 1) throw new StaleVersionException();
     }
@@ -484,11 +599,11 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         }
     }
 
-    private static <T> Page<T> page(List<T> values, int limit) {
+    private static <T> Page<T> page(List<T> values, int limit, int offset) {
         boolean hasMore = values.size() > limit;
         List<T> items = hasMore ? values.subList(0, limit) : values;
         String next = hasMore ? Base64.getUrlEncoder().withoutPadding().encodeToString(
-                Integer.toString(limit).getBytes(java.nio.charset.StandardCharsets.UTF_8)) : null;
+                Integer.toString(offset + items.size()).getBytes(java.nio.charset.StandardCharsets.UTF_8)) : null;
         return new Page<>(List.copyOf(items), next, hasMore);
     }
 }

@@ -1,0 +1,209 @@
+/* ==========================================================================
+   Google Gemini (gemini.google.com/app) - Scoped Pure Black & Radial Glow
+   ========================================================================= */
+
+.gemini-scope {
+  --gemini-bg: #000000;
+  --gemini-surface: #1e1f20;
+  --gemini-surface-container: #262729;
+  --gemini-surface-high: #2f3032;
+  --gemini-outline: rgba(255, 255, 255, 0.08);
+  --gemini-text-primary: #e3e3e3;
+  --gemini-text-secondary: #c4c7c5;
+  --gemini-text-muted: #80868b;
+  --gemini-blue: #8ab4f8;
+
+  /* Scoped color variables for embedded patient & booking components */
+  --color-canvas: #000000;
+  --color-canvas-subtle: #0a0a0c;
+  --color-surface: #18191b;
+  --color-surface-container: #222326;
+  --color-surface-container-high: #2c2d30;
+  --color-surface-container-highest: #36383c;
+  --color-surface-dark: #000000;
+  --color-surface-dark-card: #141517;
+  --color-outline: rgba(255, 255, 255, 0.1);
+  --color-outline-variant: rgba(255, 255, 255, 0.06);
+  --color-primary: #8ab4f8;
+  --color-primary-hover: #aecbfa;
+  --color-primary-container: rgba(138, 180, 248, 0.15);
+  --color-on-primary: #041e49;
+  --color-on-primary-container: #d3e3fd;
+  --color-on-surface: #e3e3e3;
+  --color-on-surface-variant: #c4c7c5;
+  --color-on-surface-muted: #80868b;
+
+  color: #e3e3e3;
+  font-family: 'Google Sans Flex', 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  transition: background 0.3s ease;
+}
+
+/* Background: Pure Black with Expansive Soft Deep Blue Aura matching Google Gemini */
+.gemini-scope.has-glow {
+  background-color: #000000;
+  background-image: radial-gradient(
+    ellipse 1050px 600px at 53% 48%,
+    rgba(29, 78, 216, 0.32) 0%,
+    rgba(24, 62, 175, 0.20) 38%,
+    rgba(15, 35, 110, 0.09) 62%,
+    rgba(5, 12, 40, 0.02) 80%,
+    #000000 92%
+  );
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Pure Black: When chat is active or on other pages */
+.gemini-scope.pure-dark {
+  background-color: #000000;
+  background-image: none;
+}
+
+/* Fluid Animated Sidebar */
+.gemini-scope .gemini-sidebar-rail {
+  height: 100%;
+  transition: width 0.2s cubic-bezier(0.2, 0, 0, 1), background-color 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 30;
+  user-select: none;
+}
+
+.gemini-scope .gemini-sidebar-rail.collapsed {
+  width: 64px;
+  background: transparent;
+}
+
+.gemini-scope .gemini-sidebar-rail.expanded {
+  width: 280px;
+  background-color: #0d0e10;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Icon Buttons on Rail */
+.gemini-scope .gemini-icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.65);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  flex-shrink: 0;
+}
+
+.gemini-scope .gemini-icon-btn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.gemini-scope .gemini-icon-btn.active {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+/* Tooltip Pill like 'Mở thanh bên' */
+.gemini-scope .gemini-tooltip-pill {
+  position: absolute;
+  left: 54px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #e3e3e3;
+  color: #1f1f1f;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 14px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 60;
+  animation: fadeIn 0.12s ease-out;
+}
+
+/* Central Prompt Capsule */
+.gemini-scope .gemini-capsule {
+  width: 100%;
+  max-width: 680px;
+  height: 52px;
+  border-radius: 9999px;
+  background-color: #1a1b1e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  padding: 0 16px 0 18px;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.gemini-scope .gemini-capsule:focus-within {
+  border-color: rgba(255, 255, 255, 0.2);
+  background-color: #222327;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+}
+
+.gemini-scope .gemini-capsule input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #e3e3e3;
+  font-size: 15px;
+  font-family: inherit;
+  padding: 0 12px;
+  line-height: 52px;
+}
+
+.gemini-scope .gemini-capsule input::placeholder {
+  color: #787a7e;
+  font-weight: 400;
+}
+
+/* User Avatar (Purple circle with 'đ' for Đoàn) */
+.gemini-scope .gemini-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #7c4dff;
+  color: #ffffff;
+  font-weight: 500;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+  line-height: 1;
+}
+
+.gemini-scope .gemini-avatar:hover {
+  transform: scale(1.06);
+}
+
+/* Custom minimal scrollbar */
+.gemini-dark-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.gemini-dark-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.gemini-dark-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+
+.gemini-dark-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

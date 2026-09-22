@@ -213,7 +213,7 @@ create table break_glass_grant (
     grantor_account_id uuid,
     reviewer_account_id uuid,
     requester_effective_role_snapshot jsonb not null,
-    patient_id uuid not null,
+    patient_id uuid not null, 
     purpose varchar(500) not null,
     reason varchar(500) not null,
     requested_at timestamptz not null,

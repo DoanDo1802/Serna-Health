@@ -17,4 +17,21 @@ public interface SecurityAuditRecorder {
             String sessionId,
             String requestId,
             String correlationId);
+
+    default void record(
+            UUID actorAccountId,
+            Map<String, Object> roleSnapshot,
+            UUID patientId,
+            String action,
+            String outcome,
+            String reason,
+            String resourceType,
+            UUID resourceId,
+            Long resourceVersion,
+            String sessionId,
+            String requestId,
+            String correlationId) {
+        record(actorAccountId, roleSnapshot, action, outcome, reason, resourceType, resourceId,
+                resourceVersion, sessionId, requestId, correlationId);
+    }
 }
