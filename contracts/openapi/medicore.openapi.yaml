@@ -452,8 +452,6 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
-            X-CSRF-Token:
-              $ref: '#/components/headers/CsrfToken'
           content:
             application/json:
               schema:
@@ -22195,6 +22193,10 @@ components:
       schema:
         type: string
         pattern: ^"[0-9]+"$
+    CsrfToken:
+      description: Cryptographically random token for CSRF defense on mutating requests.
+      schema:
+        type: string
   responses:
     Resource:
       description: Resource response.

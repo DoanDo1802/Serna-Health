@@ -17007,6 +17007,8 @@ components:
       $ref: ./components/common.yaml#/headers/CorrelationId
     ETag:
       $ref: ./components/common.yaml#/headers/ETag
+    CsrfToken:
+      $ref: ./components/common.yaml#/headers/CsrfToken
   responses:
     Resource:
       $ref: ./components/common.yaml#/responses/Resource

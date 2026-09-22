@@ -261,13 +261,15 @@ export function BookingPage({ onRescheduleComplete, onCancelReschedule }: Bookin
   const serviceName = (serviceId: string) =>
     services.find((service) => service.id === serviceId)?.name || 'Dịch vụ khám';
 
+  const [nowTimestamp] = useState(() => Date.now());
+
   const isSlotPast = (startAt: string, disabledReason?: string | null, localDate?: string) => {
     if (disabledReason === 'SLOT_PAST') return true;
     const todayStr = getRelativeDate(0);
     if (localDate && localDate < todayStr) return true;
     const start = new Date(startAt);
     if (!isNaN(start.getTime())) {
-      if (start.getTime() <= Date.now()) return true;
+      if (start.getTime() <= nowTimestamp) return true;
       const slotYear = start.getFullYear();
       const slotMonth = String(start.getMonth() + 1).padStart(2, '0');
       const slotDay = String(start.getDate()).padStart(2, '0');

@@ -32,7 +32,7 @@ import vn.medicore.MediCoreApplication;
 @ActiveProfiles("test")
 class OpenApiIT {
 
-    private static final int EXPECTED_OPERATION_COUNT = 174; // V24 work-schedule, aggregate booking, reschedule-catalog, activateDepartment, and deleteDepartment operations added.
+    private static final int EXPECTED_OPERATION_COUNT = 192; // Facility layout, room capabilities, service prices, and clinical workflow operations added.
 
     @Container
     @ServiceConnection

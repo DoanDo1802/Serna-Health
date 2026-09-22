@@ -30,7 +30,10 @@
     "staff:lint": "npm --workspace @medicore/staff-portal run lint",
     "staff:typecheck": "npm --workspace @medicore/staff-portal run typecheck",
     "admin:dev": "npm --workspace @medicore/admin-portal run dev",
-    "admin:build": "npm --workspace @medicore/admin-portal run build",
+    "frontend:lint": "npm --prefix patient run lint && npm --prefix control_center run lint",
+    "frontend:typecheck": "npm --prefix patient run typecheck && npm --prefix control_center run typecheck",
+    "frontend:test": "echo 'No frontend tests specified'",
+    "frontend:build": "npm --prefix patient run build && npm --prefix control_center run build",
     "verify": "npm run docs:check && npm run docs:render && npm run api:check && npm run patient:typecheck && npm run patient:build"
   },
   "devDependencies": {

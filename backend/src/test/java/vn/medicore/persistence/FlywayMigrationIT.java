@@ -88,9 +88,22 @@ class FlywayMigrationIT {
                     "practitioner_profile",
                     // V24 aggregate booking and doctor schedules
                     "booking_session",
-                    "work_schedule");
+                    "work_schedule",
+                    // V28 reception clinical doctor workflow
+                    "visit",
+                    "check_in",
+                    "encounter",
+                    "encounter_participant",
+                    "clinical_note",
+                    "clinical_note_version",
+                    // V29 & V31 facility layout
+                    "room_department",
+                    "room_service",
+                    "facility_floor",
+                    "facility_floor_element",
+                    "facility_floor_symbol");
             assertThat(singleValue(statement, "select count(*) from role")).isEqualTo("6");
-            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("67");
+            assertThat(singleValue(statement, "select count(*) from permission")).isEqualTo("85");
             assertThat(singleValue(statement, """
                     select count(*) from permission
                     where action in ('work_schedule.create', 'work_schedule.read',

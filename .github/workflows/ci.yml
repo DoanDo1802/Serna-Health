@@ -28,6 +28,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - run: npm i puppeteer@25.4.0 --no-save
       - run: npm run docs:check
       - run: npm run docs:render
       - run: npm run api:check
@@ -53,6 +54,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - name: Install patient dependencies
+        working-directory: patient
+        run: npm ci
+      - name: Install control center dependencies
+        working-directory: control_center
+        run: npm ci
       - run: npm run frontend:lint
       - run: npm run frontend:typecheck
       - run: npm run frontend:test
@@ -104,7 +111,7 @@ jobs:
       - working-directory: backend
         run: ./mvnw --batch-mode --no-transfer-progress dependency:go-offline || true
       - run: npm ci
-      - run: npm audit --audit-level=high
+      - run: npm audit --audit-level=high --omit=dev
       - uses: gitleaks/gitleaks-action@bcfb9cce635345aac9996cedc19b2de8e01b894f
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

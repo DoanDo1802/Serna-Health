@@ -398,8 +398,6 @@ paths:
               $ref: "#/components/headers/RequestId"
             X-Correlation-Id:
               $ref: "#/components/headers/CorrelationId"
-            X-CSRF-Token:
-              $ref: "#/components/headers/CsrfToken"
           content:
             application/json:
               schema:
