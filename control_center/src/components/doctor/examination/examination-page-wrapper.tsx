@@ -60,8 +60,16 @@ export function ExaminationPageWrapper({ patientId, appointmentId, encounterId }
   }
 
   const doctor = appointment ? doctors.find((d) => d.id === appointment.doctorId) : undefined
-  const specialtyId = appointment?.specialtyId || doctor?.specialtyId
-  const specialty = specialtyId ? specialties.find((s) => s.id === specialtyId) : undefined
+  const specialtyId = appointment?.specialtyId || (appointment as any)?.departmentId || doctor?.specialtyId
+  const specialty =
+    specialties.find(
+      (s) =>
+        (specialtyId && s.id === specialtyId) ||
+        (appointment?.departmentName && s.name.trim().toLowerCase() === appointment.departmentName.trim().toLowerCase())
+    ) ||
+    (specialtyId ? specialties.find((s) => s.id === specialtyId) : undefined) ||
+    (specialties.length === 1 ? specialties[0] : undefined) ||
+    specialties.find((s) => s.examTemplate?.fields && s.examTemplate.fields.length > 0)
 
   return <ExaminationPage patient={displayPatient} appointment={appointment} specialty={specialty} encounterId={encounterId} />
 }

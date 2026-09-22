@@ -28,6 +28,11 @@ function readContext(): string | null {
   try {
     const value = window.sessionStorage.getItem(CONTEXT_KEY)
     if (value && CONTEXT_PATTERN.test(value)) return value
+    const fallback = window.localStorage.getItem(CONTEXT_KEY)
+    if (fallback && CONTEXT_PATTERN.test(fallback)) {
+      window.sessionStorage.setItem(CONTEXT_KEY, fallback)
+      return fallback
+    }
   } catch {
     // sessionStorage can be unavailable in private or embedded browser contexts.
   }
@@ -38,6 +43,7 @@ function writeContext(context: string): void {
   volatileContext = context
   try {
     window.sessionStorage.setItem(CONTEXT_KEY, context)
+    window.localStorage.setItem(CONTEXT_KEY, context)
   } catch {
     // Keep non-secret selector in memory for this tab.
   }
@@ -103,20 +109,43 @@ export function currentTabContext(): string | null {
 }
 
 export function getCsrfToken(context = readContext()): string | null {
-  if (!context || typeof window === "undefined") return null
+  if (typeof window === "undefined") return null
   try {
-    return window.sessionStorage.getItem(csrfKey(context)) ?? volatileCsrfToken
+    if (context) {
+      const sessionToken = window.sessionStorage.getItem(csrfKey(context))
+      if (sessionToken) return sessionToken
+      const localToken = window.localStorage.getItem(csrfKey(context))
+      if (localToken) return localToken
+    }
+    const sessionLatest = window.sessionStorage.getItem("medicore.csrf.latest")
+    if (sessionLatest) return sessionLatest
+    const localLatest = window.localStorage.getItem("medicore.csrf.latest")
+    if (localLatest) return localLatest
+    return volatileCsrfToken
   } catch {
     return volatileCsrfToken
   }
 }
 
 export function setCsrfToken(token: string | null, context = readContext()): void {
-  if (!context || typeof window === "undefined") return
   volatileCsrfToken = token
+  if (typeof window === "undefined") return
   try {
-    if (token) window.sessionStorage.setItem(csrfKey(context), token)
-    else window.sessionStorage.removeItem(csrfKey(context))
+    if (token) {
+      if (context) {
+        window.sessionStorage.setItem(csrfKey(context), token)
+        window.localStorage.setItem(csrfKey(context), token)
+      }
+      window.sessionStorage.setItem("medicore.csrf.latest", token)
+      window.localStorage.setItem("medicore.csrf.latest", token)
+    } else {
+      if (context) {
+        window.sessionStorage.removeItem(csrfKey(context))
+        window.localStorage.removeItem(csrfKey(context))
+      }
+      window.sessionStorage.removeItem("medicore.csrf.latest")
+      window.localStorage.removeItem("medicore.csrf.latest")
+    }
   } catch {
     // Keep per-tab CSRF token in memory when storage is unavailable.
   }
@@ -131,6 +160,7 @@ export function rotateTabContext(): string {
   if (previous) {
     try {
       window.sessionStorage.removeItem(csrfKey(previous))
+      window.localStorage.removeItem(csrfKey(previous))
     } catch {
       // sessionStorage can be unavailable in private or embedded browser contexts.
     }

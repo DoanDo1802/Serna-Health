@@ -975,6 +975,7 @@ schemas:
       name: { type: string, minLength: 1, maxLength: 200 }
       effectiveFrom: { type: string, format: date-time }
       effectiveTo: { type: [string, 'null'], format: date-time }
+      examTemplate: { type: [object, 'null'] }
   UpdateDepartmentRequest:
     type: object
     additionalProperties: false
@@ -984,6 +985,7 @@ schemas:
       name: { type: string, minLength: 1, maxLength: 200 }
       effectiveFrom: { type: string, format: date-time }
       effectiveTo: { type: [string, 'null'], format: date-time }
+      examTemplate: { type: [object, 'null'] }
   Department:
     type: object
     additionalProperties: false
@@ -996,6 +998,7 @@ schemas:
       active: { type: boolean }
       effectiveFrom: { type: string, format: date-time }
       effectiveTo: { type: [string, 'null'], format: date-time }
+      examTemplate: { type: [object, 'null'] }
       createdAt: { type: string, format: date-time }
       updatedAt: { type: string, format: date-time }
   DepartmentPage:

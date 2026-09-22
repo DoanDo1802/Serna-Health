@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -37,6 +37,7 @@ import { Button } from "@/components/base/ui/button"
 import { Input } from "@/components/base/ui/input"
 import { Textarea } from "@/components/base/ui/textarea"
 import { Checkbox } from "@/components/base/ui/checkbox"
+import { Switch } from "@/components/base/ui/switch"
 import { Card } from "@/components/base/ui/card"
 import {
   Select,
@@ -49,8 +50,7 @@ import { useData } from "@/components/base/providers/data-provider"
 import { useAuth } from "@/components/base/providers/auth-provider"
 import type { Appointment, Patient, Specialty, SpecialtyExamTemplateField } from "@/types/medical"
 import { useReactToPrint } from "react-to-print"
-import { useRef } from "react"
-import { receptionApi, clinicalCareApi, aiApi, treatmentTemplatesApi, type ClinicalNote, type ClinicalNoteVersion } from "@/lib/api"
+import { receptionApi, clinicalCareApi, aiApi, treatmentTemplatesApi, departmentsApi, type ClinicalNote, type ClinicalNoteVersion } from "@/lib/api"
 import { ExamTemplateRenderer } from "@/components/shared/exam-template-renderer"
 
 const parseBoldItalicAndArrows = (text: string): React.ReactNode[] => {
@@ -166,6 +166,8 @@ export function ExaminationPage({ patient, appointment, specialty, encounterId }
   const {
     icdCodes,
     medicines,
+    specialties,
+    ensureSpecialtiesLoaded,
     addExaminationRecord,
     addPrescription,
     updateAppointment,
@@ -176,10 +178,60 @@ export function ExaminationPage({ patient, appointment, specialty, encounterId }
     ensureIcdLoaded
   } = useData()
 
+  const [currentSpecialty, setCurrentSpecialty] = useState<Specialty | undefined>(specialty)
+
   useEffect(() => {
     ensureMedicinesLoaded()
     ensureIcdLoaded()
-  }, [ensureMedicinesLoaded, ensureIcdLoaded])
+    ensureSpecialtiesLoaded()
+  }, [ensureMedicinesLoaded, ensureIcdLoaded, ensureSpecialtiesLoaded])
+
+  useEffect(() => {
+    if (specialty) setCurrentSpecialty(specialty)
+  }, [specialty])
+
+  useEffect(() => {
+    if (currentSpecialty?.examTemplate?.fields && currentSpecialty.examTemplate.fields.length > 0) return
+    if (specialty?.examTemplate?.fields && specialty.examTemplate.fields.length > 0) {
+      setCurrentSpecialty(specialty)
+      return
+    }
+
+    const deptId = appointment?.specialtyId || (appointment as any)?.departmentId
+    const deptName = appointment?.departmentName
+    const found = specialties.find((s) =>
+      (deptId && s.id === deptId) ||
+      (deptName && s.name.trim().toLowerCase() === deptName.trim().toLowerCase())
+    )
+    if (found) {
+      setCurrentSpecialty(found)
+      return
+    }
+
+    if (deptId) {
+      departmentsApi.get(deptId).then((res) => {
+        if (res?.data) {
+          setCurrentSpecialty({
+            id: res.data.id,
+            name: res.data.name,
+            code: res.data.code,
+            description: "",
+            doctorCount: 0,
+            status: res.data.active ? "active" : "inactive",
+            examTemplate: res.data.examTemplate ? { fields: Array.isArray(res.data.examTemplate.fields) ? res.data.examTemplate.fields : [] } : { fields: [] },
+            version: res.data.version,
+          })
+        }
+      }).catch(() => {})
+    } else if (specialties.length > 0 && !currentSpecialty) {
+      const withTemplate = specialties.find((s) => s.examTemplate?.fields && s.examTemplate.fields.length > 0)
+      if (withTemplate) {
+        setCurrentSpecialty(withTemplate)
+      } else {
+        setCurrentSpecialty(specialties[0])
+      }
+    }
+  }, [specialty, currentSpecialty, appointment?.specialtyId, (appointment as any)?.departmentId, appointment?.departmentName, specialties])
 
   const [resolvedEncounterId, setResolvedEncounterId] = useState<string | undefined>(encounterId)
   const [encounterEtag, setEncounterEtag] = useState<string>("\"0\"")
@@ -196,7 +248,7 @@ export function ExaminationPage({ patient, appointment, specialty, encounterId }
 
   useEffect(() => {
     setSpecialtyExamValues({})
-  }, [specialty?.id])
+  }, [currentSpecialty?.id])
 
   useEffect(() => {
     if (encounterId) setResolvedEncounterId(encounterId)
@@ -213,7 +265,18 @@ export function ExaminationPage({ patient, appointment, specialty, encounterId }
         if (!currentEncounterId && appointment?.id) {
           try {
             const checkInRes = await receptionApi.checkIn(appointment.id, "Bắt đầu lượt khám")
-            if (checkInRes?.encounter) {
+            if (checkInRes?.visitId) {
+              const encPage = await receptionApi.listVisitEncounters(checkInRes.visitId)
+              if (encPage?.items && encPage.items.length > 0) {
+                const enc = encPage.items[0]
+                currentEncounterId = enc.id
+                currentEtag = `"${enc.version}"`
+                if (active) {
+                  setResolvedEncounterId(currentEncounterId)
+                  setEncounterEtag(currentEtag)
+                }
+              }
+            } else if (checkInRes?.encounter) {
               currentEncounterId = checkInRes.encounter.id
               currentEtag = `"${checkInRes.encounter.version}"`
               if (active) {
@@ -224,12 +287,52 @@ export function ExaminationPage({ patient, appointment, specialty, encounterId }
           } catch (e) {
             console.warn("Không thể tự động check-in qua receptionApi:", e)
           }
+        }
+
+        if (!currentEncounterId && patient?.id) {
+          try {
+            const docEncPage = await receptionApi.listDoctorEncounters()
+            const matchingEnc = docEncPage?.items?.find(
+              (e) => e.patientId === patient.id && e.status !== "COMPLETED" && e.status !== "CANCELLED"
+            )
+            if (matchingEnc) {
+              currentEncounterId = matchingEnc.id
+              currentEtag = `"${matchingEnc.version}"`
+              if (active) {
+                setResolvedEncounterId(currentEncounterId)
+                setEncounterEtag(currentEtag)
+              }
+            }
+          } catch (e) {
+            console.warn("Không thể tìm ca khám của bác sĩ:", e)
+          }
         } else if (currentEncounterId) {
           try {
             const encRes = await receptionApi.getEncounter(currentEncounterId)
             if (encRes?.data && active) {
               currentEtag = encRes.etag || `"${encRes.data.version}"`
               setEncounterEtag(currentEtag)
+              if (encRes.data.departmentId && !currentSpecialty) {
+                const found = specialties.find((s) => s.id === encRes.data.departmentId)
+                if (found) {
+                  setCurrentSpecialty(found)
+                } else {
+                  departmentsApi.get(encRes.data.departmentId).then((res) => {
+                    if (res?.data && active) {
+                      setCurrentSpecialty({
+                        id: res.data.id,
+                        name: res.data.name,
+                        code: res.data.code,
+                        description: "",
+                        doctorCount: 0,
+                        status: res.data.active ? "active" : "inactive",
+                        examTemplate: res.data.examTemplate ? { fields: Array.isArray(res.data.examTemplate.fields) ? res.data.examTemplate.fields : [] } : { fields: [] },
+                        version: res.data.version,
+                      })
+                    }
+                  }).catch(() => {})
+                }
+              }
             }
           } catch (e) {
             console.warn("Không thể tải thông tin encounter:", e)
@@ -257,6 +360,7 @@ export function ExaminationPage({ patient, appointment, specialty, encounterId }
                   if (content.followUpDate) setFollowUpDate(content.followUpDate)
                   if (content.clinicalNote) setExaminationNotes(content.clinicalNote)
                   if (Array.isArray(content.medicines) && content.medicines.length > 0) {
+                    setHasPrescription(true)
                     setPrescriptionItems(content.medicines.map((m: any) => ({
                       medicineId: String(m.medicineId),
                       medicineName: m.medicineName,
@@ -266,6 +370,8 @@ export function ExaminationPage({ patient, appointment, specialty, encounterId }
                       notes: m.notes || "",
                       isFromTemplate: Boolean(m.isFromTemplate),
                     })))
+                  } else if (content.additionalData?.hasPrescription) {
+                    setHasPrescription(true)
                   }
                   if (content.additionalData?.specialtyExamValues) {
                     setSpecialtyExamValues(content.additionalData.specialtyExamValues)
@@ -408,6 +514,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
   const sendQuickQuestion = (question: string) => {
     setInput(question);
   };
+  const [hasPrescription, setHasPrescription] = useState(false)
   const [prescriptionItems, setPrescriptionItems] = useState<
     Array<{ medicineId: string; medicineName: string; quantity: number; unit: string; dosage: string; notes?: string; isFromTemplate?: boolean }>
   >([])
@@ -427,7 +534,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
   const [dosage, setDosage] = useState("")
   const [medicineNotes, setMedicineNotes] = useState("")
 
-  const selectedIcd = icdCodes.find((c) => c.id === icdCode)
+  const selectedIcd = icdCodes.find((c) => c.id === icdCode || c.code === icdCode)
 
   useEffect(() => {
     const loadTemplates = async () => {
@@ -462,7 +569,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
     void loadTemplates()
   }, [selectedIcd?.code])
   const selectedMedicine = medicines.find((m) => m.id === selectedMedicineId)
-  const specialtyFields = specialty?.examTemplate?.fields ?? []
+  const specialtyFields = currentSpecialty?.examTemplate?.fields ?? []
 
   const setSpecialtyExamValue = (fieldId: string, value: unknown) => {
     setSpecialtyExamValues((prev) => ({ ...prev, [fieldId]: value }))
@@ -543,6 +650,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
 
   const handleAddMedicine = () => {
     if (selectedMedicineId && selectedMedicine && quantity && dosage) {
+      setHasPrescription(true)
       setPrescriptionItems((prev) => [
         ...prev,
         {
@@ -598,6 +706,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
       }))
 
     if (itemsToAdd.length > 0) {
+      setHasPrescription(true)
       setPrescriptionItems((prev) => [...prev, ...itemsToAdd])
     }
 
@@ -639,10 +748,10 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
   });
   const handleSaveExamination = async (complete: boolean = false) => {
     if (complete) {
-      if (!icdCode || !mainDiagnosis || !symptoms || !physicalExam || !treatment) {
+      if (!mainDiagnosis || !symptoms || !physicalExam || !treatment) {
         toast({
           title: "Thiếu thông tin bắt buộc",
-          description: "Vui lòng điền đầy đủ các trường: Triệu chứng, Khám lâm sàng, Chẩn đoán, Hướng điều trị",
+          description: "Vui lòng điền đầy đủ các trường: Triệu chứng, Khám lâm sàng, Chẩn đoán chính thức, Hướng điều trị",
           variant: "destructive",
         })
         return
@@ -681,19 +790,40 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
       if (!currentEncounterId && appointment?.id) {
         try {
           const checkInRes = await receptionApi.checkIn(appointment.id, "Bắt đầu lượt khám")
-          if (checkInRes?.encounter) {
+          if (checkInRes?.visitId) {
+            const encPage = await receptionApi.listVisitEncounters(checkInRes.visitId)
+            if (encPage?.items && encPage.items.length > 0) {
+              const enc = encPage.items[0]
+              currentEncounterId = enc.id
+              currentEncounterEtag = `"${enc.version}"`
+              setResolvedEncounterId(currentEncounterId)
+              setEncounterEtag(currentEncounterEtag)
+            }
+          } else if (checkInRes?.encounter) {
             currentEncounterId = checkInRes.encounter.id
             currentEncounterEtag = `"${checkInRes.encounter.version}"`
             setResolvedEncounterId(currentEncounterId)
             setEncounterEtag(currentEncounterEtag)
-            if (checkInRes.encounter.status === "PLANNED") {
-              const startRes = await receptionApi.startEncounter(currentEncounterId, currentEncounterEtag)
-              currentEncounterEtag = startRes.etag || `"${startRes.data.version}"`
-              setEncounterEtag(currentEncounterEtag)
-            }
           }
         } catch (e) {
-          console.warn("Không thể check-in/start encounter:", e)
+          console.warn("Không thể check-in encounter:", e)
+        }
+      }
+
+      if (!currentEncounterId && patient?.id) {
+        try {
+          const docEncPage = await receptionApi.listDoctorEncounters()
+          const matchingEnc = docEncPage?.items?.find(
+            (e) => e.patientId === patient.id && e.status !== "COMPLETED" && e.status !== "CANCELLED"
+          )
+          if (matchingEnc) {
+            currentEncounterId = matchingEnc.id
+            currentEncounterEtag = `"${matchingEnc.version}"`
+            setResolvedEncounterId(currentEncounterId)
+            setEncounterEtag(currentEncounterEtag)
+          }
+        } catch (e) {
+          console.warn("Không thể tìm ca khám của bác sĩ:", e)
         }
       }
 
@@ -706,12 +836,28 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
         return
       }
 
+      // Đảm bảo Encounter đã ở trạng thái IN_PROGRESS
+      try {
+        const encRes = await receptionApi.getEncounter(currentEncounterId)
+        if (encRes?.data) {
+          currentEncounterEtag = encRes.etag || `"${encRes.data.version}"`
+          setEncounterEtag(currentEncounterEtag)
+          if (encRes.data.status === "PLANNED") {
+            const startRes = await receptionApi.startEncounter(currentEncounterId, currentEncounterEtag)
+            currentEncounterEtag = startRes.etag || `"${startRes.data.version}"`
+            setEncounterEtag(currentEncounterEtag)
+          }
+        }
+      } catch (e) {
+        console.warn("Không thể kiểm tra/bắt đầu encounter:", e)
+      }
+
       const noteContent = {
         symptoms,
         physicalExamination: physicalExam,
         testResults: testResults || undefined,
-        mainDiagnosis: selectedIcd?.name || mainDiagnosis,
-        icdCode: selectedIcd?.code ?? icdCode,
+        mainDiagnosis: mainDiagnosis || selectedIcd?.name || "",
+        icdCode: selectedIcd?.code || (icdCode ? icdCode : undefined),
         clinicalNote: examinationNotes || undefined,
         historySummary: appointment?.symptomsInitial || undefined,
         careAdvice: treatment,
@@ -719,20 +865,23 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
         diagnoses: (selectedIcd?.code || icdCode)
           ? [{ icd10Code: selectedIcd?.code ?? icdCode, isPrimary: true }]
           : [],
-        medicines: prescriptionItems.map((item) => ({
-          medicineId: item.medicineId,
-          medicineName: item.medicineName,
-          quantity: item.quantity,
-          unit: item.unit,
-          dosageInstruction: [item.dosage, item.notes].filter(Boolean).join(" - "),
-          dosage: item.dosage,
-          notes: item.notes,
-          isFromTemplate: Boolean(item.isFromTemplate),
-        })),
+        medicines: hasPrescription
+          ? prescriptionItems.map((item) => ({
+              medicineId: item.medicineId,
+              medicineName: item.medicineName,
+              quantity: item.quantity,
+              unit: item.unit,
+              dosageInstruction: [item.dosage, item.notes].filter(Boolean).join(" - "),
+              dosage: item.dosage,
+              notes: item.notes,
+              isFromTemplate: Boolean(item.isFromTemplate),
+            }))
+          : [],
         additionalData: {
           specialtyExamValues,
-          specialtyExamTemplate: specialty?.examTemplate,
-          prescriptionNotes,
+          specialtyExamTemplate: currentSpecialty?.examTemplate,
+          prescriptionNotes: hasPrescription ? prescriptionNotes : "",
+          hasPrescription,
         },
       }
 
@@ -769,8 +918,8 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
         patientId: patient.id,
         doctorId,
         examinationDate: today,
-        icdCode: selectedIcd?.code ?? icdCode,
-        mainDiagnosis: selectedIcd?.name || mainDiagnosis,
+        icdCode: selectedIcd?.code || (icdCode ? icdCode : undefined),
+        mainDiagnosis: mainDiagnosis || selectedIcd?.name || "",
         symptoms,
         physicalExamination: physicalExam,
         testResults: testResults || undefined,
@@ -778,11 +927,11 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
         followUpDate: followUpDate || undefined,
         notes: examinationNotes,
         specialtyExamValues,
-        specialtyExamTemplate: specialty?.examTemplate,
+        specialtyExamTemplate: currentSpecialty?.examTemplate,
         createdAt: today,
       })
 
-      if (prescriptionItems.length > 0) {
+      if (hasPrescription && prescriptionItems.length > 0) {
         addPrescription({
           appointmentId: appointmentRecordId,
           patientId: patient.id,
@@ -803,12 +952,21 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
         setActiveVersion(finRes.data)
         setVersionEtag(finRes.etag || `"${finRes.data.version}"`)
 
-        await receptionApi.completeEncounter(currentEncounterId, currentEncounterEtag)
+        // Lấy ETag mới nhất của encounter trước khi gọi complete
+        let finalEncounterEtag = currentEncounterEtag
+        try {
+          const latestEnc = await receptionApi.getEncounter(currentEncounterId)
+          if (latestEnc?.etag) {
+            finalEncounterEtag = latestEnc.etag
+          }
+        } catch {}
+
+        await receptionApi.completeEncounter(currentEncounterId, finalEncounterEtag)
 
         if (appointment?.id) {
           await updateAppointment(appointment.id, {
             ...appointment,
-            status: "COMPLETED",
+            status: "FULFILLED",
           })
         }
         await updatePatient(patient.id, {
@@ -926,7 +1084,7 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
       recommendations.push("Xem xét lập hồ sơ bệnh mãn tính")
     }
 
-    if (patientRecords.some((r) => r.icdCode.includes("E"))) {
+    if (patientRecords.some((r) => r.icdCode?.includes("E"))) {
       recommendations.push("Tư vấn dinh dưỡng và tập luyện")
     }
 
@@ -1021,11 +1179,11 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
                 icdCode={selectedIcd?.code ?? ""}
                 treatment={treatment}
                 followUpDate={followUpDate}
-                prescriptionItems={prescriptionItems.map((item) => ({ ...item, quantity: String(item.quantity) }))}
-                prescriptionNotes={prescriptionNotes}
+                prescriptionItems={hasPrescription ? prescriptionItems.map((item) => ({ ...item, quantity: String(item.quantity) })) : []}
+                prescriptionNotes={hasPrescription ? prescriptionNotes : ""}
                 specialtyFields={specialtyFields}
                 specialtyExamValues={specialtyExamValues}
-                specialtyName={specialty?.name}
+                specialtyName={currentSpecialty?.name}
                 doctorName={user?.name || undefined}
                 onBack={() => setPreviewMode(false)}
                 onPrint={handlePrint}
@@ -1220,15 +1378,15 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
                   {/* Header */}
                   <div className="bg-muted/30 px-6 py-4">
                     <h2 className="text-base font-semibold text-foreground">
-                      III. CHUYÊN KHOA{specialty?.name ? `: ${specialty.name.toUpperCase()}` : ""}
+                      III. CHUYÊN KHOA{currentSpecialty?.name ? `: ${currentSpecialty.name.toUpperCase()}` : ""}
                     </h2>
                   </div>
 
                   {/* Content */}
                   <div className="p-8 space-y-6">
-                    {specialty?.examTemplate ? (
+                    {currentSpecialty?.examTemplate && currentSpecialty.examTemplate.fields.length > 0 ? (
                       <ExamTemplateRenderer
-                        template={specialty.examTemplate}
+                        template={currentSpecialty.examTemplate}
                         value={specialtyExamValues}
                         onChange={setSpecialtyExamValues}
                       />
@@ -1266,16 +1424,33 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
                   {/* Content */}
                   <div className="p-8 space-y-6">
                     <div>
-                      <label className="block text-xs font-medium text-muted-foreground mb-2">
-                        Mã ICD-10 *
-                      </label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-medium text-muted-foreground">
+                          Mã ICD-10 (Tùy chọn)
+                        </label>
+                        {icdCode && (
+                          <button
+                            type="button"
+                            onClick={() => setIcdCode("")}
+                            className="text-[11px] text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            Bỏ chọn mã ICD
+                          </button>
+                        )}
+                      </div>
 
-                      <Select value={icdCode} onValueChange={setIcdCode}>
+                      <Select
+                        value={icdCode || "__none__"}
+                        onValueChange={(val) => setIcdCode(val === "__none__" ? "" : val)}
+                      >
                         <SelectTrigger className="w-full bg-card border-border/80">
-                          <SelectValue placeholder="Tìm và chọn mã ICD-10" />
+                          <SelectValue placeholder="Tìm và chọn mã ICD-10 (Không bắt buộc)" />
                         </SelectTrigger>
 
                         <SelectContent>
+                          <SelectItem value="__none__">
+                            -- Không chọn mã ICD-10 --
+                          </SelectItem>
                           {icdCodes.map((code) => (
                             <SelectItem key={code.id} value={code.id}>
                               {code.code} - {code.name}
@@ -1347,225 +1522,266 @@ Tôi hỗ trợ cung cấp thông tin tham khảo nhanh cho bác sĩ:
                 {/* Card 5: Đơn thuốc */}
                 <div>
                   {/* Header */}
-                  <div className="bg-primary/5 px-6 py-4">
-                    <h2 className="text-base font-semibold text-primary">
-                      VI. ĐƠN THUỐC
-                    </h2>
+                  <div className="bg-primary/5 px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-base font-semibold text-primary">
+                        VI. ĐƠN THUỐC
+                      </h2>
+                      <span
+                        className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
+                          hasPrescription
+                            ? "bg-primary/10 text-primary"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {hasPrescription ? "Có kê đơn" : "Không kê đơn"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="has-prescription-switch"
+                        checked={hasPrescription}
+                        onCheckedChange={setHasPrescription}
+                      />
+                      <label
+                        htmlFor="has-prescription-switch"
+                        className="text-xs font-medium text-foreground cursor-pointer select-none"
+                      >
+                        Kê đơn thuốc
+                      </label>
+                    </div>
                   </div>
 
                   {/* Content */}
                   <div className="p-8 space-y-6">
-
-                    {/* Add Medicine */}
-
-                    <div className="rounded-lg border bg-slate-50 p-6 space-y-5">
-                      {/* Combo thuốc */}
-                      <div>
-                        <label className="block text-xs font-medium text-muted-foreground mb-2">
-                          Combo thuốc
-                        </label>
-
-                        <Select
-                          value={selectedTemplateId}
-                          onValueChange={handleTemplateSelect}
-                        >
-                          <SelectTrigger className="w-full bg-card">
-                            <SelectValue placeholder="Chọn combo thuốc" />
-                          </SelectTrigger>
-
-                          <SelectContent>
-                            {treatmentTemplates.map((template) => (
-                              <SelectItem
-                                key={template.id}
-                                value={template.id}
-                              >
-                                {template.templateName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                        <div>
-                          <label className="block text-xs font-medium text-muted-foreground mb-2">
-                            Tên thuốc
-                          </label>
-
-                          <Select
-                            value={selectedMedicineId}
-                            onValueChange={setSelectedMedicineId}
-                          >
-                            <SelectTrigger className="w-full bg-card">
-                              <SelectValue placeholder="Chọn thuốc" />
-                            </SelectTrigger>
-
-                            <SelectContent>
-                              {medicines.map((med) => (
-                                <SelectItem key={med.id} value={med.id}>
-                                  {med.name} ({med.unit})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-muted-foreground mb-2">
-                            Số lượng
-                          </label>
-
-                          <Input
-                            type="number"
-                            value={quantity}
-                            onChange={(e) => setQuantity(e.target.value)}
-                            placeholder="Nhập số lượng"
-                          />
-                        </div>
-
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-muted-foreground mb-2">
-                          Liều dùng
-                        </label>
-
-                        <Input
-                          value={dosage}
-                          onChange={(e) => setDosage(e.target.value)}
-                          placeholder="Ví dụ: 1 viên x 2 lần/ngày"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-muted-foreground mb-2">
-                          Lưu ý
-                        </label>
-
-                        <Input
-                          value={medicineNotes}
-                          onChange={(e) => setMedicineNotes(e.target.value)}
-                          placeholder="Lưu ý khi dùng thuốc"
-                        />
-                      </div>
-
-                      <div className="flex justify-end">
-
+                    {!hasPrescription ? (
+                      <div className="rounded-lg border border-dashed border-border bg-muted/20 p-8 text-center space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                          Không kê đơn thuốc trong lần khám này (hoặc bệnh nhân điều trị không dùng thuốc).
+                        </p>
                         <Button
-                          onClick={handleAddMedicine}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setHasPrescription(true)}
+                          className="text-xs"
                         >
-                          + Thêm thuốc
+                          + Kê đơn thuốc cho bệnh nhân
                         </Button>
-
                       </div>
+                    ) : (
+                      <>
+                        {/* Add Medicine */}
+                        <div className="rounded-lg border bg-slate-50 p-6 space-y-5">
+                          {/* Combo thuốc */}
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-2">
+                              Combo thuốc
+                            </label>
 
-                    </div>
+                            <Select
+                              value={selectedTemplateId}
+                              onValueChange={handleTemplateSelect}
+                            >
+                              <SelectTrigger className="w-full bg-card">
+                                <SelectValue placeholder="Chọn combo thuốc" />
+                              </SelectTrigger>
 
-                    {/* Danh sách thuốc */}
-                    {prescriptionItems.length > 0 && (
-
-                      <div className="overflow-x-auto">
-
-                        <table className="w-full border border-gray-300 text-sm">
-
-                          <thead className="bg-slate-100">
-
-                            <tr>
-
-                              <th className="border p-2">STT</th>
-
-                              <th className="border p-2">Tên thuốc</th>
-
-                              <th className="border p-2">ĐVT</th>
-
-                              <th className="border p-2">SL</th>
-
-                              <th className="border p-2">Liều dùng</th>
-
-                              <th className="border p-2">Ghi chú</th>
-
-                              <th className="border p-2"></th>
-
-                            </tr>
-
-                          </thead>
-
-                          <tbody>
-
-                            {prescriptionItems.map((item, index) => (
-
-                              <tr key={index}>
-
-                                <td className="border p-2 text-center">
-                                  {index + 1}
-                                </td>
-
-                                <td className="border p-2">
-                                  {item.medicineName}
-                                </td>
-
-                                <td className="border p-2 text-center">
-                                  {item.unit}
-                                </td>
-
-                                <td className="border p-2 text-center">
-                                  {item.quantity}
-                                </td>
-
-                                <td className="border p-2">
-                                  {item.dosage}
-                                </td>
-
-                                <td className="border p-2">
-                                  {item.notes}
-                                </td>
-
-                                <td className="border p-2 text-center">
-
-                                  <Button
-
-                                    variant="ghost"
-
-                                    size="icon"
-
-                                    onClick={() => handleRemoveMedicine(index)}
-
+                              <SelectContent>
+                                {treatmentTemplates.map((template) => (
+                                  <SelectItem
+                                    key={template.id}
+                                    value={template.id}
                                   >
+                                    {template.templateName}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-                                    🗑
+                            <div>
+                              <label className="block text-xs font-medium text-muted-foreground mb-2">
+                                Tên thuốc
+                              </label>
 
-                                  </Button>
+                              <Select
+                                value={selectedMedicineId}
+                                onValueChange={setSelectedMedicineId}
+                              >
+                                <SelectTrigger className="w-full bg-card">
+                                  <SelectValue placeholder="Chọn thuốc" />
+                                </SelectTrigger>
 
-                                </td>
+                                <SelectContent>
+                                  {medicines.map((med) => (
+                                    <SelectItem key={med.id} value={med.id}>
+                                      {med.name} ({med.unit})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
 
-                              </tr>
+                            <div>
+                              <label className="block text-xs font-medium text-muted-foreground mb-2">
+                                Số lượng
+                              </label>
 
-                            ))}
+                              <Input
+                                type="number"
+                                value={quantity}
+                                onChange={(e) => setQuantity(e.target.value)}
+                                placeholder="Nhập số lượng"
+                              />
+                            </div>
 
-                          </tbody>
+                          </div>
 
-                        </table>
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-2">
+                              Liều dùng
+                            </label>
 
-                      </div>
+                            <Input
+                              value={dosage}
+                              onChange={(e) => setDosage(e.target.value)}
+                              placeholder="Ví dụ: 1 viên x 2 lần/ngày"
+                            />
+                          </div>
 
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-2">
+                              Lưu ý
+                            </label>
+
+                            <Input
+                              value={medicineNotes}
+                              onChange={(e) => setMedicineNotes(e.target.value)}
+                              placeholder="Lưu ý khi dùng thuốc"
+                            />
+                          </div>
+
+                          <div className="flex justify-end">
+
+                            <Button
+                              onClick={handleAddMedicine}
+                            >
+                              + Thêm thuốc
+                            </Button>
+
+                          </div>
+
+                        </div>
+
+                        {/* Danh sách thuốc */}
+                        {prescriptionItems.length > 0 && (
+
+                          <div className="overflow-x-auto">
+
+                            <table className="w-full border border-gray-300 text-sm">
+
+                              <thead className="bg-slate-100">
+
+                                <tr>
+
+                                  <th className="border p-2">STT</th>
+
+                                  <th className="border p-2">Tên thuốc</th>
+
+                                  <th className="border p-2">ĐVT</th>
+
+                                  <th className="border p-2">SL</th>
+
+                                  <th className="border p-2">Liều dùng</th>
+
+                                  <th className="border p-2">Ghi chú</th>
+
+                                  <th className="border p-2"></th>
+
+                                </tr>
+
+                              </thead>
+
+                              <tbody>
+
+                                {prescriptionItems.map((item, index) => (
+
+                                  <tr key={index}>
+
+                                    <td className="border p-2 text-center">
+                                      {index + 1}
+                                    </td>
+
+                                    <td className="border p-2">
+                                      {item.medicineName}
+                                    </td>
+
+                                    <td className="border p-2 text-center">
+                                      {item.unit}
+                                    </td>
+
+                                    <td className="border p-2 text-center">
+                                      {item.quantity}
+                                    </td>
+
+                                    <td className="border p-2">
+                                      {item.dosage}
+                                    </td>
+
+                                    <td className="border p-2">
+                                      {item.notes}
+                                    </td>
+
+                                    <td className="border p-2 text-center">
+
+                                      <Button
+
+                                        variant="ghost"
+
+                                        size="icon"
+
+                                        onClick={() => handleRemoveMedicine(index)}
+
+                                      >
+
+                                        🗑
+
+                                      </Button>
+
+                                    </td>
+
+                                  </tr>
+
+                                ))}
+
+                              </tbody>
+
+                            </table>
+
+                          </div>
+
+                        )}
+
+                        {/* Ghi chú đơn thuốc */}
+                        <div>
+
+                          <label className="block text-xs font-medium text-muted-foreground mb-2">
+                            Hướng dẫn chung
+                          </label>
+
+                          <Textarea
+                            value={prescriptionNotes}
+                            onChange={(e) => setPrescriptionNotes(e.target.value)}
+                            rows={3}
+                            placeholder="Ghi chú cho đơn thuốc..."
+                          />
+
+                        </div>
+                      </>
                     )}
-
-                    {/* Ghi chú đơn thuốc */}
-                    <div>
-
-                      <label className="block text-xs font-medium text-muted-foreground mb-2">
-                        Hướng dẫn chung
-                      </label>
-
-                      <Textarea
-                        value={prescriptionNotes}
-                        onChange={(e) => setPrescriptionNotes(e.target.value)}
-                        rows={3}
-                        placeholder="Ghi chú cho đơn thuốc..."
-                      />
-
-                    </div>
-
                   </div>
                 </div>
               </Card>

@@ -115,6 +115,27 @@ const normalizeExamTemplate = (template?: SpecialtyExamTemplate | null): Special
   fields: Array.isArray(template?.fields) ? template.fields : [],
 })
 
+const defaultIcdCodes: IcdCode[] = [
+  { id: "icd-1", code: "J00", name: "Viêm mũi họng cấp (cảm thường)", category: "Bệnh hệ hô hấp", description: "Cảm lạnh thông thường" },
+  { id: "icd-2", code: "J02", name: "Viêm họng cấp", category: "Bệnh hệ hô hấp", description: "Viêm họng cấp tính" },
+  { id: "icd-3", code: "J06", name: "Nhiễm khuẩn hô hấp trên cấp tính ở nhiều vị trí", category: "Bệnh hệ hô hấp", description: "Nhiễm khuẩn đường hô hấp trên" },
+  { id: "icd-4", code: "I10", name: "Tăng huyết áp vô căn (nguyên phát)", category: "Bệnh hệ tuần hoàn", description: "Huyết áp cao nguyên phát" },
+  { id: "icd-5", code: "K29", name: "Viêm dạ dày và tá tràng", category: "Bệnh hệ tiêu hóa", description: "Viêm dạ dày, tá tràng" },
+  { id: "icd-6", code: "E11", name: "Bệnh đái tháo đường không phụ thuộc insulin (Typ 2)", category: "Bệnh nội tiết, dinh dưỡng và chuyển hóa", description: "Tiểu đường type 2" },
+  { id: "icd-7", code: "H10", name: "Viêm kết mạc", category: "Bệnh về mắt", description: "Đau mắt đỏ" },
+  { id: "icd-8", code: "H52", name: "Rối loạn khúc xạ và điều tiết", category: "Bệnh về mắt", description: "Cận thị, viễn thị, loạn thị" },
+  { id: "icd-9", code: "M54", name: "Đau lưng", category: "Bệnh hệ cơ - xương khớp", description: "Đau cột sống thắt lưng" },
+  { id: "icd-10", code: "R50", name: "Sốt không rõ nguyên nhân", category: "Triệu chứng, dấu hiệu và kết quả lâm sàng", description: "Sốt chưa rõ nguyên nhân" },
+]
+
+const defaultMedicines: Medicine[] = [
+  { id: "med-1", name: "Paracetamol 500mg", code: "PARA500", unit: "Viên", price: 1000, stock: 1000, manufacturer: "Dược Hậu Giang", status: "available", category: "Giảm đau, hạ sốt" },
+  { id: "med-2", name: "Amoxicillin 500mg", code: "AMOX500", unit: "Viên", price: 2500, stock: 500, manufacturer: "Mekophar", status: "available", category: "Kháng sinh" },
+  { id: "med-3", name: "Ibuprofen 400mg", code: "IBU400", unit: "Viên", price: 1500, stock: 400, manufacturer: "Dược Hà Tây", status: "available", category: "Kháng viêm" },
+  { id: "med-4", name: "Omeprazole 20mg", code: "OMEP20", unit: "Viên", price: 3000, stock: 600, manufacturer: "Dược Hậu Giang", status: "available", category: "Dạ dày" },
+  { id: "med-5", name: "Cetirizine 10mg", code: "CETI10", unit: "Viên", price: 1200, stock: 800, manufacturer: "Dược TW1", status: "available", category: "Kháng dị ứng" },
+]
+
 const getStoredSpecialtyMeta = (deptId: string) => {
   if (typeof window === "undefined") return { description: "", examTemplate: emptyExamTemplate }
   try {
@@ -149,6 +170,18 @@ const removeStoredSpecialtyMeta = (deptId: string) => {
 
 const mapDepartmentToSpecialty = (d: Department, fallback?: Partial<Specialty>): Specialty => {
   const meta = getStoredSpecialtyMeta(d.id)
+  const dbTemplate = d.examTemplate ? normalizeExamTemplate(d.examTemplate) : null
+  const fallbackTemplate = fallback?.examTemplate ? normalizeExamTemplate(fallback.examTemplate) : null
+  const localTemplate = meta.examTemplate ? normalizeExamTemplate(meta.examTemplate) : null
+
+  const resolvedTemplate = (fallbackTemplate && fallbackTemplate.fields.length > 0)
+    ? fallbackTemplate
+    : (dbTemplate && dbTemplate.fields.length > 0)
+    ? dbTemplate
+    : (localTemplate && localTemplate.fields.length > 0)
+    ? localTemplate
+    : (dbTemplate ?? localTemplate ?? emptyExamTemplate)
+
   return {
     id: d.id,
     name: d.name,
@@ -156,7 +189,7 @@ const mapDepartmentToSpecialty = (d: Department, fallback?: Partial<Specialty>):
     description: fallback?.description ?? meta.description,
     doctorCount: fallback?.doctorCount ?? 0,
     status: d.active ? "active" : "inactive",
-    examTemplate: fallback?.examTemplate ? normalizeExamTemplate(fallback.examTemplate) : meta.examTemplate,
+    examTemplate: resolvedTemplate,
     version: d.version,
   }
 }
@@ -269,7 +302,7 @@ const mapAppointment = (a: any, patientList: Patient[], fallback?: Partial<Appoi
     patientId: patient?.id ?? String(a.patientDbId ?? a.patientId),
     doctorId: String(a.doctorId ?? a.practitionerId ?? ""),
     doctorName: a.doctorName ?? a.practitionerName,
-    specialtyId: String(a.specialtyId ?? fallback?.specialtyId ?? ""),
+    specialtyId: String(a.specialtyId ?? a.departmentId ?? fallback?.specialtyId ?? ""),
     departmentName: a.departmentName,
     roomName: a.roomName,
     serviceName: a.serviceName,
@@ -411,28 +444,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // ── Lazy loaders: only fetch from backend once per session ──────────
   const ensureMedicinesLoaded = React.useCallback(async () => {
-    if (loadedRef.current.medicines || user?.role !== "ADMIN") return
+    if (loadedRef.current.medicines) return
     loadedRef.current.medicines = true
     try {
       const res = await medicinesApi.list()
-      setMedicines(res.map((m) => mapMedicine(m)))
-    } catch (e) {
-      loadedRef.current.medicines = false
-      console.error("Không thể tải danh sách thuốc", e)
+      if (Array.isArray(res) && res.length > 0) {
+        setMedicines(res.map((m) => mapMedicine(m)))
+      } else {
+        setMedicines(defaultMedicines)
+      }
+    } catch {
+      setMedicines(defaultMedicines)
     }
-  }, [user?.role])
+  }, [])
 
   const ensureIcdLoaded = React.useCallback(async () => {
-    if (loadedRef.current.icd || user?.role !== "ADMIN") return
+    if (loadedRef.current.icd) return
     loadedRef.current.icd = true
     try {
       const res = await diseasesApi.list()
-      setIcdCodes(res.map((d) => mapIcdCode(d)))
-    } catch (e) {
-      loadedRef.current.icd = false
-      console.error("Không thể tải danh sách ICD", e)
+      if (Array.isArray(res) && res.length > 0) {
+        setIcdCodes(res.map((d) => mapIcdCode(d)))
+      } else {
+        setIcdCodes(defaultIcdCodes)
+      }
+    } catch {
+      setIcdCodes(defaultIcdCodes)
     }
-  }, [user?.role])
+  }, [])
 
   const ensurePatientsLoaded = React.useCallback(async () => {
     if (loadedRef.current.patients) return
@@ -585,7 +624,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [user?.role])
 
   const ensureSpecialtiesLoaded = React.useCallback(async () => {
-    if (loadedRef.current.specialties || user?.role !== "ADMIN") return
+    if (loadedRef.current.specialties) return
     loadedRef.current.specialties = true
     try {
       const page = await departmentsApi.list()
@@ -595,7 +634,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       loadedRef.current.specialties = false
       console.error("Không thể tải danh sách chuyên khoa", e)
     }
-  }, [user?.role, doctors])
+  }, [doctors])
 
   const ensurePrescriptionsLoaded = React.useCallback(async () => {
     if (loadedRef.current.prescriptions || user?.role !== "ADMIN") return
@@ -694,6 +733,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await departmentsApi.create({
           code: s.code || `DEP-${Date.now().toString(36).toUpperCase()}`,
           name: s.name,
+          examTemplate: s.examTemplate ? normalizeExamTemplate(s.examTemplate) : undefined,
         })
         const createdDept = res.data
         if (s.status === "inactive") {
@@ -714,7 +754,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         const existing = specialties.find((x) => x.id === id)
         const etag = `"${s.version ?? existing?.version ?? 0}"`
-        const res = await departmentsApi.update(id, { code: s.code || existing?.code || "", name: s.name }, etag)
+        const res = await departmentsApi.update(
+          id,
+          {
+            code: s.code || existing?.code || "",
+            name: s.name,
+            examTemplate: s.examTemplate !== undefined ? normalizeExamTemplate(s.examTemplate) : existing?.examTemplate,
+          },
+          etag
+        )
         let updatedDept = res.data
         if (s.status && existing && s.status !== existing.status) {
           const statusEtag = `"${updatedDept.version}"`
@@ -952,9 +1000,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       // 2. Cố gắng đồng bộ lên backend API
       try {
-        const updated = a.status === "IN_PROGRESS"
-          ? await appointmentsApi.startExam(id)
-          : await appointmentsApi.update(id, getAppointmentRequest(a))
+        let updated: any = null
+        if (a.status === "CANCELLED") {
+          const currentAppt = appointments.find((x) => x.id === id)
+          const ver = (a as any).version ?? (currentAppt as any)?.version ?? 0
+          updated = await appointmentsApi.cancel(id, (a as any).cancellationReason || "Bác sĩ hủy lịch khám", ver)
+        } else if (a.status === "IN_PROGRESS") {
+          updated = await appointmentsApi.startExam(id)
+        } else {
+          updated = await appointmentsApi.update(id, getAppointmentRequest(a))
+        }
         if (updated) {
           setAppointments((p) => p.map((x) => (x.id === id ? mapAppointment(updated, patients, { ...x, ...a }) : x)))
         }
@@ -981,11 +1036,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     updatePatient: async (id, p) => {
       // 1. Cập nhật ngay vào local state
-      setPatients((prev) => prev.map((x) => (x.id === id ? { ...x, ...p } : x)))
+      let hasDemographicChange = false
+      setPatients((prev) =>
+        prev.map((x) => {
+          if (x.id === id) {
+            hasDemographicChange = Boolean(
+              (p.name && p.name !== x.name) ||
+              (p.dateOfBirth && p.dateOfBirth !== x.dateOfBirth) ||
+              (p.phone && p.phone !== x.phone) ||
+              (p.email && p.email !== x.email) ||
+              (p.address && p.address !== x.address)
+            )
+            return { ...x, ...p }
+          }
+          return x
+        })
+      )
 
-      // 2. Chỉ gọi PATCH API nếu có thông tin nhân khẩu thay đổi
+      // 2. Chỉ gọi PATCH API nếu có thông tin nhân khẩu thay đổi thực sự
       try {
-        if (p.name || p.dateOfBirth || p.phone || p.email || p.address) {
+        if (hasDemographicChange) {
           const updated = await patientsApi.update(id, toPatientRequest(p))
           if (updated) {
             setPatients((prev) => prev.map((x) => (x.id === id ? mapPatient(updated, { ...x, ...p }) : x)))

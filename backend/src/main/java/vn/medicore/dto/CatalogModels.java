@@ -18,6 +18,7 @@ public final class CatalogModels {
             boolean active,
             Instant effectiveFrom,
             Instant effectiveTo,
+            Object examTemplate,
             Instant createdAt,
             Instant updatedAt) {
     }

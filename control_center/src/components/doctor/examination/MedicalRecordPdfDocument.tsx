@@ -573,7 +573,7 @@ export default function MedicalRecordPdfDocument(props: MedicalRecordPdfProps) {
               {prescriptionItems.length === 0 ? (
                 <View style={s.tableRow}>
                   <Text style={[s.tableCell, { width: "100%", textAlign: "center", color: colors.lightText, paddingVertical: 12 }]}>
-                    Chưa kê đơn thuốc.
+                    Không kê đơn thuốc trong lần khám này.
                   </Text>
                 </View>
               ) : (

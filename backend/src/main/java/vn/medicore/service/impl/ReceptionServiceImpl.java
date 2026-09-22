@@ -151,10 +151,23 @@ public class ReceptionServiceImpl implements ReceptionService {
         VisitRow visit = receptionRepository.visitByIdForUpdate(visitId)
                 .orElseThrow(() -> new ResourceNotFoundException("Visit not found"));
 
+        Instant now = clock.instant();
         VisitRow updated = new VisitRow(
                 visit.id(), visit.patientId(), visit.appointmentId(), "COMPLETED",
-                visit.version(), visit.createdAt(), clock.instant());
+                visit.version(), visit.createdAt(), now);
         receptionRepository.updateVisit(updated, expectedVersion);
+
+        if (visit.appointmentId() != null) {
+            schedulingRepository.appointmentByIdForUpdate(visit.appointmentId()).ifPresent(appt -> {
+                if (!"FULFILLED".equalsIgnoreCase(appt.status())) {
+                    AppointmentRow updatedAppt = new AppointmentRow(
+                            appt.id(), appt.patientId(), appt.slotHoldId(), appt.slotId(),
+                            appt.rescheduledFromId(), appt.rescheduledToId(),
+                            "FULFILLED", appt.version() + 1, appt.createdAt(), now);
+                    schedulingRepository.updateAppointment(updatedAppt, appt.version());
+                }
+            });
+        }
 
         securityAudit.record(
                 actor.accountId(), auditContext.permissionSnapshot(), visit.patientId(),
@@ -252,6 +265,17 @@ public class ReceptionServiceImpl implements ReceptionService {
                     receptionRepository.updateVisit(new VisitRow(
                             visit.id(), visit.patientId(), visit.appointmentId(), "COMPLETED",
                             visit.version(), visit.createdAt(), now), visit.version());
+                }
+                if (visit.appointmentId() != null) {
+                    schedulingRepository.appointmentByIdForUpdate(visit.appointmentId()).ifPresent(appt -> {
+                        if (!"FULFILLED".equalsIgnoreCase(appt.status())) {
+                            AppointmentRow updatedAppt = new AppointmentRow(
+                                    appt.id(), appt.patientId(), appt.slotHoldId(), appt.slotId(),
+                                    appt.rescheduledFromId(), appt.rescheduledToId(),
+                                    "FULFILLED", appt.version() + 1, appt.createdAt(), now);
+                            schedulingRepository.updateAppointment(updatedAppt, appt.version());
+                        }
+                    });
                 }
             });
         }

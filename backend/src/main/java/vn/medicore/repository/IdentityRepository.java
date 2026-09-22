@@ -67,6 +67,8 @@ public interface IdentityRepository {
 
     boolean touchSession(UUID id, Instant now);
 
+    boolean updateSessionCsrf(UUID id, String csrfTokenHash, Instant now);
+
     void expireSession(UUID id);
 
     void revokeSessionByHash(String sessionTokenHash, String tabContextHash, Instant now, String reason);

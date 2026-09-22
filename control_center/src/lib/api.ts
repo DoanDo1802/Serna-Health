@@ -35,7 +35,7 @@ export const clearCsrfToken = clearContextCsrfToken
 
 function setCsrfToken(response: Response, context: string) {
   const token = response.headers.get("X-CSRF-Token")
-  if (token && currentTabContext() === context) setContextCsrfToken(token, context)
+  if (token) setContextCsrfToken(token, context)
 }
 
 async function responsePayload(response: Response): Promise<unknown> {
@@ -69,12 +69,24 @@ async function fetchApi(path: string, options: RequestInit = {}): Promise<{ resp
   headers.set("X-MediCore-Tab-Context", context)
 
   const csrfToken = getCsrfToken(context)
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && csrfToken && !headers.has("X-CSRF-Token")) {
-    headers.set("X-CSRF-Token", csrfToken)
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    if (csrfToken && !headers.has("X-CSRF-Token")) {
+      headers.set("X-CSRF-Token", csrfToken)
+    } else if (!csrfToken) {
+      console.warn(`[api] No CSRF token available for mutating request: ${method} ${path}`)
+    }
   }
 
   try {
-    return { response: await fetch(`${BASE_URL}${path}`, { ...options, headers, credentials: "include" }), context }
+    return {
+      response: await fetch(`${BASE_URL}${path}`, {
+        cache: "no-store",
+        ...options,
+        headers,
+        credentials: "include",
+      }),
+      context,
+    }
   } catch {
     throw new Error("Không thể kết nối máy chủ. Vui lòng thử lại sau.")
   }
@@ -135,6 +147,7 @@ export interface Department {
   active: boolean
   effectiveFrom: string
   effectiveTo?: string | null
+  examTemplate?: any
   version: number
 }
 
@@ -244,17 +257,17 @@ export const departmentsApi = {
     return request<DepartmentPage>(`/departments?${query.toString()}`)
   },
   get: (id: string) => requestWithMeta<Department>(`/departments/${id}`),
-  create: (data: { code: string; name: string }) =>
+  create: (data: { code: string; name: string; examTemplate?: any }) =>
     requestWithMeta<Department>("/departments", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey() },
-      body: JSON.stringify({ code: data.code.trim(), name: data.name, effectiveFrom: new Date().toISOString() }),
+      body: JSON.stringify({ code: data.code.trim(), name: data.name, effectiveFrom: new Date().toISOString(), examTemplate: data.examTemplate }),
     }),
-  update: (id: string, data: { code: string; name: string }, etag: string) =>
+  update: (id: string, data: { code: string; name: string; examTemplate?: any }, etag: string) =>
     requestWithMeta<Department>(`/departments/${id}`, {
       method: "PATCH",
       headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
-      body: JSON.stringify({ code: data.code.trim(), name: data.name, effectiveFrom: new Date().toISOString() }),
+      body: JSON.stringify({ code: data.code.trim(), name: data.name, effectiveFrom: new Date().toISOString(), examTemplate: data.examTemplate }),
     }),
   activate: (id: string, etag: string) => requestWithMeta<Department>(`/departments/${id}/actions/activate`, { method: "POST", headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` } }),
   deactivate: (id: string, etag: string) => requestWithMeta<Department>(`/departments/${id}/actions/deactivate`, { method: "POST", headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` } }),
@@ -270,12 +283,31 @@ export interface Service {
   active: boolean
   allowsCritical: boolean
   version: number
+  priceAmount?: number
   createdAt?: string
   updatedAt?: string
 }
 
 export interface ServicePage {
   items: Service[]
+  nextCursor?: string | null
+  hasMore: boolean
+}
+
+export interface ServicePrice {
+  id: string
+  version: number
+  serviceId: string
+  amount: number
+  currency: string
+  effectiveFrom: string
+  effectiveTo?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ServicePricePage {
+  items: ServicePrice[]
   nextCursor?: string | null
   hasMore: boolean
 }
@@ -316,6 +348,30 @@ export const servicesApi = {
     requestWithMeta<Service>(`/services/${id}/actions/deactivate`, {
       method: "POST",
       headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+    }),
+}
+
+export const servicePricesApi = {
+  list: (serviceId: string, params: { cursor?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams({ limit: String(params.limit ?? 20) })
+    if (params.cursor) query.set("cursor", params.cursor)
+    return request<ServicePricePage>(`/services/${serviceId}/prices?${query.toString()}`)
+  },
+  get: (id: string) => requestWithMeta<ServicePrice>(`/service-prices/${id}`),
+  create: (serviceId: string, data: { amount: number; effectiveFrom?: string }) =>
+    requestWithMeta<ServicePrice>(`/services/${serviceId}/prices`, {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey() },
+      body: JSON.stringify({
+        amount: data.amount,
+        effectiveFrom: data.effectiveFrom ?? new Date().toISOString(),
+      }),
+    }),
+  end: (id: string, effectiveTo: string, etag: string) =>
+    requestWithMeta<ServicePrice>(`/service-prices/${id}/actions/end`, {
+      method: "POST",
+      headers: { "If-Match": etag.startsWith('"') ? etag : `"${etag}"` },
+      body: JSON.stringify({ effectiveTo }),
     }),
 }
 
@@ -603,8 +659,8 @@ export const workSchedulesApi = {
 export const specialtiesApi = {
   list: async (includeInactive = false) => (await departmentsApi.list(includeInactive ? undefined : true)).items,
   get: async (id: string | number) => (await departmentsApi.get(String(id))).data,
-  create: async (data: { name: string; code?: string; examTemplate?: any }) => (await departmentsApi.create({ code: data.code?.trim() || `DEP-${Date.now().toString(36).toUpperCase()}`, name: data.name })).data,
-  update: async (id: string | number, data: { name: string; code?: string; examTemplate?: any }, etag?: string) => (await departmentsApi.update(String(id), { code: data.code?.trim() || "", name: data.name }, etag || '"0"')).data,
+  create: async (data: { name: string; code?: string; examTemplate?: any }) => (await departmentsApi.create({ code: data.code?.trim() || `DEP-${Date.now().toString(36).toUpperCase()}`, name: data.name, examTemplate: data.examTemplate })).data,
+  update: async (id: string | number, data: { name: string; code?: string; examTemplate?: any }, etag?: string) => (await departmentsApi.update(String(id), { code: data.code?.trim() || "", name: data.name, examTemplate: data.examTemplate }, etag || '"0"')).data,
   updateStatus: async (id: string | number, active: boolean, etag?: string) => (active ? await departmentsApi.activate(String(id), etag || '"0"') : await departmentsApi.deactivate(String(id), etag || '"0"')).data,
   delete: async (id: string | number, etag?: string) => { await departmentsApi.delete(String(id), etag || '"0"') },
 }
@@ -696,8 +752,15 @@ export interface ClinicalNotePage {
 }
 
 export interface CheckInResponse {
-  visit: any
-  encounter: Encounter
+  id: string
+  version: number
+  appointmentId: string
+  visitId: string
+  checkedInAt: string
+  checkedInByAccountId: string
+  notes?: string | null
+  createdAt: string
+  encounter?: Encounter
 }
 
 function makeIdempotencyKey(prefix = "idemp"): string {
@@ -711,6 +774,18 @@ export const receptionApi = {
       headers: { "Idempotency-Key": makeIdempotencyKey("checkin") },
       body: JSON.stringify({ notes }),
     }),
+
+  listVisitEncounters: (visitId: string) =>
+    request<EncounterPage>(`/visits/${visitId}/encounters`),
+
+  listDoctorEncounters: (params?: { date?: string; status?: string; limit?: number; offset?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.date) query.set("date", params.date)
+    if (params?.status) query.set("status", params.status)
+    if (params?.limit) query.set("limit", String(params.limit))
+    if (params?.offset) query.set("offset", String(params.offset))
+    return request<EncounterPage>(`/doctor/encounters?${query.toString()}`)
+  },
 
   getEncounter: (encounterId: string) =>
     requestWithMeta<Encounter>(`/encounters/${encounterId}`),
@@ -797,7 +872,7 @@ export const clinicalCareApi = {
 export interface PatientAppointment { id: string; version: number; patientId: string; slotId: string; status: string; departmentName: string; roomName: string; serviceName: string; practitionerName: string; practitionerRoleCode: string; startAt: string; endAt: string; session: "MORNING" | "AFTERNOON"; requiredDepositAmount?: string; paidDepositAmount?: string; currency?: string; depositState?: string; canCancel?: boolean; canReschedule?: boolean; createdAt?: string; updatedAt?: string; patientDbId?: string | number; patientName?: string; patientDateOfBirth?: string; specialtyId?: string | number; appointmentDate?: string; timeSlot?: string; symptomsInitial?: string; icdCode?: string; mainDiagnosis?: string; doctorId?: string | number }
 export interface PatientAppointmentPage { items: PatientAppointment[]; nextCursor?: string | null; hasMore: boolean }
 export const appointmentsApi = {
-  list: async (limit = 100): Promise<any[]> => { const res = await request<any>(`/appointments?limit=${limit}`); return Array.isArray(res) ? res : (res?.items ?? []) }, listAppointments: async (limit = 100): Promise<PatientAppointment[]> => { const res = await request<any>(`/appointments?limit=${limit}`); return Array.isArray(res) ? res : (res?.items ?? []) }, listPage: (params?: { patientId?: string; cursor?: string; limit?: number }) => { const query = new URLSearchParams(); if (params?.patientId) query.set("patientId", params.patientId); if (params?.cursor) query.set("cursor", params.cursor); if (params?.limit) query.set("limit", String(params.limit)); return request<PatientAppointmentPage>(`/appointments?${query.toString()}`) }, listByDoctor: (doctorId: string | number) => request<any[]>(`/appointments/doctor/${doctorId}`), listDoctorWaiting: (doctorId: string | number, date?: string) => request<any[]>(`/appointments/doctor/${doctorId}/waiting${date ? `?date=${encodeURIComponent(date)}` : ""}`), get: (id: string | number) => request<any>(`/appointments/${id}`), create: (data: any) => request<any>("/appointments", { method: "POST", body: JSON.stringify(data) }), update: (id: string | number, data: any) => request<any>(`/appointments/${id}`, { method: "PUT", body: JSON.stringify(data) }), startExam: (id: string | number) => request<any>(`/appointments/${id}/start-exam`, { method: "PUT" }), delete: (id: string | number) => request<void>(`/appointments/${id}`, { method: "DELETE" }),
+  list: async (limit = 100): Promise<any[]> => { const res = await request<any>(`/appointments?limit=${limit}`); return Array.isArray(res) ? res : (res?.items ?? []) }, listAppointments: async (limit = 100): Promise<PatientAppointment[]> => { const res = await request<any>(`/appointments?limit=${limit}`); return Array.isArray(res) ? res : (res?.items ?? []) }, listPage: (params?: { patientId?: string; cursor?: string; limit?: number }) => { const query = new URLSearchParams(); if (params?.patientId) query.set("patientId", params.patientId); if (params?.cursor) query.set("cursor", params.cursor); if (params?.limit) query.set("limit", String(params.limit)); return request<PatientAppointmentPage>(`/appointments?${query.toString()}`) }, listByDoctor: (doctorId: string | number) => request<any[]>(`/appointments/doctor/${doctorId}`), listDoctorWaiting: (doctorId: string | number, date?: string) => request<any[]>(`/appointments/doctor/${doctorId}/waiting${date ? `?date=${encodeURIComponent(date)}` : ""}`), get: (id: string | number) => request<any>(`/appointments/${id}`), create: (data: any) => request<any>("/appointments", { method: "POST", body: JSON.stringify(data) }), update: (id: string | number, data: any) => request<any>(`/appointments/${id}`, { method: "PUT", body: JSON.stringify(data) }), cancel: (id: string | number, reason = "Bác sĩ hủy lịch khám", version: number = 0) => request<any>(`/appointments/${id}/actions/cancel`, { method: "POST", headers: { "If-Match": `"${version}"`, "Idempotency-Key": makeIdempotencyKey("cancel") }, body: JSON.stringify({ reason }) }), startExam: (id: string | number) => request<any>(`/appointments/${id}/start-exam`, { method: "PUT" }), delete: (id: string | number) => request<void>(`/appointments/${id}`, { method: "DELETE" }),
 }
 export const schedulesApi = {
   list: (params?: { doctorId?: string | number; date?: string; fromDate?: string; toDate?: string }) => { const searchParams = new URLSearchParams(); if (params?.doctorId) searchParams.set("doctorId", String(params.doctorId)); if (params?.date) searchParams.set("date", params.date); if (params?.fromDate) searchParams.set("fromDate", params.fromDate); if (params?.toDate) searchParams.set("toDate", params.toDate); const query = searchParams.toString(); return request<any[]>(`/admin/schedules${query ? `?${query}` : ""}`) }, get: (id: string | number) => request<any>(`/admin/schedules/${id}`), create: (data: any) => request<any>("/admin/schedules", { method: "POST", body: JSON.stringify(data) }), update: (id: string | number, data: any) => request<any>(`/admin/schedules/${id}`, { method: "PUT", body: JSON.stringify(data) }), delete: (id: string | number) => request<void>(`/admin/schedules/${id}`, { method: "DELETE" }), bulk: (data: any[]) => request<any[]>("/admin/schedules/bulk", { method: "POST", body: JSON.stringify(data) }),

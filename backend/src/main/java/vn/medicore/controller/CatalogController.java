@@ -70,7 +70,7 @@ public class CatalogController {
     @PreAuthorize("hasAuthority('department.create')")
     ResponseEntity<DepartmentView> createDepartment(HttpServletRequest request,
             @AuthenticationPrincipal AuthenticatedAccount principal, @Valid @RequestBody DepartmentCreateRequest body) {
-        DepartmentView view = catalog.createDepartment(body.code(), body.name(), body.effectiveFrom(), body.effectiveTo(), auditContext(request, principal));
+        DepartmentView view = catalog.createDepartment(body.code(), body.name(), body.effectiveFrom(), body.effectiveTo(), body.examTemplate(), auditContext(request, principal));
         return versioned(view, view.version());
     }
 
@@ -79,7 +79,7 @@ public class CatalogController {
     ResponseEntity<DepartmentView> updateDepartment(HttpServletRequest request, @PathVariable UUID id,
             @AuthenticationPrincipal AuthenticatedAccount principal, @RequestHeader("If-Match") String ifMatch,
             @Valid @RequestBody DepartmentUpdateRequest body) {
-        DepartmentView view = catalog.updateDepartment(id, body.code(), body.name(), body.effectiveFrom(), body.effectiveTo(), version(ifMatch), auditContext(request, principal));
+        DepartmentView view = catalog.updateDepartment(id, body.code(), body.name(), body.effectiveFrom(), body.effectiveTo(), body.examTemplate(), version(ifMatch), auditContext(request, principal));
         return versioned(view, view.version());
     }
 
@@ -330,9 +330,9 @@ public class CatalogController {
     }
 
     record DepartmentCreateRequest(@NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 200) String name,
-                                   @NotNull Instant effectiveFrom, Instant effectiveTo) {}
+                                   @NotNull Instant effectiveFrom, Instant effectiveTo, Object examTemplate) {}
     record DepartmentUpdateRequest(@NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 200) String name,
-                                   @NotNull Instant effectiveFrom, Instant effectiveTo) {}
+                                   @NotNull Instant effectiveFrom, Instant effectiveTo, Object examTemplate) {}
     record RoomCreateRequest(@NotBlank @Size(max = 64) String code,
                              @NotBlank @Size(max = 200) String name) {}
     record RoomUpdateRequest(@NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 200) String name) {}

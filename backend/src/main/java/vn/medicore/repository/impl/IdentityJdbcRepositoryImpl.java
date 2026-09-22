@@ -242,6 +242,12 @@ public class IdentityJdbcRepositoryImpl implements IdentityRepository {
     }
 
     @Override
+    public boolean updateSessionCsrf(UUID id, String csrfTokenHash, Instant now) {
+        return update("update account_session set csrf_token_hash = ?, last_seen_at = ?, version = version + 1 where id = ? and status = 'ACTIVE'",
+                csrfTokenHash, now, id) == 1;
+    }
+
+    @Override
     public void expireSession(UUID id) {
         update("update account_session set status = 'EXPIRED', version = version + 1 where id = ? and status = 'ACTIVE'", id);
     }

@@ -27,6 +27,7 @@ import vn.medicore.repository.CatalogRepository.DepartmentRow;
 import vn.medicore.repository.CatalogRepository.PractitionerRoleRow;
 import vn.medicore.repository.CatalogRepository.PractitionerRow;
 import vn.medicore.repository.CatalogRepository.RoomRow;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vn.medicore.repository.CatalogRepository.ServicePriceRow;
 import vn.medicore.repository.CatalogRepository.ServiceRow;
 import vn.medicore.service.CatalogService;
@@ -39,12 +40,14 @@ public class CatalogServiceImpl implements CatalogService {
     private final SecurityAuditRecorder audit;
     private final Clock clock;
     private final UuidV7Generator ids;
+    private final ObjectMapper objectMapper;
 
-    public CatalogServiceImpl(CatalogRepository store, SecurityAuditRecorder audit, Clock clock, UuidV7Generator ids) {
+    public CatalogServiceImpl(CatalogRepository store, SecurityAuditRecorder audit, Clock clock, UuidV7Generator ids, ObjectMapper objectMapper) {
         this.store = store;
         this.audit = audit;
         this.clock = clock;
         this.ids = ids;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -62,12 +65,13 @@ public class CatalogServiceImpl implements CatalogService {
 
     @Override
     public DepartmentView createDepartment(
-            String code, String name, Instant effectiveFrom, Instant effectiveTo, CatalogAuditContext context) {
+            String code, String name, Instant effectiveFrom, Instant effectiveTo, Object examTemplate, CatalogAuditContext context) {
         validateRange(effectiveFrom, effectiveTo);
         Instant now = clock.instant();
         UUID id = ids.next();
+        String examTemplateJson = toJson(examTemplate);
         store.insertDepartment(new DepartmentRow(id, code.strip(), name.strip(), true,
-                effectiveFrom, effectiveTo, 0, now, now));
+                effectiveFrom, effectiveTo, examTemplateJson, 0, now, now));
         DepartmentView view = store.departmentById(id).orElseThrow();
         record(context, "department.create", "Department", view.id(), view.version(), "created");
         return view;
@@ -75,12 +79,13 @@ public class CatalogServiceImpl implements CatalogService {
 
     @Override
     public DepartmentView updateDepartment(
-            UUID id, String code, String name, Instant effectiveFrom, Instant effectiveTo, long version, CatalogAuditContext context) {
+            UUID id, String code, String name, Instant effectiveFrom, Instant effectiveTo, Object examTemplate, long version, CatalogAuditContext context) {
         DepartmentView existing = store.departmentByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         validateRange(effectiveFrom, effectiveTo);
         Instant now = clock.instant();
+        String examTemplateJson = examTemplate != null ? toJson(examTemplate) : (existing.examTemplate() != null ? toJson(existing.examTemplate()) : null);
         store.updateDepartment(new DepartmentRow(id, code.strip(), name.strip(), existing.active(),
-                effectiveFrom, effectiveTo, version + 1, existing.createdAt(), now), version);
+                effectiveFrom, effectiveTo, examTemplateJson, version + 1, existing.createdAt(), now), version);
         DepartmentView view = store.departmentById(id).orElseThrow();
         record(context, "department.update", "Department", view.id(), view.version(), "updated");
         return view;
@@ -90,8 +95,9 @@ public class CatalogServiceImpl implements CatalogService {
     public DepartmentView deactivateDepartment(UUID id, long version, CatalogAuditContext context) {
         DepartmentView existing = store.departmentByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
+        String examTemplateJson = existing.examTemplate() != null ? toJson(existing.examTemplate()) : null;
         store.updateDepartment(new DepartmentRow(id, existing.code(), existing.name(), false,
-                existing.effectiveFrom(), existing.effectiveTo(), version + 1, existing.createdAt(), now), version);
+                existing.effectiveFrom(), existing.effectiveTo(), examTemplateJson, version + 1, existing.createdAt(), now), version);
         DepartmentView view = store.departmentById(id).orElseThrow();
         record(context, "department.update", "Department", view.id(), view.version(), "deactivated");
         return view;
@@ -101,11 +107,21 @@ public class CatalogServiceImpl implements CatalogService {
     public DepartmentView activateDepartment(UUID id, long version, CatalogAuditContext context) {
         DepartmentView existing = store.departmentByIdForUpdate(id).orElseThrow(ResourceNotFoundException::new);
         Instant now = clock.instant();
+        String examTemplateJson = existing.examTemplate() != null ? toJson(existing.examTemplate()) : null;
         store.updateDepartment(new DepartmentRow(id, existing.code(), existing.name(), true,
-                existing.effectiveFrom(), null, version + 1, existing.createdAt(), now), version);
+                existing.effectiveFrom(), null, examTemplateJson, version + 1, existing.createdAt(), now), version);
         DepartmentView view = store.departmentById(id).orElseThrow();
         record(context, "department.update", "Department", view.id(), view.version(), "activated");
         return view;
+    }
+
+    private String toJson(Object value) {
+        if (value == null) return null;
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override

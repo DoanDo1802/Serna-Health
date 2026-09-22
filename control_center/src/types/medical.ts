@@ -147,7 +147,7 @@ export interface ExaminationRecord {
   patientId: string
   doctorId: string
   examinationDate: string
-  icdCode: string
+  icdCode?: string
   mainDiagnosis: string
   symptoms: string
   physicalExamination: string

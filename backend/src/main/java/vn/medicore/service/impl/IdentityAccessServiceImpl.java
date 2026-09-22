@@ -183,8 +183,8 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Optional<SessionView> currentSession(String rawSessionToken, String tabContext) {
+    @Transactional
+    public Optional<SessionIssue> currentSession(String rawSessionToken, String tabContext) {
         if (rawSessionToken == null || rawSessionToken.isBlank() || tabContext == null || tabContext.isBlank()) {
             return Optional.empty();
         }
@@ -198,9 +198,15 @@ public class IdentityAccessServiceImpl implements IdentityAccessService {
         }
         AccountRow account = store.findAccountById(session.accountId()).orElse(null);
         if (account == null || !AccountStatus.ACTIVE.name().equals(account.status())) return Optional.empty();
-        return Optional.of(session.toView(account.displayEmail(), store.effectiveRoleCodes(session.accountId(), now),
-                store.effectivePermissions(session.accountId(), now),
-                session.lastSeenAt().plus(properties.session().idleTimeout())));
+
+        String csrfToken = secretHasher.randomToken(32);
+        store.updateSessionCsrf(session.id(), secretHasher.hash("CSRF", csrfToken), now);
+
+        return Optional.of(new SessionIssue(
+                session.toView(account.displayEmail(), store.effectiveRoleCodes(session.accountId(), now),
+                        store.effectivePermissions(session.accountId(), now),
+                        now.plus(properties.session().idleTimeout())),
+                rawSessionToken, csrfToken));
     }
 
     @Override

@@ -452,6 +452,8 @@ paths:
               $ref: '#/components/headers/RequestId'
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+            X-CSRF-Token:
+              $ref: '#/components/headers/CsrfToken'
           content:
             application/json:
               schema:
@@ -19927,6 +19929,10 @@ components:
             - string
             - 'null'
           format: date-time
+        examTemplate:
+          type:
+            - object
+            - 'null'
     UpdateDepartmentRequest:
       type: object
       additionalProperties: false
@@ -19951,6 +19957,10 @@ components:
             - string
             - 'null'
           format: date-time
+        examTemplate:
+          type:
+            - object
+            - 'null'
     Department:
       type: object
       additionalProperties: false
@@ -19987,6 +19997,10 @@ components:
             - string
             - 'null'
           format: date-time
+        examTemplate:
+          type:
+            - object
+            - 'null'
         createdAt:
           type: string
           format: date-time

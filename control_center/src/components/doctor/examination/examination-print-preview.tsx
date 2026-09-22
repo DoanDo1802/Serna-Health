@@ -266,7 +266,7 @@ export default function ExaminationPrintPreview({
                                         {prescriptionItems.length === 0 ? (
                                             <tr>
                                                 <td colSpan={6} className="py-6 text-center text-slate-400 italic">
-                                                    Chưa kê đơn thuốc.
+                                                    Không kê đơn thuốc trong lần khám này.
                                                 </td>
                                             </tr>
                                         ) : (

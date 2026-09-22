@@ -32,7 +32,7 @@ public interface IdentityAccessService {
     SessionIssue loginWithOtp(
             String email, String code, String tabContext, String requestId, String sourceIp, String userAgent);
 
-    Optional<SessionView> currentSession(String rawSessionToken, String tabContext);
+    Optional<SessionIssue> currentSession(String rawSessionToken, String tabContext);
 
     Optional<AuthenticatedAccount> authenticateSession(
             String rawSessionToken, String tabContext, String csrfToken, boolean csrfRequired);

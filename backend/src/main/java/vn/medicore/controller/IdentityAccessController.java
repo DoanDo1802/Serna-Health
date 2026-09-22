@@ -116,7 +116,9 @@ public class IdentityAccessController {
     ResponseEntity<SessionView> currentSession(HttpServletRequest request) {
         return contexts.resolve(request)
                 .flatMap(context -> identityAccess.currentSession(context.sessionToken(), context.value()))
-                .map(ResponseEntity::ok)
+                .map(issue -> ResponseEntity.ok()
+                        .header("X-CSRF-Token", issue.csrfToken())
+                        .body(issue.session()))
                 .orElseGet(() -> ResponseEntity.status(401).build());
     }
 

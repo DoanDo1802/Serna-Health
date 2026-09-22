@@ -50,6 +50,9 @@ headers:
   ETag:
     description: Strong optimistic-version ETag.
     schema: { type: string, pattern: '^"[0-9]+"$' }
+  CsrfToken:
+    description: Cryptographically random token for CSRF defense on mutating requests.
+    schema: { type: string }
 schemas:
   Uuid:
     type: string

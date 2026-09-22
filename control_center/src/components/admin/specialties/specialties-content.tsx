@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "reac
 import { useData } from "@/components/base/providers/data-provider"
 import { useToast } from "@/hooks/use-toast"
 import type { Specialty, SpecialtyExamFieldType, SpecialtyExamTemplate, SpecialtyExamTemplateField } from "@/types/medical"
-import { servicesApi, type Service } from "@/lib/api"
+import { servicesApi, servicePricesApi, type Service } from "@/lib/api"
 import { Card } from "@/components/base/ui/card"
 import { Button } from "@/components/base/ui/button"
 import { Input } from "@/components/base/ui/input"
@@ -244,10 +244,11 @@ export function SpecialtiesContent() {
     code: "",
     name: "",
     serviceType: "CONSULTATION",
+    price: "150000",
   })
   const [serviceBusy, setServiceBusy] = useState(false)
   const [deactivateServiceTarget, setDeactivateServiceTarget] = useState<Service | null>(null)
-  const [initialServices, setInitialServices] = useState<Array<{ name: string; code: string }>>([])
+  const [initialServices, setInitialServices] = useState<Array<{ name: string; code: string; price: string }>>([])
 
   useEffect(() => {
     ensureSpecialtiesLoaded()
@@ -264,7 +265,23 @@ export function SpecialtiesContent() {
     setLoadingServices(true)
     try {
       const res = await servicesApi.list({ departmentId: deptId, limit: 100 })
-      setServices(res.items)
+      const servicesWithPrices = await Promise.all(
+        res.items.map(async (srv) => {
+          try {
+            const priceRes = await servicePricesApi.list(srv.id, { limit: 10 })
+            const activePrice = priceRes.items.find(
+              (p) => !p.effectiveTo || new Date(p.effectiveTo) > new Date()
+            ) ?? priceRes.items[0]
+            return {
+              ...srv,
+              priceAmount: activePrice ? Number(activePrice.amount) : undefined,
+            }
+          } catch {
+            return srv
+          }
+        })
+      )
+      setServices(servicesWithPrices)
     } catch (err) {
       console.error("Failed to load services for department", err)
     } finally {
@@ -301,7 +318,7 @@ export function SpecialtiesContent() {
   const openAdd = () => {
     setEditing(null)
     setForm(emptyForm)
-    setInitialServices([{ name: "Khám chuyên khoa", code: "DV-CK-01" }])
+    setInitialServices([{ name: "Khám chuyên khoa", code: "DV-CK-01", price: "150000" }])
     setDialogOpen(true)
   }
 
@@ -328,12 +345,18 @@ export function SpecialtiesContent() {
           for (const srv of initialServices) {
             if (srv.name.trim() && srv.code.trim()) {
               try {
-                await servicesApi.create({
+                const created = await servicesApi.create({
                   name: srv.name.trim(),
                   code: srv.code.trim().toUpperCase(),
                   serviceType: "CONSULTATION",
                   departmentId: newSpecialty.id,
                 })
+                const parsedPrice = parseFloat(srv.price.replace(/[^\d.]/g, ""))
+                if (!isNaN(parsedPrice) && parsedPrice >= 0 && parsedPrice !== 150000) {
+                  await servicePricesApi.create(created.data.id, {
+                    amount: parsedPrice,
+                  })
+                }
               } catch (e) {
                 console.error("Failed to create initial service", e)
               }
@@ -365,49 +388,104 @@ export function SpecialtiesContent() {
       name: `Khám ${selectedSpecialty.name}`,
       code: `DV-${cleanCode}-${String(nextNum).padStart(2, "0")}`,
       serviceType: "CONSULTATION",
+      price: "150000",
     })
     setServiceDialogOpen(true)
   }
 
-  const openEditService = (s: Service) => {
+  const openEditService = async (s: Service) => {
     setEditingService(s)
     setServiceForm({
       name: s.name,
       code: s.code,
       serviceType: s.serviceType,
+      price: s.priceAmount !== undefined ? String(s.priceAmount) : "150000",
     })
     setServiceDialogOpen(true)
+
+    // Tự động tải dữ liệu và giá mới nhất từ máy chủ để đảm bảo version và giá luôn đồng bộ
+    try {
+      const [freshSrv, priceRes] = await Promise.all([
+        servicesApi.get(s.id),
+        servicePricesApi.list(s.id, { limit: 10 }),
+      ])
+      const activePrice = priceRes.items.find(
+        (p) => !p.effectiveTo || new Date(p.effectiveTo) > new Date()
+      ) ?? priceRes.items[0]
+      const freshPrice = activePrice ? Number(activePrice.amount) : (s.priceAmount ?? 150000)
+      setEditingService({ ...freshSrv.data, priceAmount: freshPrice })
+      setServiceForm((prev) => ({
+        ...prev,
+        name: freshSrv.data.name,
+        code: freshSrv.data.code,
+        serviceType: freshSrv.data.serviceType,
+        price: String(freshPrice),
+      }))
+    } catch (e) {
+      console.error("Failed to refresh service details", e)
+    }
   }
 
   const handleServiceSubmit = async () => {
     if (!serviceForm.name.trim() || !serviceForm.code.trim() || !selectedSpecialty) return
+    const parsedPrice = parseFloat(serviceForm.price.replace(/[^\d.]/g, ""))
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      toast({
+        title: "Giá dịch vụ không hợp lệ",
+        description: "Giá dịch vụ phải là một số không âm.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setServiceBusy(true)
     try {
       if (editingService) {
-        await servicesApi.update(
-          editingService.id,
-          {
-            name: serviceForm.name.trim(),
-            code: serviceForm.code.trim().toUpperCase(),
-            serviceType: serviceForm.serviceType,
-            departmentId: selectedSpecialty.id,
-          },
-          `"${editingService.version}"`
-        )
+        const metaChanged =
+          serviceForm.name.trim() !== editingService.name ||
+          serviceForm.code.trim().toUpperCase() !== editingService.code ||
+          serviceForm.serviceType !== editingService.serviceType
+
+        // Chỉ cập nhật bảng service nếu tên, mã hoặc loại dịch vụ thực sự thay đổi
+        if (metaChanged) {
+          const fresh = await servicesApi.get(editingService.id)
+          await servicesApi.update(
+            editingService.id,
+            {
+              name: serviceForm.name.trim(),
+              code: serviceForm.code.trim().toUpperCase(),
+              serviceType: serviceForm.serviceType,
+              departmentId: selectedSpecialty.id,
+            },
+            `"${fresh.data.version}"`
+          )
+        }
+
+        // Cập nhật mức giá nếu giá có thay đổi
+        if (editingService.priceAmount === undefined || Number(editingService.priceAmount) !== parsedPrice) {
+          await servicePricesApi.create(editingService.id, {
+            amount: parsedPrice,
+          })
+        }
         toast({
           title: "Cập nhật thành công",
-          description: `Đã cập nhật dịch vụ ${serviceForm.name}.`,
+          description: `Đã cập nhật dịch vụ ${serviceForm.name} với giá ${parsedPrice.toLocaleString("vi-VN")} đ.`,
         })
       } else {
-        await servicesApi.create({
+        const created = await servicesApi.create({
           name: serviceForm.name.trim(),
           code: serviceForm.code.trim().toUpperCase(),
           serviceType: serviceForm.serviceType,
           departmentId: selectedSpecialty.id,
         })
+        if (parsedPrice !== 150000) {
+          await servicePricesApi.create(created.data.id, {
+            amount: parsedPrice,
+          })
+        }
         toast({
           title: "Thêm thành công",
-          description: `Đã tạo dịch vụ ${serviceForm.name} cho chuyên khoa ${selectedSpecialty.name}.`,
+          description: `Đã tạo dịch vụ ${serviceForm.name} cho chuyên khoa ${selectedSpecialty.name} với giá ${parsedPrice.toLocaleString("vi-VN")} đ.`,
         })
       }
       setServiceDialogOpen(false)
@@ -722,9 +800,14 @@ export function SpecialtiesContent() {
                               <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">Tạm ngừng</span>
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {service.code} • {serviceTypes.find((t) => t.value === service.serviceType)?.label ?? service.serviceType}
-                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-xs text-muted-foreground font-mono">
+                              {service.code} • {serviceTypes.find((t) => t.value === service.serviceType)?.label ?? service.serviceType}
+                            </p>
+                            <span className="text-xs font-semibold text-primary">
+                              {service.priceAmount !== undefined ? `${Number(service.priceAmount).toLocaleString("vi-VN")} đ` : "150.000 đ"}
+                            </span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <Button
@@ -912,7 +995,7 @@ export function SpecialtiesContent() {
                       const cleanCode = form.code ? form.code.replace(/[^A-Za-z0-9]/g, "").toUpperCase() : "CK"
                       setInitialServices([
                         ...initialServices,
-                        { name: "", code: `DV-${cleanCode}-${String(idx).padStart(2, "0")}` },
+                        { name: "", code: `DV-${cleanCode}-${String(idx).padStart(2, "0")}`, price: "150000" },
                       ])
                     }}
                   >
@@ -922,7 +1005,7 @@ export function SpecialtiesContent() {
                 </div>
                 <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
                   {initialServices.map((srv, idx) => (
-                    <div key={idx} className="grid grid-cols-5 gap-2 items-center">
+                    <div key={idx} className="grid grid-cols-7 gap-2 items-center">
                       <Input
                         className="col-span-3 h-8 text-xs"
                         placeholder="Tên dịch vụ (vd: Khám chuyên khoa)"
@@ -934,12 +1017,25 @@ export function SpecialtiesContent() {
                         }}
                       />
                       <Input
-                        className="col-span-2 h-8 text-xs"
+                        className="col-span-2 h-8 text-xs font-mono"
                         placeholder="Mã (vd: DV-01)"
                         value={srv.code}
                         onChange={(e) => {
                           const updated = [...initialServices]
                           updated[idx] = { ...updated[idx], code: e.target.value.toUpperCase() }
+                          setInitialServices(updated)
+                        }}
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        className="col-span-2 h-8 text-xs font-mono"
+                        placeholder="Giá (VNĐ)"
+                        value={srv.price}
+                        onChange={(e) => {
+                          const updated = [...initialServices]
+                          updated[idx] = { ...updated[idx], price: e.target.value }
                           setInitialServices(updated)
                         }}
                       />
@@ -1010,6 +1106,25 @@ export function SpecialtiesContent() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="grid gap-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">Giá khám / Giá dịch vụ (VNĐ)</Label>
+                {serviceForm.price && !isNaN(Number(serviceForm.price)) && (
+                  <span className="text-xs font-medium text-primary">
+                    {Number(serviceForm.price).toLocaleString("vi-VN")} đ
+                  </span>
+                )}
+              </div>
+              <Input
+                type="number"
+                min="0"
+                step="1000"
+                className="h-8 text-xs font-mono"
+                placeholder="Ví dụ: 150000"
+                value={serviceForm.price}
+                onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value })}
+              />
             </div>
           </div>
           <DialogFooter>

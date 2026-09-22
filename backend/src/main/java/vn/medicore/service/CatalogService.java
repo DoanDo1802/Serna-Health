@@ -21,9 +21,17 @@ public interface CatalogService {
 
     DepartmentView getDepartment(UUID id);
 
-    DepartmentView createDepartment(String code, String name, Instant effectiveFrom, Instant effectiveTo, CatalogAuditContext audit);
+    DepartmentView createDepartment(String code, String name, Instant effectiveFrom, Instant effectiveTo, Object examTemplate, CatalogAuditContext audit);
 
-    DepartmentView updateDepartment(UUID id, String code, String name, Instant effectiveFrom, Instant effectiveTo, long version, CatalogAuditContext audit);
+    default DepartmentView createDepartment(String code, String name, Instant effectiveFrom, Instant effectiveTo, CatalogAuditContext audit) {
+        return createDepartment(code, name, effectiveFrom, effectiveTo, null, audit);
+    }
+
+    DepartmentView updateDepartment(UUID id, String code, String name, Instant effectiveFrom, Instant effectiveTo, Object examTemplate, long version, CatalogAuditContext audit);
+
+    default DepartmentView updateDepartment(UUID id, String code, String name, Instant effectiveFrom, Instant effectiveTo, long version, CatalogAuditContext audit) {
+        return updateDepartment(id, code, name, effectiveFrom, effectiveTo, null, version, audit);
+    }
 
     DepartmentView deactivateDepartment(UUID id, long version, CatalogAuditContext audit);
 

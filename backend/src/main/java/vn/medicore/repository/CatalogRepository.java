@@ -140,6 +140,7 @@ public interface CatalogRepository {
             boolean active,
             Instant effectiveFrom,
             Instant effectiveTo,
+            String examTemplateJson,
             long version,
             Instant createdAt,
             Instant updatedAt) {

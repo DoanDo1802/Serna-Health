@@ -1,5 +1,6 @@
 package vn.medicore.repository.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -7,6 +8,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -25,9 +27,11 @@ import vn.medicore.repository.CatalogRepository;
 public class CatalogJdbcRepositoryImpl implements CatalogRepository {
 
     private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
 
-    public CatalogJdbcRepositoryImpl(JdbcTemplate jdbc) {
+    public CatalogJdbcRepositoryImpl(JdbcTemplate jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
     }
 
     // ===========================================================
@@ -36,19 +40,21 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
 
     @Override
     public void insertDepartment(DepartmentRow row) {
+        String examTemplateJson = row.examTemplateJson() != null ? row.examTemplateJson() : "{\"fields\": []}";
         update("""
-                insert into department(id, code, name, active, effective_from, effective_to, version, created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                insert into department(id, code, name, active, effective_from, effective_to, exam_template, version, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, cast(? as jsonb), ?, ?, ?)
                 """,
                 row.id(), row.code(), row.name(), row.active(),
                 ts(row.effectiveFrom()), ts(row.effectiveTo()),
+                examTemplateJson,
                 row.version(), ts(row.createdAt()), ts(row.updatedAt()));
     }
 
     @Override
     public Optional<DepartmentView> departmentById(UUID id) {
         return queryOne("""
-                select id, code, name, active, effective_from, effective_to, version, created_at, updated_at
+                select id, code, name, active, effective_from, effective_to, exam_template, version, created_at, updated_at
                 from department where id = ?
                 """, this::departmentView, id);
     }
@@ -56,7 +62,7 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     @Override
     public Optional<DepartmentView> departmentByIdForUpdate(UUID id) {
         return queryOne("""
-                select id, code, name, active, effective_from, effective_to, version, created_at, updated_at
+                select id, code, name, active, effective_from, effective_to, exam_template, version, created_at, updated_at
                 from department where id = ? for update
                 """, this::departmentView, id);
     }
@@ -65,12 +71,12 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     public List<DepartmentView> listDepartments(Boolean active, int limit, int offset) {
         if (active != null) {
             return jdbc.query("""
-                    select id, code, name, active, effective_from, effective_to, version, created_at, updated_at
+                    select id, code, name, active, effective_from, effective_to, exam_template, version, created_at, updated_at
                     from department where active = ? order by name, id limit ? offset ?
                     """, this::departmentView, active, limit, offset);
         }
         return jdbc.query("""
-                select id, code, name, active, effective_from, effective_to, version, created_at, updated_at
+                select id, code, name, active, effective_from, effective_to, exam_template, version, created_at, updated_at
                 from department order by name, id limit ? offset ?
                 """, this::departmentView, limit, offset);
     }
@@ -80,11 +86,13 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
         int updated = update("""
                 update department
                 set code = ?, name = ?, active = ?, effective_from = ?, effective_to = ?,
+                    exam_template = coalesce(cast(? as jsonb), exam_template, '{"fields": []}'::jsonb),
                     version = version + 1, updated_at = ?
                 where id = ? and version = ?
                 """,
                 row.code(), row.name(), row.active(),
                 ts(row.effectiveFrom()), ts(row.effectiveTo()),
+                row.examTemplateJson(),
                 ts(row.updatedAt()), row.id(), expectedVersion);
         if (updated != 1) throw new StaleVersionException();
         return updated;
@@ -655,6 +663,8 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
     // ===========================================================
 
     private DepartmentView departmentView(ResultSet rs, int row) throws SQLException {
+        String examTemplateStr = rs.getString("exam_template");
+        Object examTemplate = parseJson(examTemplateStr);
         return new DepartmentView(
                 uuid(rs, "id"),
                 rs.getLong("version"),
@@ -663,8 +673,20 @@ public class CatalogJdbcRepositoryImpl implements CatalogRepository {
                 rs.getBoolean("active"),
                 instant(rs, "effective_from"),
                 instantNullable(rs, "effective_to"),
+                examTemplate,
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
+    }
+
+    private Object parseJson(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of("fields", List.of());
+        }
+        try {
+            return objectMapper.readValue(json, Object.class);
+        } catch (Exception e) {
+            return Map.of("fields", List.of());
+        }
     }
 
     private RoomView roomView(ResultSet rs, int row) throws SQLException {
